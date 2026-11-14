@@ -112,6 +112,61 @@ fn library_denies_missing_docs_and_unsafe_code() {
     assert!(library.contains("#![deny(unsafe_code)]"));
 }
 
+fn rust_sources(directory: &Path, found: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            rust_sources(&path, found);
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            found.push(path);
+        }
+    }
+}
+
+#[test]
+fn unsafe_code_is_confined_to_the_process_sys_module() {
+    let source_root = workspace_root().join("crates/claude-agent-kit/src");
+    let sys_module = source_root.join("process").join("sys.rs");
+    let mut sources = Vec::new();
+    rust_sources(&source_root, &mut sources);
+    assert!(sources.contains(&sys_module));
+
+    for source in sources {
+        let text = std::fs::read_to_string(&source).unwrap();
+        let allows_unsafe = text.contains("allow(unsafe_code)");
+        let uses_unsafe = text.contains("unsafe {") || text.contains("unsafe fn");
+        if source == sys_module {
+            assert!(text.contains("#![allow(unsafe_code)]"));
+            assert!(uses_unsafe);
+        } else {
+            assert!(!allows_unsafe, "{}", source.display());
+            assert!(!uses_unsafe, "{}", source.display());
+        }
+    }
+}
+
+#[test]
+fn library_sources_carry_no_implementation_comments() {
+    let mut sources = Vec::new();
+    rust_sources(
+        &workspace_root().join("crates/claude-agent-kit/src"),
+        &mut sources,
+    );
+    rust_sources(
+        &workspace_root().join("crates/fake-claude/src"),
+        &mut sources,
+    );
+    for source in sources {
+        let text = std::fs::read_to_string(&source).unwrap();
+        for (number, line) in text.lines().enumerate() {
+            let code = line.trim_start();
+            let is_comment =
+                code.starts_with("//") && !code.starts_with("///") && !code.starts_with("//!");
+            assert!(!is_comment, "{}:{}: {line}", source.display(), number + 1);
+        }
+    }
+}
+
 #[test]
 fn license_is_gpl_version_3_and_upstream_notice_is_preserved() {
     let license = read("LICENSE");
