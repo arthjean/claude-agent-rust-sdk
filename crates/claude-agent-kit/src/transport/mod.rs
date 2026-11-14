@@ -129,7 +129,6 @@ impl SharedTransport {
     }
 
     /// See [`Transport::read_messages`].
-    #[must_use]
     pub fn read_messages(&self) -> MessageStream {
         self.0.read_messages()
     }

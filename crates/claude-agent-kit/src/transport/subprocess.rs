@@ -316,7 +316,6 @@ impl SubprocessTransport {
     /// exits with a non-zero code, and ends after either. Before
     /// [`connect`](Self::connect), or on a second call, the stream yields
     /// one [`Error::CliConnection`].
-    #[must_use]
     pub fn read_messages(&self) -> MessageStream {
         let messages = match &mut *lock(&self.inner.state) {
             State::Connected(connection) => connection.messages.take(),
