@@ -9,10 +9,10 @@
     {
       "id": "EP-001",
       "title": "Foundation and data model",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 6,
-      "stories_done": 5
+      "stories_done": 6
     },
     {
       "id": "EP-002",
@@ -60,12 +60,12 @@
       "id": "US-001",
       "title": "Workspace scaffold, lint policy and CI",
       "epic": "EP-001",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [],
       "started_at": "2026-11-14",
-      "completed_at": null,
+      "completed_at": "2026-11-14",
       "reviewed_at": "2026-11-14"
     },
     {
