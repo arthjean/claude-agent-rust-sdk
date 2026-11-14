@@ -1,0 +1,47 @@
+{
+  "claude_code_version": "2.1.999",
+  "auto_reply": true,
+  "report_env": [
+    "CLAUDE_CODE_SDK_READS_SESSION_STATE",
+    "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"
+  ],
+  "steps": [
+    {
+      "expect": {
+        "type": "user"
+      }
+    },
+    {
+      "session_state": "running"
+    },
+    {
+      "emit": {
+        "type": "assistant",
+        "parent_tool_use_id": null,
+        "session_id": "s",
+        "message": {
+          "role": "assistant",
+          "model": "m",
+          "content": [
+            {
+              "type": "text",
+              "text": "LAUNCHED"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "emit": {
+        "type": "result",
+        "subtype": "success",
+        "duration_ms": 1,
+        "duration_api_ms": 1,
+        "is_error": false,
+        "num_turns": 1,
+        "session_id": "s",
+        "result": "LAUNCHED"
+      }
+    }
+  ]
+}

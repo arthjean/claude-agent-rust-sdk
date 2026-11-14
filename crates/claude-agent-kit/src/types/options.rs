@@ -89,7 +89,13 @@ pub struct ClaudeAgentOptions {
     /// Hook callbacks, keyed by event. Matchers registered on the same
     /// event are dispatched concurrently by the CLI.
     pub hooks: Option<IndexMap<HookEvent, Vec<HookMatcher>>>,
-    /// User identifier associated with the session.
+    /// Name of the operating-system user the CLI process runs as. The
+    /// process takes the user id and the primary group id of that user,
+    /// and no supplementary group when this process is privileged. The
+    /// environment is not changed: set `HOME` through `env` when the CLI
+    /// must read that user's configuration. Unix only: switching to
+    /// another user needs the privilege to do so, and connecting fails on
+    /// Windows when this is set.
     pub user: Option<String>,
     /// Emits a stream event for each partial message update.
     pub include_partial_messages: bool,
