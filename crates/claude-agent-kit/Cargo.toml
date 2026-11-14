@@ -1,0 +1,23 @@
+[package]
+name = "claude-agent-kit"
+description = "Rust SDK for building Claude Agent applications on top of the Claude CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["claude", "agent", "sdk", "anthropic", "ai"]
+categories = ["api-bindings", "asynchronous"]
+exclude = ["tests/workspace.rs"]
+
+[dependencies]
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

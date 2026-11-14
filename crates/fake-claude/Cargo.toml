@@ -1,0 +1,12 @@
+[package]
+name = "fake-claude"
+description = "Scriptable stand-in for the Claude CLI, used by the claude-agent-kit test suite"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
