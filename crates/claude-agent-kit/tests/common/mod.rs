@@ -12,26 +12,16 @@ use serde_json::Value;
 pub const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
 pub const STEP_LIMIT: Duration = Duration::from_secs(30);
 
+pub const FAKE_CLAUDE_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_FAKE_CLAUDE";
+
 pub fn fake_claude() -> PathBuf {
     static BINARY: OnceLock<PathBuf> = OnceLock::new();
     BINARY
         .get_or_init(|| {
-            let test_binary = std::env::current_exe().unwrap();
-            let profile_dir = test_binary.parent().unwrap().parent().unwrap();
-            let binary = profile_dir.join(format!("fake-claude{}", std::env::consts::EXE_SUFFIX));
-            if !binary.is_file() {
-                let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-                let mut build = Command::new(cargo);
-                build.args(["build", "--package", "fake-claude"]);
-                if profile_dir
-                    .file_name()
-                    .is_some_and(|name| name == "release")
-                {
-                    build.arg("--release");
-                }
-                let status = build.status().expect("cargo must be runnable");
-                assert!(status.success(), "building fake-claude failed");
-            }
+            let binary = match std::env::var_os(FAKE_CLAUDE_VARIABLE) {
+                Some(path) => PathBuf::from(path),
+                None => build_fake_claude(),
+            };
             assert!(
                 binary.is_file(),
                 "fake-claude not found at {}",
@@ -40,6 +30,35 @@ pub fn fake_claude() -> PathBuf {
             binary
         })
         .clone()
+}
+
+fn build_fake_claude() -> PathBuf {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut build = Command::new(cargo);
+    build.args([
+        "build",
+        "--package",
+        "fake-claude",
+        "--bin",
+        "fake-claude",
+        "--message-format=json",
+    ]);
+    if !cfg!(debug_assertions) {
+        build.arg("--release");
+    }
+    let output = build
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .expect("cargo must be runnable");
+    assert!(output.status.success(), "building fake-claude failed");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|message| {
+            message["reason"] == "compiler-artifact" && message["target"]["name"] == "fake-claude"
+        })
+        .find_map(|message| message["executable"].as_str().map(PathBuf::from))
+        .expect("cargo did not report the fake-claude executable")
 }
 
 pub fn scenarios_dir() -> PathBuf {
