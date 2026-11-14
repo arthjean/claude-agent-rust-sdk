@@ -76,10 +76,10 @@ fn every_specified_variant_exists_and_displays_its_message() {
 fn cli_not_found_error() {
     let error = Error::cli_not_found(None, None);
     assert!(matches!(error, Error::CliNotFound { .. }));
-    assert_eq!(error.to_string(), "Claude Code not found");
+    assert_eq!(error.to_string(), "Claude CLI not found");
 
-    let error = Error::cli_not_found(Some("Claude Code not found"), Some("/usr/bin/claude"));
-    assert_eq!(error.to_string(), "Claude Code not found: /usr/bin/claude");
+    let error = Error::cli_not_found(Some("Claude CLI not found"), Some("/usr/bin/claude"));
+    assert_eq!(error.to_string(), "Claude CLI not found: /usr/bin/claude");
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn result_error_carries_payload() {
     assert_eq!(payload["terminal_reason"], "api_error");
     assert_eq!(
         error.to_string(),
-        "Claude Code returned an error result: API Error: Stream idle timeout - no chunks \
+        "Claude CLI returned an error result: API Error: Stream idle timeout - no chunks \
          received (exit code: 1)"
     );
 }

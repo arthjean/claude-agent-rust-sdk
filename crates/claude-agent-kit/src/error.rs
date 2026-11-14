@@ -3,6 +3,9 @@
 //! Every fallible operation returns [`Error`], a single enum whose variants
 //! name the failure cause, so callers match on a variant instead of parsing
 //! text.
+//!
+//! Message texts follow the upstream Python SDK, with one deliberate
+//! difference: they name the executable "Claude CLI".
 
 use std::fmt;
 use std::ops::Deref;
@@ -104,8 +107,8 @@ pub enum Error {
 }
 
 const JSON_DECODE_PREVIEW_CHARS: usize = 100;
-const DEFAULT_CLI_NOT_FOUND_MESSAGE: &str = "Claude Code not found";
-const ERROR_RESULT_PREFIX: &str = "Claude Code returned an error result: ";
+const DEFAULT_CLI_NOT_FOUND_MESSAGE: &str = "Claude CLI not found";
+const ERROR_RESULT_PREFIX: &str = "Claude CLI returned an error result: ";
 
 impl Error {
     /// Builds [`Error::CliNotFound`], appending the searched path when given.
