@@ -137,3 +137,43 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --all-features --locked
+
+  coverage:
+    name: Test coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The test stand-in and the maintenance tasks are not part of the SDK.
+      COVERAGE_IGNORE: (crates/fake-claude|xtask)/
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-llvm-cov@0.9.1
+
+      - name: Test with coverage
+        run: cargo llvm-cov --workspace --all-features --no-report
+
+      - name: Coverage summary
+        run: |
+          {
+            echo '```text'
+            cargo llvm-cov report --ignore-filename-regex "$COVERAGE_IGNORE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: HTML report
+        run: cargo llvm-cov report --html --output-dir target/coverage --ignore-filename-regex "$COVERAGE_IGNORE"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: target/coverage/html
