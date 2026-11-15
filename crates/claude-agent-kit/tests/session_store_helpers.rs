@@ -590,3 +590,33 @@ async fn shared_stores_work_with_the_helpers() {
     assert_eq!(listed.len(), 2);
     assert!(listed.iter().all(|info| ids.contains(&info.session_id)));
 }
+
+#[tokio::test]
+async fn an_agent_id_that_is_not_one_segment_loads_nothing() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let store = CountingStore::new(SessionStoreCapabilities::none(), None);
+    let id = new_id();
+    let key = SessionKey::new(project_key_for_directory(directory), id.as_str());
+    store
+        .append(
+            &key.clone().with_subpath("subagents/agent-ok"),
+            &[entry(
+                json!({"type": "user", "uuid": "u1", "message": {"content": "task"}}),
+            )],
+        )
+        .await
+        .unwrap();
+    for agent in ["", ".", "..", "x/../../secret", r"x\..\secret", "a\0b"] {
+        let messages = get_subagent_messages_from_store(&store, &id, agent, directory, None, 0)
+            .await
+            .unwrap();
+        assert!(messages.is_empty(), "{agent:?}");
+    }
+    assert_eq!(store.loads.load(Ordering::SeqCst), 0);
+    let messages = get_subagent_messages_from_store(&store, &id, "ok", directory, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(store.loads.load(Ordering::SeqCst), 1);
+}
