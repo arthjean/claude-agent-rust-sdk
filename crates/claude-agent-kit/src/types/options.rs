@@ -13,7 +13,7 @@ use super::config::{
 use super::hook::{HookEvent, HookMatcher};
 use super::permission::{CanUseTool, PermissionMode};
 use crate::error::Error;
-use crate::session_store::{SessionStoreFlushMode, SharedSessionStore};
+use crate::session_store::{SessionStore, SessionStoreFlushMode, SharedSessionStore};
 
 const STDIO_PERMISSION_PROMPT_TOOL: &str = "stdio";
 const DEFAULT_LOAD_TIMEOUT_MS: u64 = 60_000;
@@ -395,6 +395,13 @@ macro_rules! option_setters {
 }
 
 impl ClaudeAgentOptionsBuilder {
+    /// Sets the store that receives a copy of the transcript: any
+    /// [`SessionStore`], or a [`SharedSessionStore`] handle.
+    pub fn session_store(mut self, store: impl SessionStore) -> Self {
+        self.options.session_store = Some(SharedSessionStore::new(store));
+        self
+    }
+
     option_setters! {
         /// Sets the base set of built-in tools.
         some tools: Tools;
@@ -478,8 +485,6 @@ impl ClaudeAgentOptionsBuilder {
         some output_format: Value;
         /// Tracks file changes so files can be rewound.
         flag enable_file_checkpointing: bool;
-        /// Sets the store that receives a copy of the transcript.
-        some session_store: SharedSessionStore;
         /// Sets when mirrored entries are flushed to the store.
         flag session_store_flush: SessionStoreFlushMode;
         /// Sets the timeout of each store load during a resume.

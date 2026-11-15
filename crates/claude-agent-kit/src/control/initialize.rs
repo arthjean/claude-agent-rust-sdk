@@ -12,6 +12,8 @@ use super::TranscriptMirror;
 use super::run_end::run_end_ceiling_ms;
 use crate::error::Result;
 use crate::mcp::McpBridges;
+use crate::mirror::TranscriptMirrorBatcher;
+use crate::sessions::projects_dir;
 use crate::types::{
     CanUseTool, ClaudeAgentOptions, HookCallback, HookEvent, HookFailureMode, HookMatcher,
     McpServerConfig, McpServers, Skills, SystemPrompt,
@@ -56,7 +58,14 @@ impl SessionConfig {
                 || options.can_use_tool.is_some()
                 || has_sdk_mcp_server(&options.mcp_servers),
             mcp,
-            mirror: None,
+            mirror: options.session_store.as_ref().map(|store| {
+                let mirror: Arc<dyn TranscriptMirror> = TranscriptMirrorBatcher::new(
+                    store.clone(),
+                    projects_dir(Some(&options.env)),
+                    &options.session_store_flush,
+                );
+                mirror
+            }),
         })
     }
 }

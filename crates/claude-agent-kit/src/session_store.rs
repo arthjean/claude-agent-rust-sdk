@@ -16,6 +16,53 @@ use serde_json::{Map, Value};
 use crate::types::BoxFuture;
 use crate::types::macros::wire_enum;
 
+mod memory;
+
+pub use memory::InMemorySessionStore;
+
+/// The [`SessionKey`] of a transcript file, from its path relative to the
+/// projects directory.
+///
+/// `<projects>/<project>/<session>.jsonl` is a main transcript, and
+/// `<projects>/<project>/<session>/subagents/.../agent-<id>.jsonl` a
+/// subagent transcript whose subpath joins the segments after the session
+/// with `/` on every platform, without the `.jsonl` suffix. `None` for a
+/// path outside the projects directory or of another shape.
+#[must_use]
+pub fn file_path_to_session_key(
+    file_path: &std::path::Path,
+    projects_dir: &std::path::Path,
+) -> Option<SessionKey> {
+    let relative = file_path.strip_prefix(projects_dir).ok()?;
+    let mut parts: Vec<String> = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    match parts.as_slice() {
+        [project_key, file] => {
+            let session_id = file.strip_suffix(".jsonl")?;
+            Some(SessionKey::new(project_key.as_str(), session_id))
+        }
+        [project_key, session_id, rest @ ..] if rest.len() >= 2 => {
+            let mut subpath = rest.to_vec();
+            if let Some(last) = subpath.last_mut()
+                && let Some(stem) = last.strip_suffix(".jsonl")
+            {
+                *last = stem.to_owned();
+            }
+            Some(
+                SessionKey::new(project_key.as_str(), session_id.as_str())
+                    .with_subpath(subpath.join("/")),
+            )
+        }
+        _ => None,
+    }
+}
+
 /// Error returned by a session store.
 pub type SessionStoreError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -373,9 +420,13 @@ impl<S: SessionStore> ErasedSessionStore for S {
 pub struct SharedSessionStore(Arc<dyn ErasedSessionStore>);
 
 impl SharedSessionStore {
-    /// Wraps a store.
+    /// Wraps a store. Wrapping a handle returns a handle to the same store.
     pub fn new(store: impl SessionStore) -> Self {
-        Self(Arc::new(store))
+        let any: &dyn std::any::Any = &store;
+        match any.downcast_ref::<Self>() {
+            Some(shared) => shared.clone(),
+            None => Self(Arc::new(store)),
+        }
     }
 
     /// See [`SessionStore::capabilities`].
@@ -459,9 +510,49 @@ impl SharedSessionStore {
     }
 }
 
-impl<S: SessionStore> From<S> for SharedSessionStore {
-    fn from(store: S) -> Self {
-        Self::new(store)
+impl SessionStore for SharedSessionStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    fn capabilities(&self) -> SessionStoreCapabilities {
+        self.0.capabilities()
+    }
+
+    async fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        self.0.list_sessions(project_key).await
+    }
+
+    async fn list_session_summaries(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<SessionSummaryEntry>, SessionStoreError> {
+        self.0.list_session_summaries(project_key).await
+    }
+
+    async fn delete(&self, key: &SessionKey) -> Result<(), SessionStoreError> {
+        self.0.delete(key).await
+    }
+
+    async fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        self.0.list_subkeys(key).await
     }
 }
 

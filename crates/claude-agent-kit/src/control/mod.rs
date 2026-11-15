@@ -34,6 +34,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::prompt::{InputStream, stamp_user_message};
+use crate::resume::{ResumeDir, materialize_resume_session};
 use crate::session_store::SessionKey;
 use crate::transport::{SharedTransport, SubprocessTransport};
 use crate::types::{BoxFuture, ClaudeAgentOptions};
@@ -61,6 +62,41 @@ pub(crate) trait TranscriptMirror: Send + Sync {
 
     /// Flushes for the last time.
     fn close(&self) -> BoxFuture<'_, ()>;
+
+    /// Gives the mirror the channel its dropped batches are reported on.
+    fn attach(&self, reporter: MirrorErrorReporter) {
+        let _ = reporter;
+    }
+}
+
+/// Delivers `mirror_error` system messages to the application queue.
+#[derive(Clone)]
+pub(crate) struct MirrorErrorReporter(mpsc::WeakSender<Result<Value>>);
+
+impl MirrorErrorReporter {
+    pub(crate) fn new(outbox: mpsc::WeakSender<Result<Value>>) -> Self {
+        Self(outbox)
+    }
+
+    /// Reports a failed transcript mirror append. It never blocks: with a
+    /// full queue the message is logged and dropped.
+    pub(crate) fn report(&self, key: Option<&SessionKey>, error: &str) {
+        let message = json!({
+            "type": "system",
+            "subtype": "mirror_error",
+            "error": error,
+            "key": key,
+            "uuid": Uuid::new_v4().to_string(),
+            "session_id": key.map_or("", |key| key.session_id.as_str()),
+        });
+        let delivered = self
+            .0
+            .upgrade()
+            .is_some_and(|outbox| outbox.try_send(Ok(message)).is_ok());
+        if !delivered {
+            tracing::warn!("Dropping mirror_error message (buffer full): {error}");
+        }
+    }
 }
 
 /// One session of the control protocol: the router, the control channel in
@@ -75,9 +111,9 @@ struct Shared {
     config: SessionConfig,
     run: RunEndTracker,
     state: Mutex<State>,
-    #[cfg_attr(not(test), allow(dead_code))]
     mirror_errors: mpsc::WeakSender<Result<Value>>,
     closing: tokio::sync::Mutex<bool>,
+    resume: Mutex<Option<ResumeDir>>,
 }
 
 struct State {
@@ -125,6 +161,10 @@ impl State {
 }
 
 impl Shared {
+    fn lock_resume(&self) -> MutexGuard<'_, Option<ResumeDir>> {
+        self.resume.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn state(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -380,7 +420,11 @@ impl ControlSession {
                 initialization: None,
             }),
             closing: tokio::sync::Mutex::new(false),
+            resume: Mutex::new(None),
         });
+        if let Some(mirror) = &shared.config.mirror {
+            mirror.attach(MirrorErrorReporter::new(shared.mirror_errors.clone()));
+        }
         (Self { shared }, inbox)
     }
 
@@ -395,6 +439,30 @@ impl ControlSession {
         let transport =
             transport.unwrap_or_else(|| SharedTransport::new(SubprocessTransport::new(options)));
         Ok(Self::new(transport, config))
+    }
+
+    /// Creates the session of these options like
+    /// [`for_options`](Self::for_options), after loading the session to
+    /// resume from the store of the options, when there is one, into a
+    /// temporary config directory the child runs with. The directory belongs
+    /// to the session and is removed when it closes; with a custom
+    /// transport nothing is loaded, since the options never reach the
+    /// transport.
+    pub(crate) async fn prepare(
+        options: &ClaudeAgentOptions,
+        transport: Option<SharedTransport>,
+    ) -> Result<(Self, Inbox)> {
+        let options = options.for_session()?;
+        let materialized = match transport {
+            None => materialize_resume_session(&options).await?,
+            Some(_) => None,
+        };
+        let Some(materialized) = materialized else {
+            return Self::for_options(&options, transport);
+        };
+        let (session, inbox) = Self::for_options(&materialized.apply(&options), transport)?;
+        *session.shared.lock_resume() = Some(materialized.directory);
+        Ok((session, inbox))
     }
 
     /// Closes the session on a detached task, for the paths that cannot
@@ -546,27 +614,9 @@ impl ControlSession {
     /// Reports a failed transcript mirror append as a `mirror_error` system
     /// message. It never blocks: with a full queue the message is logged
     /// and dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "called by the transcript mirror of US-028")
-    )]
+    #[cfg(test)]
     pub(crate) fn report_mirror_error(&self, key: Option<&SessionKey>, error: &str) {
-        let message = json!({
-            "type": "system",
-            "subtype": "mirror_error",
-            "error": error,
-            "key": key,
-            "uuid": Uuid::new_v4().to_string(),
-            "session_id": key.map_or("", |key| key.session_id.as_str()),
-        });
-        let delivered = self
-            .shared
-            .mirror_errors
-            .upgrade()
-            .is_some_and(|outbox| outbox.try_send(Ok(message)).is_ok());
-        if !delivered {
-            tracing::warn!("Dropping mirror_error message (buffer full): {error}");
-        }
+        MirrorErrorReporter::new(self.shared.mirror_errors.clone()).report(key, error);
     }
 
     /// Stops the session and closes the transport. Calling it again does
@@ -610,6 +660,10 @@ impl ControlSession {
         shared.state().fail_pending(session_closed);
         shared.config.mcp.close().await;
         let result = shared.transport.close().await;
+        let resume = shared.lock_resume().take();
+        if let Some(resume) = resume {
+            resume.remove().await;
+        }
         *closed = true;
         result
     }

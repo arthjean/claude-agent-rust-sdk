@@ -86,10 +86,13 @@ mod control;
 pub mod error;
 pub mod mcp;
 pub mod message_parser;
+mod mirror;
 mod process;
 mod prompt;
 mod query;
+mod resume;
 pub mod session_store;
+pub mod sessions;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod transport;
@@ -155,9 +158,19 @@ pub use claude_agent_kit_macros::tool;
 pub use prompt::{InputMessage, InputStream, Prompt};
 pub use query::{QueryStream, query, query_with_transport};
 pub use session_store::{
-    SessionKey, SessionListSubkeysKey, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
-    SessionStoreError, SessionStoreFlushMode, SessionStoreListEntry, SessionSummaryEntry,
-    SharedSessionStore, UnsupportedStoreOperation,
+    InMemorySessionStore, SessionKey, SessionListSubkeysKey, SessionStore,
+    SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreFlushMode,
+    SessionStoreListEntry, SessionSummaryEntry, SharedSessionStore, UnsupportedStoreOperation,
+    file_path_to_session_key,
+};
+pub use sessions::{
+    ForkSessionResult, SdkSessionInfo, SessionMessage, SessionMessageType, delete_session,
+    delete_session_via_store, fold_session_summary, fork_session, fork_session_via_store,
+    get_session_info, get_session_info_from_store, get_session_messages,
+    get_session_messages_from_store, get_subagent_messages, get_subagent_messages_from_store,
+    import_session_to_store, list_sessions, list_sessions_from_store, list_subagents,
+    list_subagents_from_store, project_key_for_directory, rename_session, rename_session_via_store,
+    tag_session, tag_session_via_store,
 };
 pub use transport::{MessageStream, SharedTransport, SubprocessTransport, Transport};
 pub use types::*;

@@ -32,6 +32,8 @@ thiserror = "2.0"
 tokio = "1.54"
 trybuild = "1.0"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+unicode-normalization = "0.1.26"
+unicode-properties = { version = "0.1.5", default-features = false, features = ["general-category"] }
 uuid = { version = "1", features = ["v4"] }
 windows-sys = "0.61"
 
