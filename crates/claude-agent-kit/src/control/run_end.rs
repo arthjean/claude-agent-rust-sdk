@@ -398,7 +398,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        DEFAULT_RUN_END_CEILING_MS, MAX_RUN_END_CEILING_MS, RunEndTracker, parse_ceiling_ms,
+        DEFAULT_RUN_END_CEILING_MS, MAX_RUN_END_CEILING_MS, RunEndTracker, lock, parse_ceiling_ms,
     };
 
     fn task(subtype: &str, task_id: &str, extra: Value) -> Value {
@@ -548,5 +548,25 @@ mod tests {
         run.observe_result();
         assert!(run.has_ended());
         assert!(!run.ceiling_is_armed());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn no_ceiling_is_armed_once_stdin_is_closed() {
+        let run = RunEndTracker::new(50, true);
+        let state = |state: &str| json!({"type": "system", "subtype": "session_state_changed", "state": state});
+        run.observe_system(&state("running"));
+        run.observe_result();
+        assert!(run.ceiling_is_armed());
+        assert!(!run.has_ended());
+
+        run.observe_system(&state("idle"));
+        run.wait_for_end().await;
+        run.seal();
+        assert!(!run.ceiling_is_armed());
+
+        run.observe_system(&state("running"));
+        lock(&run.0).arm_ceiling();
+        assert!(!run.ceiling_is_armed());
+        assert!(run.has_ended());
     }
 }

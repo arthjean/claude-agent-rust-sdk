@@ -29,6 +29,16 @@ pub(crate) fn type_first_line(entry: &Map<String, Value>) -> String {
     line
 }
 
+/// Serializes fields on one line in the order given, the order the CLI
+/// writes them in.
+pub(crate) fn ordered_line(fields: &[(&str, Value)]) -> String {
+    let body: Vec<String> = fields
+        .iter()
+        .map(|(key, value)| format!("{}:{value}", Value::from(*key)))
+        .collect();
+    format!("{{{}}}", body.join(","))
+}
+
 /// Serializes any value on one line, objects with their `type` first.
 pub(crate) fn value_line(value: &Value) -> String {
     match value {
@@ -52,6 +62,16 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn ordered_fields_keep_the_order_they_are_given_in() {
+        let line = ordered_line(&[
+            ("type", json!("tag")),
+            ("tag", json!("a\"b")),
+            ("sessionId", json!("s")),
+        ]);
+        assert_eq!(line, r#"{"type":"tag","tag":"a\"b","sessionId":"s"}"#);
+    }
 
     #[test]
     fn type_comes_first_and_the_rest_is_unchanged() {

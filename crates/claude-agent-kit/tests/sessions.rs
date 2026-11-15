@@ -2,25 +2,46 @@
 
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, UNIX_EPOCH};
 
 use claude_agent_kit::{
-    SessionMessageType, get_session_info, get_session_messages, get_subagent_messages,
-    list_sessions, list_subagents, project_key_for_directory,
+    SdkSessionInfo, SessionMessage, SessionMessageType, get_session_info, get_session_messages,
+    get_subagent_messages, list_sessions, list_subagents, project_key_for_directory,
 };
 use serde_json::{Value, json};
 
 use common::transcripts::{
-    Project, assistant, config_dir, conversation, new_id, projects_dir, set_mtime, user,
-    write_lines,
+    Project, assistant, config_dir, conversation, new_id, projects_dir, set_mtime, type_first,
+    user, write_lines,
 };
 
-fn ids(sessions: &[claude_agent_kit::SdkSessionInfo]) -> Vec<String> {
+fn ids(sessions: &[SdkSessionInfo]) -> Vec<String> {
     sessions
         .iter()
         .map(|session| session.session_id.clone())
         .collect()
+}
+
+fn uuids(messages: &[SessionMessage]) -> Vec<&str> {
+    messages
+        .iter()
+        .map(|message| message.uuid.as_str())
+        .collect()
+}
+
+fn plain_session(project: &Project, prompt: &str) -> String {
+    let id = new_id();
+    project.write(
+        &id,
+        &[
+            json!({"type": "user", "message": {"role": "user", "content": prompt}}),
+            json!({"type": "assistant", "message": {"role": "assistant", "content": "Hi there!"}}),
+            json!({"type": "summary"}),
+        ],
+    );
+    id
 }
 
 #[test]
@@ -459,4 +480,386 @@ fn subagents_are_listed_and_read_with_their_parent_ids() {
     assert!(get_subagent_messages(&id, "", Some(project.path()), None, 0).is_empty());
     assert!(list_subagents(&new_id(), Some(project.path())).is_empty());
     assert!(list_subagents("bad", Some(project.path())).is_empty());
+}
+
+const CONFIG_DIR_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_CONFIG_DIR_HOST_SESSION";
+const CONFIG_DIR_REPORT: &str = "config-dir-report=";
+
+#[test]
+fn host_process_for_the_config_dir_tests() {
+    let Ok(session_id) = std::env::var(CONFIG_DIR_HOST_VARIABLE) else {
+        return;
+    };
+    let report = json!({
+        "listed": ids(&list_sessions(None, None, 0, true)),
+        "info": get_session_info(&session_id, None).is_some(),
+        "messages": get_session_messages(&session_id, None, None, 0).len(),
+    });
+    println!("{CONFIG_DIR_REPORT}{report}");
+}
+
+fn read_in_a_process_with_config_dir(config: &Path, session_id: &str) -> Value {
+    let mut host = Command::new(std::env::current_exe().unwrap());
+    host.args([
+        "host_process_for_the_config_dir_tests",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+    ]);
+    host.env("CLAUDE_CONFIG_DIR", config);
+    host.env(CONFIG_DIR_HOST_VARIABLE, session_id);
+    let output = host.output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report = stdout
+        .lines()
+        .find_map(|line| line.split_once(CONFIG_DIR_REPORT).map(|(_, report)| report))
+        .unwrap_or_else(|| panic!("the host did not report: {stdout}"));
+    serde_json::from_str(report).unwrap()
+}
+
+#[test]
+fn a_config_dir_that_does_not_exist_gives_empty_results() {
+    let base = tempfile::tempdir().unwrap();
+    let report = read_in_a_process_with_config_dir(&base.path().join("nonexistent"), &new_id());
+    assert_eq!(report, json!({"listed": [], "info": false, "messages": 0}));
+}
+
+#[test]
+fn a_projects_dir_without_projects_lists_nothing() {
+    let base = tempfile::tempdir().unwrap();
+    let projects = base.path().join("projects");
+    std::fs::create_dir(&projects).unwrap();
+    let id = new_id();
+    assert_eq!(
+        read_in_a_process_with_config_dir(base.path(), &id),
+        json!({"listed": [], "info": false, "messages": 0})
+    );
+
+    write_lines(
+        &projects.join("some-project").join(format!("{id}.jsonl")),
+        &conversation(&id, "hello", json!({})),
+    );
+    assert_eq!(
+        read_in_a_process_with_config_dir(base.path(), &id),
+        json!({"listed": [id], "info": true, "messages": 2})
+    );
+}
+
+#[test]
+fn a_new_session_info_keeps_its_required_fields_and_leaves_the_rest_unset() {
+    let info = SdkSessionInfo::new("abc", "test", 1000);
+    assert_eq!(info.session_id, "abc");
+    assert_eq!(info.summary, "test");
+    assert_eq!(info.last_modified, 1000);
+    assert_eq!(info.file_size, None);
+    assert_eq!(info.custom_title, None);
+    assert_eq!(info.first_prompt, None);
+    assert_eq!(info.git_branch, None);
+    assert_eq!(info.cwd, None);
+    assert_eq!(info.tag, None);
+    assert_eq!(info.created_at, None);
+}
+
+#[test]
+fn a_progress_entry_inside_the_chain_is_walked_through_and_left_out() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(
+        &id,
+        &[
+            user("u1", None, &id, Value::from("hello")),
+            json!({"type": "progress", "uuid": "p1", "parentUuid": "u1", "sessionId": id}),
+            assistant("a1", Some("p1"), &id, "hi"),
+        ],
+    );
+    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["u1", "a1"]);
+}
+
+#[test]
+fn the_chain_ends_at_the_leaf_written_last_in_the_file() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(
+        &id,
+        &[
+            user("root", None, &id, Value::from("root")),
+            assistant("old-leaf", Some("root"), &id, "old"),
+            assistant("new-leaf", Some("root"), &id, "new"),
+        ],
+    );
+    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["root", "new-leaf"]);
+}
+
+#[test]
+fn a_transcript_ending_on_a_progress_entry_is_walked_back_to_its_last_message() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(
+        &id,
+        &[
+            user("u1", None, &id, Value::from("hi")),
+            assistant("a1", Some("u1"), &id, "hello"),
+            json!({"type": "progress", "uuid": "p1", "parentUuid": "a1", "sessionId": id}),
+        ],
+    );
+    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["u1", "a1"]);
+}
+
+#[test]
+fn a_single_user_entry_is_returned_alone() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(
+        &id,
+        &[json!({"type": "user", "uuid": "a", "parentUuid": null})],
+    );
+    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["a"]);
+    assert_eq!(messages[0].r#type, SessionMessageType::User);
+}
+
+fn parallel_tool_turn(
+    session_id: &str,
+    parent: &str,
+    tools: usize,
+    result_order: &[usize],
+) -> Vec<Value> {
+    let mut lines = Vec::new();
+    for index in 0..tools {
+        let previous = if index == 0 {
+            parent.to_owned()
+        } else {
+            format!("call-{}", index - 1)
+        };
+        lines.push(json!({
+            "type": "assistant", "uuid": format!("call-{index}"), "parentUuid": previous,
+            "sessionId": session_id, "timestamp": format!("2026-01-01T00:00:01.{index:03}Z"),
+            "message": {"id": "msg_parallel", "role": "assistant", "content": [
+                {"type": "tool_use", "id": format!("toolu_{index}"), "name": "Read", "input": {}}
+            ]},
+        }));
+    }
+    for (position, index) in result_order.iter().enumerate() {
+        lines.push(json!({
+            "type": "user", "uuid": format!("result-{index}"), "parentUuid": format!("call-{index}"),
+            "sessionId": session_id, "sourceToolAssistantUUID": format!("call-{index}"),
+            "timestamp": format!("2026-01-01T00:00:02.{position:03}Z"),
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": format!("toolu_{index}"), "content": "ok"}
+            ]},
+        }));
+    }
+    lines
+}
+
+#[test]
+fn pagination_counts_the_recovered_parallel_tool_calls_and_results() {
+    let project = Project::new();
+    let id = new_id();
+    let mut lines = vec![user("prompt", None, &id, Value::from("read them"))];
+    lines.extend(parallel_tool_turn(&id, "prompt", 3, &[0, 1, 2]));
+    lines.push(assistant("answer", Some("result-2"), &id, "k"));
+    project.write(&id, &lines);
+
+    let page = get_session_messages(&id, Some(project.path()), Some(3), 4);
+    assert_eq!(uuids(&page), ["result-0", "result-1", "result-2"]);
+    assert_eq!(
+        get_session_messages(&id, Some(project.path()), None, 0).len(),
+        8
+    );
+}
+
+#[test]
+fn a_transcript_without_a_tag_entry_or_timestamps_has_no_tag_and_no_creation_time() {
+    let project = Project::new();
+    let id = plain_session(&project, "hello");
+    let listed = list_sessions(Some(project.path()), None, 0, false);
+    assert_eq!(ids(&listed), [id]);
+    assert_eq!(listed[0].tag, None);
+    assert_eq!(listed[0].created_at, None);
+}
+
+#[test]
+fn a_tag_key_inside_a_tool_use_input_is_never_read_as_the_tag() {
+    let project = Project::new();
+    let tool_use = |tag: &str| {
+        json!({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "mcp__docker__build", "input": {"tag": tag, "context": "."}}
+        ]}})
+    };
+    let tagged = new_id();
+    project.write(
+        &tagged,
+        &[
+            json!({"type": "user", "message": {"content": "tag this v1.0"}}),
+            json!({"type": "tag", "tag": "real-tag", "sessionId": tagged}),
+            tool_use("myapp:v2"),
+        ],
+    );
+    let untagged = new_id();
+    project.write(
+        &untagged,
+        &[
+            json!({"type": "user", "message": {"content": "build docker"}}),
+            tool_use("prod"),
+        ],
+    );
+
+    let listed = list_sessions(Some(project.path()), None, 0, false);
+    assert_eq!(listed.len(), 2);
+    let tag_of = |id: &str| {
+        listed
+            .iter()
+            .find(|session| session.session_id == id)
+            .unwrap()
+            .tag
+            .clone()
+    };
+    assert_eq!(tag_of(&tagged).as_deref(), Some("real-tag"));
+    assert_eq!(tag_of(&untagged), None);
+}
+
+#[test]
+fn created_at_is_read_in_milliseconds_and_does_not_exceed_a_later_modification_time() {
+    let project = Project::new();
+    let id = new_id();
+    let path = project.write(
+        &id,
+        &[json!({
+            "type": "user",
+            "message": {"content": "hello"},
+            "timestamp": "2026-01-01T00:00:00.000Z",
+        })],
+    );
+    std::fs::File::options()
+        .append(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_secs(1_769_904_000))
+        .unwrap();
+
+    let listed = list_sessions(Some(project.path()), None, 0, false);
+    assert_eq!(ids(&listed), [id]);
+    assert_eq!(listed[0].created_at, Some(1_767_225_600_000));
+    assert_eq!(listed[0].last_modified, 1_769_904_000_000);
+    assert!(listed[0].created_at.unwrap() <= listed[0].last_modified);
+}
+
+#[test]
+fn a_session_of_another_project_is_found_only_without_a_directory() {
+    let first = Project::new();
+    let second = Project::new();
+    let id = plain_session(&first, "in A only");
+    assert!(get_session_info(&id, Some(second.path())).is_none());
+    assert!(get_session_info(&id, None).is_some());
+}
+
+fn session_with_subagents_dir(project: &Project) -> (String, PathBuf) {
+    let id = plain_session(project, "Hello Claude");
+    let subagents = project.dir.join(&id).join("subagents");
+    std::fs::create_dir_all(&subagents).unwrap();
+    (id, subagents)
+}
+
+fn agent_transcript(session_id: &str) -> Vec<Value> {
+    vec![
+        user("u1", None, session_id, Value::from("task")),
+        assistant("a1", Some("u1"), session_id, "done"),
+    ]
+}
+
+fn have_no_parent_ids(messages: &[SessionMessage]) -> bool {
+    messages
+        .iter()
+        .all(|message| message.parent_tool_use_id.is_none() && message.parent_agent_id.is_none())
+}
+
+#[test]
+fn a_session_without_subagents_lists_none() {
+    let project = Project::new();
+    let without_directory = plain_session(&project, "Hello Claude");
+    assert!(list_subagents(&without_directory, Some(project.path())).is_empty());
+
+    let (with_empty_directory, subagents) = session_with_subagents_dir(&project);
+    assert!(subagents.is_dir());
+    assert!(list_subagents(&with_empty_directory, Some(project.path())).is_empty());
+}
+
+#[test]
+fn subagent_messages_are_empty_for_an_invalid_or_unknown_session() {
+    let project = Project::new();
+    assert!(get_subagent_messages("not-a-uuid", "abc", None, None, 0).is_empty());
+    assert!(get_subagent_messages("", "abc", None, None, 0).is_empty());
+    assert!(get_subagent_messages(&new_id(), "abc", None, None, 0).is_empty());
+    assert!(get_subagent_messages(&new_id(), "abc", Some(project.path()), None, 0).is_empty());
+}
+
+#[test]
+fn parent_ids_are_absent_when_the_sidecar_is_missing_or_unusable() {
+    let project = Project::new();
+    let (id, subagents) = session_with_subagents_dir(&project);
+    let sidecars = [
+        ("missing", None),
+        ("invalid", Some("not json {".to_owned())),
+        (
+            "without-ids",
+            Some(json!({"agentType": "general-purpose"}).to_string()),
+        ),
+        (
+            "wrong-types",
+            Some(json!({"toolUseId": 42, "parentAgentId": ["x"]}).to_string()),
+        ),
+    ];
+    for (agent, sidecar) in sidecars {
+        write_lines(
+            &subagents.join(format!("agent-{agent}.jsonl")),
+            &agent_transcript(&id),
+        );
+        if let Some(sidecar) = sidecar {
+            std::fs::write(subagents.join(format!("agent-{agent}.meta.json")), sidecar).unwrap();
+        }
+        let messages = get_subagent_messages(&id, agent, Some(project.path()), None, 0);
+        assert_eq!(messages.len(), 2, "{agent}");
+        assert!(have_no_parent_ids(&messages), "{agent}");
+    }
+}
+
+#[test]
+fn a_sidecar_that_is_a_directory_leaves_the_parent_ids_absent() {
+    let project = Project::new();
+    let (id, subagents) = session_with_subagents_dir(&project);
+    write_lines(&subagents.join("agent-x.jsonl"), &agent_transcript(&id));
+    std::fs::create_dir(subagents.join("agent-x.meta.json")).unwrap();
+
+    let messages = get_subagent_messages(&id, "x", Some(project.path()), None, 0);
+    assert_eq!(messages.len(), 2);
+    assert!(have_no_parent_ids(&messages));
+}
+
+#[test]
+fn corrupt_and_blank_lines_of_a_subagent_transcript_are_skipped() {
+    let project = Project::new();
+    let (id, subagents) = session_with_subagents_dir(&project);
+    let lines = [
+        type_first(&user("u1", None, &id, Value::from("hi"))),
+        "not valid json {".to_owned(),
+        String::new(),
+        type_first(&assistant("a1", Some("u1"), &id, "ok")),
+    ];
+    std::fs::write(subagents.join("agent-x.jsonl"), lines.join("\n") + "\n").unwrap();
+
+    let messages = get_subagent_messages(&id, "x", Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["u1", "a1"]);
+}
+
+#[test]
+fn an_empty_subagent_transcript_gives_no_messages() {
+    let project = Project::new();
+    let (id, subagents) = session_with_subagents_dir(&project);
+    std::fs::write(subagents.join("agent-empty.jsonl"), "").unwrap();
+    assert!(get_subagent_messages(&id, "empty", Some(project.path()), None, 0).is_empty());
 }

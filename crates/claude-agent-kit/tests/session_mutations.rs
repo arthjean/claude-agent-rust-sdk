@@ -89,6 +89,86 @@ fn appends_never_create_the_file() {
 }
 
 #[test]
+fn a_transcript_whose_parent_directory_is_missing_counts_as_session_not_found() {
+    let project = Project::new();
+    let id = new_id();
+    std::fs::remove_dir(&project.dir).unwrap();
+    assert!(!project.transcript(&id).parent().unwrap().exists());
+    assert!(matches!(
+        rename_session(&id, "t", Some(project.path())),
+        Err(Error::SessionNotFound { .. })
+    ));
+    assert!(matches!(
+        tag_session(&id, Some("x"), Some(project.path())),
+        Err(Error::SessionNotFound { .. })
+    ));
+    assert!(!project.dir.exists());
+
+    #[cfg(unix)]
+    {
+        let project = Project::new();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let regular_file = elsewhere.path().join("regular-file");
+        std::fs::write(&regular_file, "x").unwrap();
+        for target in [
+            elsewhere.path().join("missing").join("transcript.jsonl"),
+            regular_file.join("transcript.jsonl"),
+        ] {
+            let id = new_id();
+            std::os::unix::fs::symlink(&target, project.transcript(&id)).unwrap();
+            assert!(
+                matches!(
+                    rename_session(&id, "t", Some(project.path())),
+                    Err(Error::SessionNotFound { .. })
+                ),
+                "{}",
+                target.display()
+            );
+            assert!(!target.exists());
+        }
+    }
+}
+
+const NO_PROJECTS_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_NO_PROJECTS_HOST";
+
+#[test]
+fn host_process_for_the_missing_projects_directory_test() {
+    if std::env::var_os(NO_PROJECTS_HOST_VARIABLE).is_none() {
+        return;
+    }
+    let outcome = match rename_session(&new_id(), "title", None) {
+        Err(error @ Error::SessionNotFound { .. }) => format!("session-not-found: {error}"),
+        other => format!("{other:?}"),
+    };
+    println!("rename-outcome={outcome}");
+}
+
+#[test]
+fn rename_without_a_projects_directory_reports_the_session_as_not_found() {
+    let root = tempfile::tempdir().unwrap();
+    let config_dir = root.path().join("nonexistent");
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "host_process_for_the_missing_projects_directory_test",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(NO_PROJECTS_HOST_VARIABLE, "1")
+        .env("CLAUDE_CONFIG_DIR", &config_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("rename-outcome=session-not-found"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("(no projects directory)"), "{stdout}");
+    assert!(!config_dir.exists());
+}
+
+#[test]
 fn rename_without_a_directory_skips_empty_stubs() {
     let stub = Project::new();
     let real = Project::new();
@@ -101,6 +181,21 @@ fn rename_without_a_directory_skips_empty_stubs() {
         "Found"
     );
     assert_eq!(std::fs::metadata(stub.transcript(&id)).unwrap().len(), 0);
+}
+
+#[test]
+fn a_tag_is_appended_as_compact_json_in_the_field_order_of_the_cli() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "hello", json!({})));
+
+    tag_session(&id, Some("mytag"), Some(project.path())).unwrap();
+
+    let text = std::fs::read_to_string(project.transcript(&id)).unwrap();
+    assert_eq!(
+        text.trim_end().lines().last(),
+        Some(format!(r#"{{"type":"tag","tag":"mytag","sessionId":"{id}"}}"#).as_str())
+    );
 }
 
 #[test]

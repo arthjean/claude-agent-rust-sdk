@@ -5,11 +5,12 @@ mod common;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use claude_agent_kit::{
-    BoxError, ClaudeAgentOptions, Error, McpSdkServerConfig, McpSdkServerInstance, McpServerConfig,
-    SdkMcpTool, ToolAnnotations, ToolContent, ToolResult, create_sdk_mcp_server,
-    query_with_transport,
+    BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, McpSdkServerConfig,
+    McpSdkServerInstance, McpServerConfig, SdkMcpTool, SubprocessTransport, ToolAnnotations,
+    ToolContent, ToolResult, create_sdk_mcp_server, query_with_transport,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -19,8 +20,12 @@ use tokio::sync::{Barrier, Notify};
 use common::capture::Warnings;
 use common::mcp::{PROTOCOL_VERSION, SdkMcpClient, initialize_params, texts};
 use common::mock::{
-    assistant, cli_answering, drain, result, result_texts, settle, silent_cli, success,
+    Recorder, assistant, cli_answering, drain, result, result_texts, settle, silent_cli, success,
 };
+use common::{Fake, SCENARIO_VARIABLE, fake_claude, next_message};
+
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+const MAX_MCP_OUTPUT_TOKENS: &str = "MAX_MCP_OUTPUT_TOKENS";
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct Add {
@@ -120,6 +125,122 @@ fn typed_tool_inlines_nested_types_and_marks_optional_fields() {
     assert_eq!(point["properties"]["x"]["type"], "integer");
     assert_eq!(point["required"], json!(["x", "y"]));
     assert!(schema.get("$defs").is_none());
+}
+
+#[test]
+fn typed_tool_maps_text_integer_float_and_boolean_fields_and_requires_them_all() {
+    #[derive(Deserialize, JsonSchema)]
+    #[allow(dead_code)]
+    struct AllTypes {
+        name: String,
+        count: i64,
+        score: f64,
+        active: bool,
+    }
+
+    let tool = SdkMcpTool::typed::<AllTypes>("all", "Takes every basic type", |_args| async {
+        Ok(ToolResult::default())
+    });
+    let schema = tool.input_schema();
+    assert_eq!(schema["type"], "object");
+    assert_eq!(schema["properties"]["name"], json!({"type": "string"}));
+    assert_eq!(schema["properties"]["count"]["type"], "integer");
+    assert_eq!(schema["properties"]["score"]["type"], "number");
+    assert_eq!(schema["properties"]["active"], json!({"type": "boolean"}));
+    let mut required: Vec<&str> = schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|name| name.as_str().unwrap())
+        .collect();
+    required.sort_unstable();
+    assert_eq!(required, ["active", "count", "name", "score"]);
+}
+
+#[test]
+fn typed_tool_keeps_the_description_of_an_optional_field_and_leaves_it_out_of_required() {
+    #[derive(Deserialize, JsonSchema)]
+    #[allow(dead_code)]
+    struct Config {
+        /// Config name
+        name: String,
+        /// Timeout in seconds
+        timeout: Option<i64>,
+    }
+
+    let tool = SdkMcpTool::typed::<Config>("configure", "Configures", |_args| async {
+        Ok(ToolResult::default())
+    });
+    let schema = tool.input_schema();
+    assert_eq!(
+        schema["properties"]["name"],
+        json!({"type": "string", "description": "Config name"})
+    );
+    let timeout = &schema["properties"]["timeout"];
+    assert_eq!(timeout["description"], "Timeout in seconds");
+    assert_eq!(timeout["type"], json!(["integer", "null"]));
+    assert_eq!(schema["required"], json!(["name"]));
+}
+
+#[test]
+fn typed_tool_whose_argument_struct_has_no_fields_lists_an_object_schema_requiring_nothing() {
+    #[derive(Deserialize, JsonSchema)]
+    struct Empty {}
+
+    let tool = SdkMcpTool::typed::<Empty>("empty", "Takes nothing", |_args| async {
+        Ok(ToolResult::default())
+    });
+    let schema = tool.input_schema();
+    assert_eq!(schema["type"], "object");
+    assert!(schema.get("required").is_none());
+    assert_eq!(schema.get("properties").unwrap_or(&json!({})), &json!({}));
+}
+
+#[test]
+fn typed_tool_whose_argument_type_is_not_one_object_lists_an_object_schema() {
+    #[derive(Deserialize, JsonSchema)]
+    #[allow(dead_code)]
+    struct Point {
+        x: i32,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(tag = "kind")]
+    #[allow(dead_code)]
+    enum Shape {
+        Circle { radius: f64 },
+        Square { side: f64 },
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    enum Mode {
+        Fast,
+        Slow,
+    }
+
+    fn schema<Args>() -> Value
+    where
+        Args: JsonSchema + serde::de::DeserializeOwned + Send + 'static,
+    {
+        SdkMcpTool::typed::<Args>("tool", "", |_args| async { Ok(ToolResult::default()) })
+            .input_schema()
+            .clone()
+    }
+
+    let empty = json!({"type": "object", "properties": {}});
+    assert_eq!(schema::<Shape>(), empty);
+    assert_eq!(schema::<Mode>(), empty);
+    assert_eq!(schema::<String>(), empty);
+    assert_eq!(schema::<Vec<Point>>(), empty);
+
+    let nullable = schema::<Option<Point>>();
+    assert_eq!(nullable["type"], "object");
+    assert_eq!(nullable["properties"]["x"]["type"], "integer");
+    assert_eq!(nullable["required"], json!(["x"]));
+
+    let map = schema::<std::collections::HashMap<String, i32>>();
+    assert_eq!(map["type"], "object");
+    assert_eq!(map["additionalProperties"]["type"], "integer");
 }
 
 #[test]
@@ -428,6 +549,31 @@ async fn typed_and_raw_tools_are_called_with_their_arguments() {
         .request("srv", "tools/call", json!({"name": "echo"}))
         .await;
     assert_eq!(texts(&response["result"]), ["{}"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn typed_tool_whose_argument_type_has_no_object_schema_lists_an_empty_object_schema() {
+    let received = Recorder::new();
+    let opaque = {
+        let received = received.clone();
+        SdkMcpTool::typed::<Value>("opaque", "Takes anything", move |arguments| {
+            received.push(arguments);
+            async { Ok(ToolResult::text("ok")) }
+        })
+    };
+    let client = SdkMcpClient::connected(server([opaque])).await;
+    let listed = client.list_tools("srv").await;
+    let outcome = client
+        .call_tool("srv", "opaque", json!({"whatever": 1}))
+        .await;
+
+    assert_eq!(
+        listed[0]["inputSchema"],
+        json!({"type": "object", "properties": {}})
+    );
+    assert_eq!(texts(&outcome), ["ok"]);
+    assert_eq!(outcome["isError"], false);
+    assert_eq!(received.all(), [json!({"whatever": 1})]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -815,6 +961,106 @@ async fn in_process_server_of_an_unknown_kind_is_a_config_error() {
     assert_eq!(transport.connect_count(), 0);
 }
 
+#[tokio::test(start_paused = true)]
+async fn closing_ends_every_server_and_the_tool_call_in_flight_and_closing_again_does_nothing() {
+    let started = Arc::new(Notify::new());
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let client = SdkMcpClient::start([
+        (
+            "one",
+            create_sdk_mcp_server("one", None, [blocked("slow", &started, &dropped)]).unwrap(),
+        ),
+        ("two", create_sdk_mcp_server("two", None, []).unwrap()),
+    ])
+    .await;
+    assert_eq!(client.initialize("one").await["serverInfo"]["name"], "one");
+    assert_eq!(client.initialize("two").await["serverInfo"]["name"], "two");
+
+    let in_flight = client.post(
+        "one",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 50,
+            "method": "tools/call",
+            "params": {"name": "slow", "arguments": {}},
+        }),
+    );
+    started.notified().await;
+    let runtime = tokio::runtime::Handle::current().metrics();
+    assert!(
+        runtime.num_alive_tasks() >= 2,
+        "the reader and the call run"
+    );
+
+    let before = tokio::time::Instant::now();
+    client.close().await;
+    assert!(before.elapsed() < SHUTDOWN_GRACE, "{:?}", before.elapsed());
+    for _ in 0..10 {
+        settle().await;
+    }
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(client.answered(&in_flight).is_none());
+    assert_eq!(runtime.num_alive_tasks(), 0);
+    assert_eq!(client.transport.close_count(), 1);
+
+    client.close().await;
+    assert_eq!(client.transport.close_count(), 1);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime.num_alive_tasks(), 0);
+}
+
+async fn child_environment(options: ClaudeAgentOptionsBuilder, fake: &Fake) -> Value {
+    let transport = SubprocessTransport::new(
+        options
+            .cli_path(fake_claude())
+            .env_var(SCENARIO_VARIABLE, fake.scenario.to_string_lossy())
+            .build()
+            .unwrap(),
+    );
+    transport.connect().await.unwrap();
+    let mut stream = transport.read_messages();
+    let reported = next_message(&mut stream).await["fake_env"].clone();
+    transport.close().await.unwrap();
+    reported
+}
+
+fn inherited(name: &str) -> Value {
+    json!(std::env::var(name).ok())
+}
+
+#[tokio::test]
+async fn max_mcp_output_tokens_is_not_given_a_default_when_the_options_do_not_set_it() {
+    let fake = Fake::new(json!({
+        "report_env": [MAX_MCP_OUTPUT_TOKENS, "CLAUDE_CODE_ENTRYPOINT"],
+        "steps": [{"exit": 0}],
+    }));
+    let reported = child_environment(ClaudeAgentOptions::builder(), &fake).await;
+    assert_eq!(reported["CLAUDE_CODE_ENTRYPOINT"], "sdk-rs");
+    assert_eq!(
+        reported[MAX_MCP_OUTPUT_TOKENS],
+        inherited(MAX_MCP_OUTPUT_TOKENS)
+    );
+}
+
+#[tokio::test]
+async fn raising_max_mcp_output_tokens_sets_no_tool_result_persistence_variable() {
+    let persistence_variables = ["MAX_TOOL_RESULT_CHARS", "DISABLE_TOOL_RESULT_PERSISTENCE"];
+    let fake = Fake::new(json!({
+        "report_env": [
+            MAX_MCP_OUTPUT_TOKENS,
+            "MAX_TOOL_RESULT_CHARS",
+            "DISABLE_TOOL_RESULT_PERSISTENCE",
+        ],
+        "steps": [{"exit": 0}],
+    }));
+    let options = ClaudeAgentOptions::builder().env_var(MAX_MCP_OUTPUT_TOKENS, "500000");
+    let reported = child_environment(options, &fake).await;
+    assert_eq!(reported[MAX_MCP_OUTPUT_TOKENS], "500000");
+    for name in persistence_variables {
+        assert_eq!(reported[name], inherited(name), "{name}");
+    }
+}
+
 #[cfg(feature = "jsonschema")]
 mod schema_validation {
     use super::*;
@@ -871,5 +1117,247 @@ mod schema_validation {
         let outcome = client.call_tool("srv", "broken", json!({"x": 1})).await;
         assert_eq!(outcome["isError"], true);
         assert!(texts(&outcome)[0].contains("bogus"), "{outcome}");
+    }
+}
+
+#[cfg(feature = "rmcp")]
+mod rmcp_servers {
+    use rmcp::model::{
+        CallToolRequestParams, CallToolResponse, CallToolResult, InitializeRequestParams,
+        InitializeResult, ListToolsResult, PaginatedRequestParams, ServerConfig,
+    };
+    use rmcp::service::RequestContext;
+    use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
+    use serde::de::DeserializeOwned;
+
+    use super::*;
+
+    fn model<T: DeserializeOwned>(value: Value) -> T {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[derive(Clone, Default)]
+    struct Threaded {
+        initializations: Arc<AtomicUsize>,
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+        finished: Arc<AtomicUsize>,
+        cancelled: Arc<AtomicUsize>,
+    }
+
+    impl Threaded {
+        fn config(&self) -> McpServerConfig {
+            McpServerConfig::sdk_rmcp("threaded", self.clone())
+        }
+    }
+
+    impl ServerHandler for Threaded {
+        fn get_info(&self) -> ServerConfig {
+            model(json!({
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "threaded", "version": "0.1.0"},
+            }))
+        }
+
+        async fn initialize(
+            &self,
+            request: InitializeRequestParams,
+            context: RequestContext<RoleServer>,
+        ) -> Result<InitializeResult, McpError> {
+            self.initializations.fetch_add(1, Ordering::SeqCst);
+            context.peer.set_peer_info(request.clone());
+            self.negotiate_initialize(&request)
+        }
+
+        async fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, McpError> {
+            Ok(model(json!({"tools": [
+                {"name": "blocking", "inputSchema": {"type": "object", "properties": {}}},
+                {"name": "slow", "inputSchema": {"type": "object", "properties": {}}},
+                {"name": "echo", "inputSchema": {"type": "object", "properties": {}}},
+            ]})))
+        }
+
+        async fn call_tool(
+            &self,
+            request: CallToolRequestParams,
+            context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResponse, McpError> {
+            match request.name.as_ref() {
+                "blocking" => {
+                    self.started.notify_one();
+                    self.release.notified().await;
+                    self.finished.fetch_add(1, Ordering::SeqCst);
+                }
+                "slow" => {
+                    self.started.notify_one();
+                    context.ct.cancelled().await;
+                    self.cancelled.fetch_add(1, Ordering::SeqCst);
+                    return Err(McpError::internal_error("cancelled by the client", None));
+                }
+                _ => {}
+            }
+            let result: CallToolResult = model(json!({
+                "content": [{"type": "text", "text": request.name}],
+                "isError": false,
+            }));
+            Ok(result.into())
+        }
+    }
+
+    fn call(id: u64, name: &str) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": {}},
+        })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn closing_ends_every_rmcp_session_and_the_call_in_flight_within_the_grace_period() {
+        let one = Threaded::default();
+        let two = Threaded::default();
+        let client = SdkMcpClient::start([("one", one.config()), ("two", two.config())]).await;
+        client.initialize("one").await;
+        client.initialize("two").await;
+        assert_eq!(one.initializations.load(Ordering::SeqCst), 1);
+        assert_eq!(two.initializations.load(Ordering::SeqCst), 1);
+
+        let in_flight = client.post("one", call(50, "slow"));
+        one.started.notified().await;
+        let runtime = tokio::runtime::Handle::current().metrics();
+        assert!(
+            runtime.num_alive_tasks() >= 4,
+            "the reader, the call and both sessions run"
+        );
+
+        let before = tokio::time::Instant::now();
+        client.close().await;
+        assert!(before.elapsed() < SHUTDOWN_GRACE, "{:?}", before.elapsed());
+        for _ in 0..10 {
+            settle().await;
+        }
+        assert_eq!(one.cancelled.load(Ordering::SeqCst), 1);
+        assert!(client.answered(&in_flight).is_none());
+        assert_eq!(runtime.num_alive_tasks(), 0);
+        assert_eq!(client.transport.close_count(), 1);
+
+        client.close().await;
+        assert_eq!(client.transport.close_count(), 1);
+        assert_eq!(runtime.num_alive_tasks(), 0);
+        assert_eq!(one.initializations.load(Ordering::SeqCst), 1);
+        assert_eq!(two.initializations.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn message_arriving_after_close_is_not_answered_and_starts_no_new_session() {
+        let threaded = Threaded::default();
+        let client = SdkMcpClient::connected(threaded.config()).await;
+        assert_eq!(threaded.initializations.load(Ordering::SeqCst), 1);
+        client.close().await;
+
+        let listing = client.post(
+            "srv",
+            json!({"jsonrpc": "2.0", "id": 9, "method": "tools/list"}),
+        );
+        let handshake = client.post(
+            "srv",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "initialize",
+                "params": initialize_params(),
+            }),
+        );
+        for _ in 0..10 {
+            settle().await;
+        }
+        assert!(client.answered(&listing).is_none());
+        assert!(client.answered(&handshake).is_none());
+        assert_eq!(threaded.initializations.load(Ordering::SeqCst), 1);
+        let runtime = tokio::runtime::Handle::current().metrics();
+        assert_eq!(runtime.num_alive_tasks(), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancelled_call_of_an_rmcp_server_is_answered_with_request_cancelled() {
+        let threaded = Threaded::default();
+        let client = SdkMcpClient::connected(threaded.config()).await;
+        let slow = client.post("srv", call(31, "slow"));
+        threaded.started.notified().await;
+
+        let acknowledgement = client
+            .notify(
+                "srv",
+                "notifications/cancelled",
+                json!({"requestId": 31, "reason": "user interrupted"}),
+            )
+            .await;
+        assert_eq!(acknowledgement, json!({"jsonrpc": "2.0", "result": {}}));
+
+        let reply = client.answer(&slow).await;
+        assert_eq!(
+            reply,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 31,
+                "error": {"code": -32800, "message": "Request cancelled"},
+            })
+        );
+        while threaded.cancelled.load(Ordering::SeqCst) == 0 {
+            settle().await;
+        }
+        let echoed = client.call_tool("srv", "echo", json!({})).await;
+        assert_eq!(texts(&echoed), ["echo"]);
+        client.close().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn rmcp_server_keeps_serving_after_a_cancelled_call_that_ignores_its_cancellation() {
+        let (warnings, _guard) = Warnings::install();
+        let threaded = Threaded::default();
+        let client = SdkMcpClient::connected(threaded.config()).await;
+        let blocking = client.post("srv", call(21, "blocking"));
+        threaded.started.notified().await;
+
+        let acknowledgement = client
+            .notify(
+                "srv",
+                "notifications/cancelled",
+                json!({"requestId": 21, "reason": "t"}),
+            )
+            .await;
+        assert_eq!(acknowledgement, json!({"jsonrpc": "2.0", "result": {}}));
+        for _ in 0..50 {
+            settle().await;
+        }
+        threaded.release.notify_one();
+        while threaded.finished.load(Ordering::SeqCst) == 0 {
+            settle().await;
+        }
+        for _ in 0..50 {
+            settle().await;
+        }
+
+        let echoed = client.call_tool("srv", "echo", json!({})).await;
+        assert_eq!(texts(&echoed), ["echo"]);
+        assert_eq!(warnings.all(), Vec::<String>::new());
+
+        let reply = client.answer(&blocking).await;
+        assert_eq!(reply["id"], 21);
+        assert_eq!(reply["error"]["code"], -32800);
+        assert_eq!(reply["error"]["message"], "Request cancelled");
+        assert!(reply.get("result").is_none());
+
+        let reused = client.send("srv", call(21, "echo")).await;
+        assert_eq!(reused["id"], 21);
+        assert_eq!(texts(&reused["result"]), ["echo"]);
+        assert_eq!(warnings.all(), Vec::<String>::new());
+        client.close().await;
     }
 }

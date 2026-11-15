@@ -204,7 +204,7 @@ async fn error_result_then_failing_exit_ends_the_stream_with_a_result_error() {
     };
     assert_eq!(
         message,
-        "Claude CLI returned an error result: Reached maximum number of turns (1)"
+        "Claude Code returned an error result: Reached maximum number of turns (1)"
     );
     assert_eq!(data.subtype(), Some("error_max_turns"));
     assert_eq!(*exit_code, Some(1));

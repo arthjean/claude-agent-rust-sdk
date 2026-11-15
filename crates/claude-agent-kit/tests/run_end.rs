@@ -80,6 +80,10 @@ fn held_open_input() -> (mpsc::UnboundedSender<Value>, Prompt) {
     (sender, prompt)
 }
 
+fn background_tasks_changed(tasks: Value) -> Value {
+    json!({"type": "system", "subtype": "background_tasks_changed", "tasks": tasks})
+}
+
 fn state_frames(messages: &[Result<Message, Error>]) -> Vec<String> {
     messages
         .iter()
@@ -167,6 +171,65 @@ async fn shells_and_monitors_never_defer_the_close() {
             .await;
         assert!(!run.stdin_is_open(), "{task_type}");
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn background_snapshot_neither_adds_nor_removes_a_tracked_task() {
+    let run = Run::start(options_with_hook()).await;
+    run.emit([
+        background_tasks_changed(json!([
+            {"task_id": "task-1", "task_type": "local_agent"},
+            {"task_id": "task-2", "task_type": "local_agent"},
+        ])),
+        result("done"),
+    ])
+    .await;
+    assert!(!run.stdin_is_open());
+
+    let run = Run::start(options_with_hook()).await;
+    run.emit([
+        task_started("task-1", "local_agent"),
+        background_tasks_changed(json!([{"task_id": "shell-1", "task_type": "local_bash"}])),
+        result("first"),
+    ])
+    .await;
+    assert!(run.stdin_is_open());
+    run.emit([background_tasks_changed(json!([])), result("second")])
+        .await;
+    assert!(run.stdin_is_open());
+    run.emit([task_notification("task-1"), result("third")])
+        .await;
+    assert!(!run.stdin_is_open());
+    assert_eq!(
+        result_texts(&run.messages().await),
+        ["first", "second", "third"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_prompt_with_an_in_process_server_keeps_stdin_open_until_the_result() {
+    let options = ClaudeAgentOptions::builder()
+        .mcp_server(
+            "greeter",
+            create_sdk_mcp_server("greeter", None, []).unwrap(),
+        )
+        .build()
+        .unwrap();
+    let input = json!({"type": "user", "message": {"role": "user", "content": "Hello"}});
+    let prompt = Prompt::stream(stream::iter([input.clone()]));
+    let run = Run::start_with(prompt, options).await;
+    assert_eq!(written(&run.transport, "user"), [input]);
+    assert!(run.stdin_is_open());
+    run.emit([assistant("Hello!")]).await;
+    tokio::time::sleep(Duration::from_secs(3600)).await;
+    assert!(run.stdin_is_open());
+    run.emit([result("Hello!")]).await;
+    assert!(!run.stdin_is_open());
+
+    let messages = run.messages().await;
+    assert_eq!(messages.len(), 2);
+    assert!(matches!(messages[0], Ok(Message::Assistant(_))));
+    assert!(matches!(messages[1], Ok(Message::Result(_))));
 }
 
 #[tokio::test(start_paused = true)]

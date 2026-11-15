@@ -4,16 +4,18 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use claude_agent_kit::testing::{
-    run_session_store_conformance, run_session_store_conformance_skipping,
+    MockTransport, run_session_store_conformance, run_session_store_conformance_skipping,
 };
 use claude_agent_kit::{
-    ClaudeAgentOptions, Error, InMemorySessionStore, SessionKey, SessionListSubkeysKey,
-    SessionStore, SessionStoreCapabilities, SessionStoreEntry, SessionStoreError,
-    SharedSessionStore, UnsupportedStoreOperation, file_path_to_session_key,
-    project_key_for_directory,
+    ClaudeAgentOptions, ClaudeSdkClient, Error, InMemorySessionStore, Message, SessionKey,
+    SessionListSubkeysKey, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
+    SessionStoreError, SharedSessionStore, UnsupportedStoreOperation, file_path_to_session_key,
+    project_key_for_directory, query_with_transport,
 };
+use futures_util::StreamExt;
 use serde_json::json;
 
 fn entry(value: serde_json::Value) -> SessionStoreEntry {
@@ -229,6 +231,138 @@ async fn in_memory_store_semantics() {
         .unwrap();
     store.clear();
     assert_eq!(store.size(), 0);
+}
+
+#[tokio::test]
+async fn get_entries_returns_a_copy_of_what_was_appended_in_order() {
+    let store = InMemorySessionStore::new();
+    let key = SessionKey::new("proj", "sess");
+    assert_eq!(store.get_entries(&key), Vec::<SessionStoreEntry>::new());
+    let appended = [entry(json!({"n": 1})), entry(json!({"n": 2}))];
+    store.append(&key, &appended).await.unwrap();
+    assert_eq!(store.get_entries(&key), appended);
+    store.get_entries(&key).push(entry(json!({"n": 999})));
+    assert_eq!(store.get_entries(&key), appended);
+}
+
+fn mirror_frame(config: &Path, session: &str, uuid: &str) -> serde_json::Value {
+    let file = config
+        .join("projects")
+        .join("proj")
+        .join(format!("{session}.jsonl"));
+    json!({
+        "type": "transcript_mirror",
+        "filePath": file.to_string_lossy(),
+        "entries": [{"type": "user", "uuid": uuid, "sessionId": session}],
+    })
+}
+
+fn answer(request: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": request["request_id"],
+            "response": {},
+        },
+    })
+}
+
+async fn mirrored(store: &InMemorySessionStore, session: &str) -> Vec<SessionStoreEntry> {
+    let key = SessionKey::new("proj", session);
+    for _ in 0..400 {
+        if !store.get_entries(&key).is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    store.get_entries(&key)
+}
+
+#[tokio::test]
+async fn pending_mirror_entries_reach_the_store_when_the_client_or_the_stream_is_dropped() {
+    let config = tempfile::tempdir().unwrap();
+    let store = InMemorySessionStore::new();
+    let options = || {
+        ClaudeAgentOptions::builder()
+            .session_store(store.clone())
+            .env_var("CLAUDE_CONFIG_DIR", config.path().to_string_lossy())
+            .build()
+            .unwrap()
+    };
+
+    let transport = MockTransport::new();
+    transport.respond_with(|frame| {
+        if frame["type"] == "control_request" {
+            vec![answer(frame)]
+        } else {
+            Vec::new()
+        }
+    });
+    let client = ClaudeSdkClient::with_transport(options(), transport.clone());
+    client.connect().await.unwrap();
+    transport.push_frame(mirror_frame(config.path(), "from-client", "c1"));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(transport.pending_frames(), 0);
+    assert!(
+        store
+            .get_entries(&SessionKey::new("proj", "from-client"))
+            .is_empty()
+    );
+    drop(client);
+    assert_eq!(
+        mirrored(&store, "from-client").await,
+        [entry(
+            json!({"type": "user", "uuid": "c1", "sessionId": "from-client"})
+        )]
+    );
+
+    let transport = MockTransport::new();
+    let directory = config.path().to_path_buf();
+    transport.respond_with(move |frame| {
+        if frame["type"] == "control_request" {
+            vec![answer(frame)]
+        } else if frame["type"] == "user" {
+            vec![
+                mirror_frame(&directory, "from-stream", "q1"),
+                json!({
+                    "type": "assistant",
+                    "parent_tool_use_id": null,
+                    "session_id": "from-stream",
+                    "message": {
+                        "role": "assistant",
+                        "model": "claude-sonnet-5",
+                        "content": [{"type": "text", "text": "hi"}],
+                    },
+                }),
+            ]
+        } else {
+            Vec::new()
+        }
+    });
+    let mut messages = query_with_transport("hello", options(), transport.clone());
+    loop {
+        let message = tokio::time::timeout(Duration::from_secs(30), messages.next())
+            .await
+            .expect("the assistant message arrives")
+            .expect("the stream is still open")
+            .unwrap();
+        if matches!(message, Message::Assistant(_)) {
+            break;
+        }
+    }
+    assert!(
+        store
+            .get_entries(&SessionKey::new("proj", "from-stream"))
+            .is_empty()
+    );
+    drop(messages);
+    assert_eq!(
+        mirrored(&store, "from-stream").await,
+        [entry(
+            json!({"type": "user", "uuid": "q1", "sessionId": "from-stream"})
+        )]
+    );
 }
 
 #[test]

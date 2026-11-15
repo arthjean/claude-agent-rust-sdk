@@ -6,7 +6,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use claude_agent_kit::{
-    Error, MessageStream, SharedTransport, StderrCallback, SubprocessTransport, Transport,
+    BoxError, ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, MessageStream, PermissionMode,
+    PermissionResult, SharedTransport, StderrCallback, SubprocessTransport, ToolPermissionContext,
+    Transport, query,
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
@@ -766,4 +768,127 @@ fn without_a_callback_the_error_output_is_inherited_not_piped() {
         String::from_utf8_lossy(&output.stderr).contains(STDERR_MARKER),
         "the marker did not reach the inherited error output: {output:?}"
     );
+}
+
+const SHADOWED_WARNING: &str = "can_use_tool will not be invoked for";
+
+fn with_permission_callback(builder: ClaudeAgentOptionsBuilder) -> ClaudeAgentOptionsBuilder {
+    builder.can_use_tool(
+        |_tool: String, _input: Value, _context: ToolPermissionContext| async {
+            Ok::<_, BoxError>(PermissionResult::allow())
+        },
+    )
+}
+
+fn shadowed_warnings(warnings: &Warnings) -> Vec<String> {
+    warnings
+        .all()
+        .into_iter()
+        .filter(|message| message.contains(SHADOWED_WARNING))
+        .collect()
+}
+
+fn one_turn() -> Fake {
+    Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user"}},
+            {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+                      "is_error": false, "num_turns": 1, "session_id": "s", "result": "ok"}},
+        ],
+    }))
+}
+
+#[tokio::test]
+async fn building_options_with_a_shadowed_permission_callback_is_silent() {
+    let (warnings, _guard) = Warnings::install();
+    let options = with_permission_callback(stand_in_options())
+        .allowed_tools(["Read"])
+        .permission_mode(PermissionMode::BypassPermissions)
+        .build()
+        .unwrap();
+    assert!(options.can_use_tool_shadowed_warning().is_some());
+    assert_eq!(warnings.all(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn connect_warns_once_when_the_permission_callback_is_shadowed() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let options = with_permission_callback(fake.options())
+        .allowed_tools(["Read", "Bash(ls:*)"])
+        .build()
+        .unwrap();
+    let client = ClaudeSdkClient::new(options);
+    client.connect().await.unwrap();
+    client.disconnect().await.unwrap();
+
+    let messages = shadowed_warnings(&warnings);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].starts_with("can_use_tool will not be invoked for: Read."));
+}
+
+#[tokio::test]
+async fn connect_is_silent_when_only_specifier_entries_are_allowed() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let options = with_permission_callback(fake.options())
+        .allowed_tools(["Bash(ls:*)", "Read(/tmp/**)"])
+        .build()
+        .unwrap();
+    let client = ClaudeSdkClient::new(options);
+    client.connect().await.unwrap();
+    client.disconnect().await.unwrap();
+
+    assert_eq!(shadowed_warnings(&warnings), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn query_warns_about_a_shadowed_permission_callback_before_connecting() {
+    let (warnings, _guard) = Warnings::install();
+    let directory = tempfile::tempdir().unwrap();
+    let options = with_permission_callback(claude_agent_kit::ClaudeAgentOptions::builder())
+        .cli_path(directory.path().join("claude-is-not-here"))
+        .allowed_tools(["Write"])
+        .build()
+        .unwrap();
+
+    let items: Vec<_> = query("Hello", options).collect().await;
+
+    assert!(matches!(items.as_slice(), [Err(Error::CliNotFound { .. })]));
+    let messages = shadowed_warnings(&warnings);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].starts_with("can_use_tool will not be invoked for: Write."));
+}
+
+#[tokio::test]
+async fn query_is_silent_for_accept_edits_with_specifier_entries() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = one_turn();
+    let options = with_permission_callback(fake.options())
+        .permission_mode(PermissionMode::AcceptEdits)
+        .allowed_tools(["Bash(ls:*)"])
+        .build()
+        .unwrap();
+
+    let items: Vec<_> = query("Hello", options).collect().await;
+
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    assert_eq!(shadowed_warnings(&warnings), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn a_run_of_spaces_spanning_several_reads_is_delivered_intact() {
+    let content = format!("S{}E", " ".repeat(400_000));
+    let fake = Fake::new(json!({
+        "init": false,
+        "steps": [{"emit": {"type": "assistant", "data": content}}, {"exit": 0}],
+    }));
+    let transport = SubprocessTransport::new(fake.build());
+    transport.connect().await.unwrap();
+    let messages = collect(transport.read_messages()).await;
+    transport.close().await.unwrap();
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].as_ref().unwrap()["data"], content.as_str());
 }

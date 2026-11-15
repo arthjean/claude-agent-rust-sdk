@@ -785,6 +785,31 @@ fn sandbox_reads_a_relative_settings_file_from_the_working_directory() {
 }
 
 #[test]
+fn sandbox_reads_a_relative_settings_file_from_the_process_directory_without_a_cwd() {
+    let file = tempfile::Builder::new()
+        .prefix("sandbox-settings-")
+        .suffix(".json")
+        .tempfile_in(".")
+        .unwrap();
+    std::fs::write(file.path(), "{\"model\": \"m\"}").unwrap();
+    let name = file
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let command = build(
+        options()
+            .settings(name)
+            .sandbox(SandboxSettings::new().enabled(true)),
+    );
+    assert_eq!(
+        settings_value(&command),
+        json!({"model": "m", "sandbox": {"enabled": true}})
+    );
+}
+
+#[test]
 fn sandbox_reads_an_absolute_settings_path_whatever_the_working_directory() {
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("settings.json");

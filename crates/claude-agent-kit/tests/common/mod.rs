@@ -197,8 +197,15 @@ pub mod capture {
 
     impl Warnings {
         pub fn install() -> (Self, DefaultGuard) {
+            Self::install_at(Level::WARN)
+        }
+
+        pub fn install_at(level: Level) -> (Self, DefaultGuard) {
             let warnings = Self::default();
-            let guard = tracing::subscriber::set_default(Collector(warnings.clone()));
+            let guard = tracing::subscriber::set_default(Collector {
+                sink: warnings.clone(),
+                level,
+            });
             (warnings, guard)
         }
 
@@ -220,7 +227,10 @@ pub mod capture {
         }
     }
 
-    struct Collector(Warnings);
+    struct Collector {
+        sink: Warnings,
+        level: Level,
+    }
 
     struct Message(String);
 
@@ -250,12 +260,12 @@ pub mod capture {
         fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
 
         fn event(&self, event: &Event<'_>) {
-            if *event.metadata().level() != Level::WARN {
+            if *event.metadata().level() != self.level {
                 return;
             }
             let mut message = Message(String::new());
             event.record(&mut message);
-            self.0.0.lock().unwrap().push(message.0);
+            self.sink.0.lock().unwrap().push(message.0);
         }
 
         fn enter(&self, _span: &Id) {}

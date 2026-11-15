@@ -268,10 +268,18 @@ pub(crate) async fn materialize_resume_session(
 
     let directory = ResumeDir::create()?;
     let project_dir = directory.path().join("projects").join(&project_key);
-    write_jsonl(&project_dir.join(format!("{session_id}.jsonl")), &entries)?;
-    copy_auth_files(directory.path(), options);
-    if store.capabilities().list_subkeys {
-        materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await?;
+    let filled = async {
+        write_jsonl(&project_dir.join(format!("{session_id}.jsonl")), &entries)?;
+        copy_auth_files(directory.path(), options);
+        if store.capabilities().list_subkeys {
+            materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await?;
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(error) = filled {
+        directory.remove().await;
+        return Err(error);
     }
     Ok(Some(MaterializedResume {
         directory,

@@ -239,6 +239,90 @@ fn parse_user_message_with_tool_result_error() {
     assert_eq!(tool_result.is_error, Some(true));
 }
 
+const PERSISTED_OUTPUT_PREFIX: &str = "<persisted-output>";
+const INLINE_RESULT_LIMIT_CHARS: usize = 50_000;
+
+fn tool_result_frame(content: &str, is_error: bool) -> Value {
+    json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01ABC",
+                    "content": content,
+                    "is_error": is_error,
+                }
+            ],
+        },
+        "parent_tool_use_id": null,
+        "tool_use_result": null,
+        "uuid": "test-uuid-1234",
+    })
+}
+
+fn persisted_output() -> String {
+    format!(
+        "{PERSISTED_OUTPUT_PREFIX}\nOutput too large (73.0KB). Full output saved to: \
+         /tmp/.claude/tool-results/abc123.txt\n\nPreview (first 2KB):\n{}\n...\n\
+         </persisted-output>",
+        "x".repeat(2000)
+    )
+}
+
+fn tool_result_text(message: &UserMessage) -> &str {
+    let content = blocks(&message.content);
+    assert_eq!(content.len(), 1);
+    let ContentBlock::ToolResult(tool_result) = &content[0] else {
+        panic!("expected a tool result block");
+    };
+    tool_result
+        .content
+        .as_ref()
+        .and_then(ToolResultContent::as_text)
+        .expect("the tool result content should be a string")
+}
+
+#[test]
+fn persisted_output_tool_result_is_parsed_unchanged_so_a_caller_can_detect_it_by_its_prefix() {
+    let persisted = persisted_output();
+    let message = user(tool_result_frame(&persisted, false));
+    let text = tool_result_text(&message);
+    assert!(text.starts_with(PERSISTED_OUTPUT_PREFIX), "{text:.100}");
+    assert_eq!(text, persisted);
+
+    let inline = "x".repeat(1000);
+    let message = user(tool_result_frame(&inline, false));
+    let text = tool_result_text(&message);
+    assert_eq!(text, inline);
+    assert!(!text.starts_with(PERSISTED_OUTPUT_PREFIX));
+}
+
+#[test]
+fn persisted_output_tool_result_keeps_the_preview_length_and_is_not_expanded() {
+    let persisted = persisted_output();
+    let message = user(tool_result_frame(&persisted, false));
+    let text = tool_result_text(&message);
+    assert_eq!(text.len(), persisted.len());
+    assert!(text.len() < INLINE_RESULT_LIMIT_CHARS, "{}", text.len());
+}
+
+#[test]
+fn tool_result_with_an_explicit_false_error_flag_is_parsed_as_not_an_error() {
+    let message = user(tool_result_frame(&"x".repeat(1000), false));
+    let ContentBlock::ToolResult(tool_result) = &blocks(&message.content)[0] else {
+        panic!("expected a tool result block");
+    };
+    assert_eq!(tool_result.is_error, Some(false));
+
+    let message = user(tool_result_frame("tool failed", true));
+    let ContentBlock::ToolResult(tool_result) = &blocks(&message.content)[0] else {
+        panic!("expected a tool result block");
+    };
+    assert_eq!(tool_result.is_error, Some(true));
+}
+
 #[test]
 fn parse_tool_result_content_shapes() {
     let message = user(json!({

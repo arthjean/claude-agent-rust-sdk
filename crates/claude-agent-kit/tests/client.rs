@@ -224,6 +224,37 @@ async fn verbatim_prompts_mark_every_frame_the_client_writes() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn connect_with_a_streamed_prompt_marks_every_frame_only_when_verbatim_prompts_is_on() {
+    for enabled in [true, false] {
+        let options = ClaudeAgentOptions::builder()
+            .verbatim_prompts(enabled)
+            .build()
+            .unwrap();
+        let transport = cli();
+        let client = ClaudeSdkClient::with_transport(options, transport.clone());
+        let prompt = Prompt::stream(stream::iter([
+            InputMessage::user("one"),
+            InputMessage::user("two"),
+        ]));
+        client.connect_with_prompt(prompt).await.unwrap();
+        settle().await;
+
+        let frames = written(&transport, "user");
+        let contents: Vec<&Value> = frames
+            .iter()
+            .map(|frame| &frame["message"]["content"])
+            .collect();
+        assert_eq!(contents, ["one", "two"], "verbatim_prompts {enabled}");
+        let marks: Vec<Option<&Value>> = frames
+            .iter()
+            .map(|frame| frame.get("client_composed"))
+            .collect();
+        let expected = enabled.then_some(&Value::Bool(true));
+        assert_eq!(marks, [expected, expected], "verbatim_prompts {enabled}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn receive_response_ends_after_the_first_result_message() {
     let transport = cli_answering(|frame| {
         if frame["type"] != "user" {

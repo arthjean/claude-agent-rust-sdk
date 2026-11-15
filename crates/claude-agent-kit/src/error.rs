@@ -140,7 +140,7 @@ pub enum Error {
 
 const JSON_DECODE_PREVIEW_CHARS: usize = 100;
 const DEFAULT_CLI_NOT_FOUND_MESSAGE: &str = "Claude CLI not found";
-const ERROR_RESULT_PREFIX: &str = "Claude CLI returned an error result: ";
+const ERROR_RESULT_PREFIX: &str = "Claude Code returned an error result: ";
 
 impl Error {
     /// Builds [`Error::CliNotFound`], appending the searched path when given.

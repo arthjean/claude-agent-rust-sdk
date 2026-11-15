@@ -452,6 +452,9 @@ impl ControlSession {
         options: &ClaudeAgentOptions,
         transport: Option<SharedTransport>,
     ) -> Result<(Self, Inbox)> {
+        if let Some(warning) = options.can_use_tool_shadowed_warning() {
+            tracing::warn!("{warning}");
+        }
         let options = options.for_session()?;
         let materialized = match transport {
             None => materialize_resume_session(&options).await?,
