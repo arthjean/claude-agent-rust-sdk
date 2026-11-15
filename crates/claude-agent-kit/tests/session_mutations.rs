@@ -170,17 +170,19 @@ fn rename_without_a_projects_directory_reports_the_session_as_not_found() {
 
 #[test]
 fn rename_without_a_directory_skips_empty_stubs() {
-    let stub = Project::new();
-    let real = Project::new();
-    let id = new_id();
-    std::fs::write(stub.transcript(&id), "").unwrap();
-    real.write(&id, &conversation(&id, "hello", json!({})));
-    rename_session(&id, "Found", None).unwrap();
-    assert_eq!(
-        get_session_info(&id, Some(real.path())).unwrap().summary,
-        "Found"
-    );
-    assert_eq!(std::fs::metadata(stub.transcript(&id)).unwrap().len(), 0);
+    let first = Project::new();
+    let second = Project::new();
+    for (stub, real) in [(&first, &second), (&second, &first)] {
+        let id = new_id();
+        std::fs::write(stub.transcript(&id), "").unwrap();
+        real.write(&id, &conversation(&id, "hello", json!({})));
+        rename_session(&id, "Found", None).unwrap();
+        assert_eq!(
+            get_session_info(&id, Some(real.path())).unwrap().summary,
+            "Found"
+        );
+        assert_eq!(std::fs::metadata(stub.transcript(&id)).unwrap().len(), 0);
+    }
 }
 
 #[test]

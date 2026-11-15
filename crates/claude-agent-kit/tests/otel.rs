@@ -192,9 +192,13 @@ async fn an_injection_failure_is_logged_and_the_connection_proceeds() {
 
     let client = ClaudeSdkClient::new(fake.build());
     let connected = client.connect().await;
+    let observed = scenario();
+    let reported = environment_seen_by_the_cli(observed.options()).await;
     std::panic::set_hook(previous_hook);
 
     connected.unwrap();
+    assert_eq!(reported["TRACEPARENT"], inherited);
+    assert_eq!(reported["TRACESTATE"], Value::Null);
     let server_info = client.get_server_info().unwrap();
     client.disconnect().await.unwrap();
     assert!(server_info.is_some());

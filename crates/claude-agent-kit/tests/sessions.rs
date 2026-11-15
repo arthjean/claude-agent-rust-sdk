@@ -186,6 +186,10 @@ fn sidechain_empty_metadata_only_and_misnamed_files_are_skipped() {
         &metadata_only,
         &[json!({"type": "permission-mode", "mode": "plan"})],
     );
+    let meta_prompt_only = new_id();
+    let mut lines = conversation(&meta_prompt_only, "ignored meta", json!({}));
+    lines[0]["isMeta"] = Value::Bool(true);
+    project.write(&meta_prompt_only, &lines);
     let empty = new_id();
     std::fs::write(project.transcript(&empty), "").unwrap();
     std::fs::write(project.dir.join("not-a-uuid.jsonl"), "{}\n").unwrap();
