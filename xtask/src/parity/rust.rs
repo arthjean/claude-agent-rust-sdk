@@ -11,7 +11,6 @@ use serde_json::Value;
 
 const LIBRARY_PACKAGE: &str = "claude-agent-kit";
 const PROBE_PACKAGE: &str = "parity-probe";
-const PROBE_CRATE: &str = "parity_probe";
 
 fn tool(variable: &str, fallback: &str) -> OsString {
     std::env::var_os(variable).unwrap_or_else(|| OsString::from(fallback))
@@ -140,13 +139,35 @@ fn write(path: &Path, text: &str) -> Result<(), String> {
     std::fs::write(path, text).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
+/// A throwaway package that depends on the library.
+///
+/// Cargo keys its build cache on the name of a package, not on where the
+/// package lives, and trusts file times to decide what is up to date. Two
+/// probes with one name would share a cache entry, and a probe whose source
+/// was written before another finished building would be taken for already
+/// checked. Each process therefore names its probe after its own id, and
+/// drops the cache entry when it is done.
 struct Probe {
     directory: PathBuf,
     target: PathBuf,
+    package: String,
 }
 
 impl Drop for Probe {
     fn drop(&mut self) {
+        let _ = Command::new(tool("CARGO", "cargo"))
+            .current_dir(&self.directory)
+            .args([
+                "clean",
+                "--quiet",
+                "--package",
+                &self.package,
+                "--target-dir",
+            ])
+            .arg(&self.target)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
         let _ = std::fs::remove_dir_all(&self.directory);
     }
 }
@@ -177,14 +198,14 @@ impl Probe {
             .map(|feature| format!("{feature:?}"))
             .collect();
 
-        let directory = target
-            .join("xtask-parity")
-            .join(std::process::id().to_string());
+        let process = std::process::id();
+        let package = format!("{PROBE_PACKAGE}-{process}");
+        let directory = target.join("xtask-parity").join(process.to_string());
         std::fs::create_dir_all(directory.join("src"))
             .map_err(|error| format!("cannot create {}: {error}", directory.display()))?;
         let manifest = [
             "[package]".to_owned(),
-            format!("name = {PROBE_PACKAGE:?}"),
+            format!("name = {package:?}"),
             "version = \"0.0.0\"".to_owned(),
             "edition = \"2024\"".to_owned(),
             "publish = false".to_owned(),
@@ -201,7 +222,11 @@ impl Probe {
         write(&directory.join("Cargo.toml"), &manifest.join("\n"))?;
         std::fs::copy(root.join("Cargo.lock"), directory.join("Cargo.lock"))
             .map_err(|error| format!("cannot copy Cargo.lock: {error}"))?;
-        Ok(Self { directory, target })
+        Ok(Self {
+            directory,
+            target,
+            package,
+        })
     }
 
     fn failing_lines(&self, lines: &[String]) -> Result<BTreeSet<usize>, String> {
@@ -219,11 +244,12 @@ impl Probe {
             self.target.as_os_str(),
         ];
         let (built, messages) = cargo_messages(&self.directory, &arguments, Stdio::null())?;
+        let library = self.package.replace('-', "_");
         let mut failing = BTreeSet::new();
         let mut unplaced = Vec::new();
         for message in messages.iter().filter(|message| {
             message["reason"] == "compiler-message"
-                && message["target"]["name"] == PROBE_CRATE
+                && message["target"]["name"] == library.as_str()
                 && message["message"]["level"] == "error"
         }) {
             let line = message["message"]["spans"]
