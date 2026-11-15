@@ -2,6 +2,7 @@
 
 mod common;
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
@@ -619,4 +620,491 @@ async fn an_agent_id_that_is_not_one_segment_loads_nothing() {
         .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(store.loads.load(Ordering::SeqCst), 1);
+}
+
+fn sidechain(session_id: &str) -> SessionStoreEntry {
+    let mut line = user(&new_id(), None, session_id, Value::from("internal"));
+    line["isSidechain"] = Value::Bool(true);
+    entry(line)
+}
+
+#[tokio::test]
+async fn sidechain_sessions_are_omitted_from_a_store_listing() {
+    let project = Project::new();
+    let key = project_key(&project);
+    let store = InMemorySessionStore::new();
+    let normal = new_id();
+    let hidden = new_id();
+    store
+        .append(
+            &SessionKey::new(key.as_str(), normal.as_str()),
+            &[entry(user(
+                &new_id(),
+                None,
+                &normal,
+                Value::from("hello world"),
+            ))],
+        )
+        .await
+        .unwrap();
+    store
+        .append(
+            &SessionKey::new(key.as_str(), hidden.as_str()),
+            &[sidechain(&hidden)],
+        )
+        .await
+        .unwrap();
+
+    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = listed.iter().map(|info| info.session_id.as_str()).collect();
+    assert_eq!(ids, [normal.as_str()]);
+    assert!(listed.iter().all(|info| !info.summary.is_empty()));
+}
+
+#[tokio::test]
+async fn the_per_session_load_path_drops_sidechains_before_it_paginates() {
+    let project = Project::new();
+    let key = project_key(&project);
+    let store = CountingStore::new(SessionStoreCapabilities::none().with_list_sessions(), None);
+    let valid: HashSet<String> = fill(&store, &key, 5).await.into_iter().collect();
+    for _ in 0..3 {
+        let hidden = new_id();
+        store
+            .append(
+                &SessionKey::new(key.as_str(), hidden.as_str()),
+                &[sidechain(&hidden)],
+            )
+            .await
+            .unwrap();
+    }
+
+    let page = list_sessions_from_store(&store, Some(project.path()), Some(5), 0)
+        .await
+        .unwrap();
+    assert_eq!(page.len(), 5, "sidechains take no slot of the page");
+    let listed: HashSet<String> = page.into_iter().map(|info| info.session_id).collect();
+    assert_eq!(listed, valid);
+
+    let second = list_sessions_from_store(&store, Some(project.path()), Some(5), 2)
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 3);
+    assert!(second.iter().all(|info| valid.contains(&info.session_id)));
+}
+
+#[tokio::test]
+async fn agent_metadata_values_that_are_not_strings_give_no_parent_ids() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let store = InMemorySessionStore::new();
+    let id = new_id();
+    store
+        .append(
+            &SessionKey::new(project_key(&project), id.as_str()).with_subpath("subagents/agent-x"),
+            &[
+                entry(json!({"type": "agent_metadata", "toolUseId": 7, "parentAgentId": null})),
+                entry(user(&new_id(), None, &id, Value::from("hi"))),
+            ],
+        )
+        .await
+        .unwrap();
+    let messages = get_subagent_messages_from_store(&store, &id, "x", directory, None, 0)
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].parent_tool_use_id, None);
+    assert_eq!(messages[0].parent_agent_id, None);
+}
+
+#[tokio::test]
+async fn an_agent_id_under_several_subpaths_is_listed_once() {
+    let project = Project::new();
+    let store = InMemorySessionStore::new();
+    let id = new_id();
+    let key = SessionKey::new(project_key(&project), id.as_str());
+    let message = new_id();
+    for subpath in ["subagents/agent-abc", "subagents/workflows/run-1/agent-abc"] {
+        store
+            .append(
+                &key.clone().with_subpath(subpath),
+                &[entry(user(&message, None, &id, Value::from("x")))],
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        list_subagents_from_store(&store, &id, Some(project.path()))
+            .await
+            .unwrap(),
+        ["abc"]
+    );
+}
+
+#[tokio::test]
+async fn subagent_helpers_return_nothing_for_a_session_id_that_is_not_a_uuid() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let store = InMemorySessionStore::new();
+    assert!(
+        list_subagents_from_store(&store, "not-a-uuid", directory)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        get_subagent_messages_from_store(&store, "not-a-uuid", "x", directory, None, 0)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+fn config_message<T: std::fmt::Debug>(outcome: Result<T, Error>) -> String {
+    match outcome {
+        Err(Error::Config { message }) => message,
+        other => panic!("expected a Config error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn delete_and_tag_via_store_reject_an_id_that_is_not_a_uuid_and_leave_the_store_alone() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let store = CountingStore::new(SessionStoreCapabilities::all(), None);
+    let deleted = delete_session_via_store(&store, "not-a-uuid", directory).await;
+    assert!(config_message(deleted).contains("not-a-uuid"));
+    let tagged = tag_session_via_store(&store, "not-a-uuid", Some("tag"), directory).await;
+    assert!(config_message(tagged).contains("not-a-uuid"));
+    assert_eq!(store.appends.load(Ordering::SeqCst), 0);
+    assert_eq!(store.inner.size(), 0);
+}
+
+struct Source {
+    project: Project,
+    store: InMemorySessionStore,
+    id: String,
+}
+
+impl Source {
+    fn new() -> Self {
+        Self {
+            project: Project::new(),
+            store: InMemorySessionStore::new(),
+            id: new_id(),
+        }
+    }
+
+    fn key_of(&self, session_id: &str) -> SessionKey {
+        SessionKey::new(project_key(&self.project), session_id)
+    }
+
+    async fn append(&self, lines: Vec<Value>) {
+        let entries: Vec<SessionStoreEntry> = lines.into_iter().map(entry).collect();
+        self.store
+            .append(&self.key_of(&self.id), &entries)
+            .await
+            .unwrap();
+    }
+
+    async fn seed_chain(&self, pairs: usize) -> Vec<String> {
+        let mut uuids: Vec<String> = Vec::new();
+        let mut lines = Vec::new();
+        for index in 0..pairs {
+            let prompt = new_id();
+            let reply = new_id();
+            lines.push(user(
+                &prompt,
+                uuids.last().map(String::as_str),
+                &self.id,
+                Value::from(format!("prompt {index}")),
+            ));
+            lines.push(assistant(
+                &reply,
+                Some(&prompt),
+                &self.id,
+                &format!("reply {index}"),
+            ));
+            uuids.extend([prompt, reply]);
+        }
+        self.append(lines).await;
+        uuids
+    }
+
+    async fn fork(
+        &self,
+        up_to_message_id: Option<&str>,
+        title: Option<&str>,
+    ) -> (String, Vec<SessionStoreEntry>) {
+        let fork = fork_session_via_store(
+            &self.store,
+            &self.id,
+            Some(self.project.path()),
+            up_to_message_id,
+            title,
+        )
+        .await
+        .unwrap();
+        let entries = self.store.get_entries(&self.key_of(&fork.session_id));
+        (fork.session_id, entries)
+    }
+}
+
+fn has_a_uuid_and_a_timestamp(entry: &SessionStoreEntry) -> bool {
+    let filled = |name: &str| {
+        entry
+            .get(name)
+            .and_then(Value::as_str)
+            .is_some_and(|text| !text.is_empty())
+    };
+    filled("uuid") && filled("timestamp")
+}
+
+#[tokio::test]
+async fn a_store_fork_without_a_custom_title_is_titled_after_the_generated_title() {
+    let source = Source::new();
+    source.seed_chain(1).await;
+    source
+        .append(vec![
+            json!({"type": "ai-title", "aiTitle": "Generated", "sessionId": source.id}),
+        ])
+        .await;
+    let (_, forked) = source.fork(None, None).await;
+    let title = forked.last().unwrap();
+    assert_eq!(title["type"], "custom-title");
+    assert_eq!(title["customTitle"], "Generated (fork)");
+}
+
+#[tokio::test]
+async fn the_content_replacement_entry_of_a_store_fork_is_stamped_for_the_new_session() {
+    let source = Source::new();
+    source.seed_chain(1).await;
+    source
+        .append(vec![json!({
+            "type": "content-replacement",
+            "sessionId": source.id,
+            "replacements": [{"toolUseId": "t1", "value": "redacted"}],
+        })])
+        .await;
+    let (fork_id, forked) = source.fork(None, None).await;
+    let replacement = forked
+        .iter()
+        .find(|entry| entry["type"] == "content-replacement")
+        .expect("a content-replacement entry");
+    assert_eq!(replacement["sessionId"], fork_id.as_str());
+    assert!(has_a_uuid_and_a_timestamp(replacement), "{replacement:?}");
+}
+
+#[tokio::test]
+async fn a_store_fork_is_read_back_with_every_source_message() {
+    let source = Source::new();
+    source.seed_chain(2).await;
+    let (fork_id, _) = source.fork(None, Some("Forked")).await;
+    let messages = get_session_messages_from_store(
+        &source.store,
+        &fork_id,
+        Some(source.project.path()),
+        None,
+        0,
+    )
+    .await
+    .unwrap();
+    assert_eq!(messages.len(), 4);
+}
+
+#[tokio::test]
+async fn a_store_fork_rejects_a_session_id_or_a_cut_message_id_that_is_not_a_uuid() {
+    let source = Source::new();
+    let directory = Some(source.project.path());
+    let bad_session =
+        fork_session_via_store(&source.store, "not-a-uuid", directory, None, None).await;
+    assert!(config_message(bad_session).contains("Invalid session_id"));
+    source.seed_chain(2).await;
+    let bad_cut = fork_session_via_store(
+        &source.store,
+        &source.id,
+        directory,
+        Some("not-a-uuid"),
+        None,
+    )
+    .await;
+    assert!(config_message(bad_cut).contains("Invalid up_to_message_id"));
+    assert_eq!(source.store.size(), 1, "no fork was written");
+}
+
+#[tokio::test]
+async fn a_store_fork_cut_at_a_message_keeps_the_chain_and_stamps_its_synthetic_entries() {
+    let source = Source::new();
+    let ids = [new_id(), new_id(), new_id()];
+    source
+        .append(vec![
+            user(&ids[0], None, &source.id, Value::from("one")),
+            assistant(&ids[1], Some(&ids[0]), &source.id, "two"),
+            user(&ids[2], Some(&ids[1]), &source.id, Value::from("three")),
+            json!({
+                "type": "content-replacement",
+                "sessionId": source.id,
+                "replacements": [{"toolUseId": "tu_1", "newContent": "x"}],
+            }),
+        ])
+        .await;
+
+    let (fork_id, forked) = source.fork(Some(&ids[1]), Some("My Fork")).await;
+    assert_ne!(fork_id, source.id);
+    assert_eq!(
+        forked.len(),
+        4,
+        "two messages, the content replacement, the title"
+    );
+    let (first, second, replacement, title) = (&forked[0], &forked[1], &forked[2], &forked[3]);
+
+    assert_ne!(first["uuid"], ids[0].as_str());
+    assert!(first["parentUuid"].is_null());
+    assert_eq!(second["parentUuid"], first["uuid"]);
+    assert_eq!(first["sessionId"], fork_id.as_str());
+    assert_eq!(first["forkedFrom"]["messageUuid"], ids[0].as_str());
+
+    assert_eq!(replacement["type"], "content-replacement");
+    assert_eq!(replacement["sessionId"], fork_id.as_str());
+    assert!(has_a_uuid_and_a_timestamp(replacement), "{replacement:?}");
+
+    assert_eq!(title["type"], "custom-title");
+    assert_eq!(title["customTitle"], "My Fork");
+    assert!(has_a_uuid_and_a_timestamp(title), "{title:?}");
+}
+
+fn plain(index: usize) -> Value {
+    json!({
+        "type": "user",
+        "uuid": format!("u{index}"),
+        "timestamp": format!("2026-01-01T00:00:{index:02}Z"),
+    })
+}
+
+fn plain_entries(indexes: impl IntoIterator<Item = usize>) -> Vec<SessionStoreEntry> {
+    indexes.into_iter().map(plain).map(entry).collect()
+}
+
+fn project_key(project: &Project) -> String {
+    project_key_for_directory(Some(project.path()))
+}
+
+#[tokio::test]
+async fn import_skips_the_blank_lines_of_a_transcript() {
+    let project = Project::new();
+    let id = new_id();
+    std::fs::write(
+        project.transcript(&id),
+        format!("{}\n\n{}\n", plain(0), plain(1)),
+    )
+    .unwrap();
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
+        plain_entries([0, 1])
+    );
+}
+
+#[tokio::test]
+async fn a_batch_size_of_zero_imports_in_batches_of_500_entries() {
+    let project = Project::new();
+    let small = new_id();
+    project.write(&small, &[plain(0), plain(1), plain(2)]);
+    let store = CountingStore::new(SessionStoreCapabilities::all(), None);
+    import_session_to_store(&small, &store, Some(project.path()), true, 0)
+        .await
+        .unwrap();
+    assert_eq!(store.appends.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        store
+            .inner
+            .get_entries(&SessionKey::new(project_key(&project), small.as_str())),
+        plain_entries(0..3)
+    );
+
+    let large = new_id();
+    project.write(&large, &(0..501).map(plain).collect::<Vec<_>>());
+    store.appends.store(0, Ordering::SeqCst);
+    import_session_to_store(&large, &store, Some(project.path()), true, 0)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.appends.load(Ordering::SeqCst),
+        2,
+        "500 entries, then the last one"
+    );
+}
+
+fn subagent_with_sidecar(project: &Project, sidecar: &str) -> (String, SessionKey) {
+    let id = new_id();
+    project.write(&id, &[plain(0)]);
+    let subagents = project.dir.join(&id).join("subagents");
+    write_lines(&subagents.join("agent-abc.jsonl"), &[plain(10)]);
+    std::fs::write(subagents.join("agent-abc.meta.json"), sidecar).unwrap();
+    let key =
+        SessionKey::new(project_key(project), id.as_str()).with_subpath("subagents/agent-abc");
+    (id, key)
+}
+
+#[tokio::test]
+async fn a_type_key_in_a_sidecar_cannot_replace_the_agent_metadata_marker() {
+    let project = Project::new();
+    let (id, key) = subagent_with_sidecar(
+        &project,
+        &json!({"type": "something-else", "toolUseId": "toolu_1"}).to_string(),
+    );
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_entries(&key),
+        [
+            entry(plain(10)),
+            entry(json!({"type": "agent_metadata", "toolUseId": "toolu_1"})),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_corrupt_or_non_object_sidecar_is_imported_as_if_it_were_absent() {
+    let project = Project::new();
+    for sidecar in ["not json {", "[1, 2]", "42"] {
+        let (id, key) = subagent_with_sidecar(&project, sidecar);
+        let store = InMemorySessionStore::new();
+        import_session_to_store(&id, &store, Some(project.path()), true, 500)
+            .await
+            .unwrap();
+        assert_eq!(store.get_entries(&key), plain_entries([10]), "{sidecar}");
+        assert_eq!(
+            store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
+            plain_entries([0]),
+            "{sidecar}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn import_without_a_directory_keys_the_session_by_the_project_it_was_found_in() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &[plain(0)]);
+    assert_ne!(
+        project_key_for_directory(None),
+        project_key(&project),
+        "the current directory is another project"
+    );
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, None, true, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
+        plain_entries([0])
+    );
+    assert_eq!(store.size(), 1);
 }

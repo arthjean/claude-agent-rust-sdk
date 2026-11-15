@@ -363,6 +363,12 @@ impl SdkMcpTool {
     /// The arguments of a call are deserialized into `Args` before the
     /// handler runs. Arguments that do not deserialize are reported to the
     /// model as an error result, and the handler does not run.
+    ///
+    /// The arguments of a tool are always a JSON object, so the schema is
+    /// listed with the type `object`. A type whose schema does not describe
+    /// an object (`serde_json::Value`, an enum, a scalar, a sequence) is
+    /// listed with the schema of an object that states no property; use
+    /// [`SdkMcpTool::raw`] to describe the arguments of such a tool by hand.
     pub fn typed<Args>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -515,13 +521,27 @@ fn schema_of<Args: JsonSchema>() -> Value {
             settings.meta_schema = None;
             settings.inline_subschemas = true;
         });
-    let schema = settings
+    let mut schema = settings
         .into_generator()
         .into_root_schema_for::<Args>()
         .to_value();
-    if schema.is_object() {
+    if describes_an_object(&schema) {
+        schema["type"] = json!("object");
         schema
     } else {
         json!({"type": "object", "properties": {}})
     }
+}
+
+/// Whether the root of a generated schema describes a JSON object: its type
+/// is `object`, alone or among others, or it states properties. A root made
+/// only of a `$ref` or of alternatives (`anyOf`, `oneOf`) does not: a tool
+/// has to list an input schema whose own type is `object`.
+fn describes_an_object(schema: &Value) -> bool {
+    let typed_as_an_object = match schema.get("type") {
+        Some(Value::String(kind)) => kind == "object",
+        Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind == "object"),
+        _ => false,
+    };
+    typed_as_an_object || schema.get("properties").is_some_and(Value::is_object)
 }

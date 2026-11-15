@@ -120,6 +120,39 @@ async fn a_process_that_ignores_termination_is_dead_within_twenty_seconds() {
 }
 
 #[tokio::test]
+async fn a_process_deaf_to_the_end_of_input_ends_at_the_first_escalation_step() {
+    let fake = Fake::new(json!({"read_stdin": false, "steps": [{"sleep_ms": 120_000}]}));
+    let (transport, pid) = connected(fake.build()).await;
+
+    let started = Instant::now();
+    transport.close().await.unwrap();
+    let elapsed = started.elapsed();
+
+    assert!(elapsed >= Duration::from_secs(5), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(10), "{elapsed:?}");
+    assert!(!process_exists(pid));
+}
+
+#[tokio::test]
+async fn close_returns_at_once_when_the_process_has_already_exited() {
+    let fake = Fake::new(json!({"steps": [{"exit": 0}]}));
+    let transport = SubprocessTransport::new(fake.build());
+    transport.connect().await.unwrap();
+    let pid = transport.process_id().unwrap();
+    assert!(wait_until_gone(pid, Duration::from_secs(10)).await);
+
+    let started = Instant::now();
+    transport.close().await.unwrap();
+
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(!transport.is_ready());
+}
+
+#[tokio::test]
 async fn descendants_end_with_the_session() {
     let fake = Fake::new(json!({
         "steps": [{"spawn_descendant": {"sleep_ms": 120_000}}, {"wait_for_eof": true}],

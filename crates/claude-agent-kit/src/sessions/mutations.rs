@@ -16,11 +16,11 @@ use uuid::Uuid;
 
 use super::chain::{Entry, truthy};
 use super::disk::candidate_project_dirs;
-use super::jsonl::{entries_to_jsonl, type_first_line};
+use super::jsonl::{entries_to_jsonl, ordered_line, type_first_line};
 use super::lite::{
     LITE_READ_BUF_SIZE, extract_first_prompt_from_head, extract_last_json_string_field,
 };
-use super::paths::project_key_for_directory;
+use super::paths::{project_key_for_directory, projects_dir};
 use super::timestamp::now_iso;
 use super::validate_uuid;
 use crate::error::{Error, Result};
@@ -131,15 +131,27 @@ fn not_found(session_id: &str, directory: Option<&Path>) -> Error {
     }
 }
 
-fn append_to_session(session_id: &str, entry: &Entry, directory: Option<&Path>) -> Result<()> {
-    let data = format!("{}\n", type_first_line(entry));
+fn append_to_session(
+    session_id: &str,
+    fields: &[(&str, Value)],
+    directory: Option<&Path>,
+) -> Result<()> {
+    let data = format!("{}\n", ordered_line(fields));
     let file_name = format!("{session_id}.jsonl");
     for (project_dir, _) in candidate_project_dirs(directory) {
         if try_append(&project_dir.join(&file_name), &data)? {
             return Ok(());
         }
     }
-    Err(not_found(session_id, directory))
+    Err(match directory {
+        Some(_) => not_found(session_id, directory),
+        None if std::fs::read_dir(projects_dir(None)).is_err() => Error::session_not_found(
+            format!("Session {session_id} not found (no projects directory)"),
+        ),
+        None => Error::session_not_found(format!(
+            "Session {session_id} not found in any project directory"
+        )),
+    })
 }
 
 fn find_session_file(session_id: &str, directory: Option<&Path>) -> Option<(PathBuf, PathBuf)> {
@@ -171,7 +183,11 @@ pub fn rename_session(session_id: &str, title: &str, directory: Option<&Path>) -
     let title = clean_title(title)?;
     append_to_session(
         session_id,
-        &object(json!({"type": "custom-title", "customTitle": title, "sessionId": session_id})),
+        &[
+            ("type", json!("custom-title")),
+            ("customTitle", json!(title)),
+            ("sessionId", json!(session_id)),
+        ],
         directory,
     )
 }
@@ -195,7 +211,11 @@ pub fn tag_session(session_id: &str, tag: Option<&str>, directory: Option<&Path>
     let tag = clean_tag(tag)?;
     append_to_session(
         session_id,
-        &object(json!({"type": "tag", "tag": tag, "sessionId": session_id})),
+        &[
+            ("type", json!("tag")),
+            ("tag", json!(tag)),
+            ("sessionId", json!(session_id)),
+        ],
         directory,
     )
 }

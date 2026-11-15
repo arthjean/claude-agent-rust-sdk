@@ -7,6 +7,10 @@
 //! the CLI, later messages are answered with an error naming the server and
 //! the cause, until a new `initialize` starts it again.
 //!
+//! A request the CLI cancels is answered here, with the error `Request
+//! cancelled`: `rmcp` passes the cancellation on to the handler and then
+//! sends no response for that request, whatever the handler returns.
+//!
 //! Nothing carries traffic the server initiates to the CLI: notifications
 //! are dropped, a `ping` is answered here, and every other request is
 //! refused, so the caller in the server fails at once instead of waiting.
@@ -32,6 +36,7 @@ use crate::types::BoxFuture;
 pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 const METHOD_NOT_FOUND: i64 = -32601;
+const REQUEST_CANCELLED: i64 = -32800;
 
 #[derive(Debug, thiserror::Error)]
 #[error("the in-process MCP channel is closed")]
@@ -130,6 +135,16 @@ fn session_closed(name: &str) -> String {
     format!("SDK MCP server '{name}' session closed")
 }
 
+/// The key, in the table of pending requests, of the request that a
+/// `notifications/cancelled` message cancels.
+fn cancelled_request(message: &Value) -> Option<String> {
+    if message.get("method").and_then(Value::as_str) != Some("notifications/cancelled") {
+        return None;
+    }
+    let id = message.get("params")?.get("requestId")?;
+    Some(id.to_string())
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -177,6 +192,10 @@ impl Session {
     async fn submit(&self, message: &Value) -> Result<Option<Value>, String> {
         let parsed: ClientJsonRpcMessage = serde_json::from_value(message.clone())
             .map_err(|error| format!("Invalid JSON-RPC message: {error}"))?;
+        let cancelled = match &parsed {
+            JsonRpcMessage::Notification(_) => cancelled_request(message),
+            _ => None,
+        };
         let mut waiting = None;
         if matches!(parsed, JsonRpcMessage::Request(_)) {
             let id = message.get("id").cloned().unwrap_or(Value::Null);
@@ -212,12 +231,37 @@ impl Session {
             return Err(session_closed(&self.name));
         }
         let Some((_, response)) = waiting else {
+            if let Some(key) = cancelled {
+                self.end_cancelled(&key);
+            }
             return Ok(None);
         };
         match response.await {
             Ok(Ok(response)) => Ok(Some(response)),
             Ok(Err(failure)) => Err(failure),
             Err(_) => Err(session_closed(&self.name)),
+        }
+    }
+
+    /// Answers a request the CLI cancelled and frees its id. The server is
+    /// told of the cancellation and sends no response for that request, so
+    /// this answer is the only one the request gets; a response the server
+    /// had already sent is dropped as one to an unknown request.
+    fn end_cancelled(&self, key: &str) {
+        let pending = lock(&self.state).pending.remove(key);
+        let Some(pending) = pending else {
+            return;
+        };
+        let answer = json!({
+            "jsonrpc": "2.0",
+            "id": pending.id,
+            "error": {"code": REQUEST_CANCELLED, "message": "Request cancelled"},
+        });
+        if pending.waiter.send(Ok(answer)).is_err() {
+            tracing::debug!(
+                "Request {key} of SDK MCP server '{}' was cancelled after its caller gave up",
+                self.name
+            );
         }
     }
 
@@ -441,7 +485,7 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::sync::Notify;
 
-    use super::{ChannelTransport, RmcpServer, SHUTDOWN_GRACE};
+    use super::{ChannelTransport, RmcpBridge, RmcpServer, SHUTDOWN_GRACE};
     use crate::testing::MockTransport;
     use crate::types::{McpSdkServerConfig, McpSdkServerInstance};
     use crate::{ClaudeAgentOptions, ClaudeSdkClient};
@@ -474,6 +518,19 @@ mod tests {
         (transport, client)
     }
 
+    fn message(id: u64, method: &str) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "claude-code", "version": "2.1.325"},
+            },
+        })
+    }
+
     fn post(transport: &MockTransport, request_id: &str, id: u64, method: &str) {
         transport.push_frame(json!({
             "type": "control_request",
@@ -481,16 +538,7 @@ mod tests {
             "request": {
                 "subtype": "mcp_message",
                 "server_name": "srv",
-                "message": {
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "method": method,
-                    "params": {
-                        "protocolVersion": "2025-06-18",
-                        "capabilities": {},
-                        "clientInfo": {"name": "claude-code", "version": "2.1.325"},
-                    },
-                },
+                "message": message(id, method),
             },
         }));
     }
@@ -541,19 +589,52 @@ mod tests {
                         continue;
                     };
                     let result = if method == "initialize" {
-                        json!({
-                            "protocolVersion": "2025-06-18",
-                            "capabilities": {},
-                            "serverInfo": {"name": "scripted", "version": "1.0.0"},
-                        })
+                        handshake()
                     } else {
                         json!({})
                     };
-                    let response: ServerJsonRpcMessage = serde_json::from_value(
-                        json!({"jsonrpc": "2.0", "id": id, "result": result}),
-                    )
-                    .unwrap();
-                    transport.send(response).await.unwrap();
+                    respond(&mut transport, id, result).await;
+                }
+            })
+        })
+    }
+
+    fn handshake() -> Value {
+        json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "serverInfo": {"name": "scripted", "version": "1.0.0"},
+        })
+    }
+
+    async fn respond(transport: &mut ChannelTransport, id: &Value, result: Value) {
+        let response: ServerJsonRpcMessage =
+            serde_json::from_value(json!({"jsonrpc": "2.0", "id": id, "result": result})).unwrap();
+        transport.send(response).await.unwrap();
+    }
+
+    /// A server that completes the handshake, then never returns from the
+    /// first other request and never stops: it keeps its transport open and
+    /// reads nothing more, neither a cancellation nor the end of its input.
+    fn stuck_in_its_first_call(entered: &Arc<Notify>) -> RmcpServer {
+        let entered = Arc::clone(entered);
+        RmcpServer::from_fn(move |mut transport: ChannelTransport| {
+            let entered = Arc::clone(&entered);
+            Box::pin(async move {
+                loop {
+                    let Some(message) = transport.receive().await else {
+                        return Ok(());
+                    };
+                    let message = serde_json::to_value(&message).unwrap();
+                    let (Some(id), Some(method)) = (message.get("id"), message.get("method"))
+                    else {
+                        continue;
+                    };
+                    if method != "initialize" {
+                        entered.notify_one();
+                        return std::future::pending::<Result<(), String>>().await;
+                    }
+                    respond(&mut transport, id, handshake()).await;
                 }
             })
         })
@@ -640,6 +721,71 @@ mod tests {
         assert!(
             waited < SHUTDOWN_GRACE + Duration::from_secs(1),
             "{waited:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn messages_after_close_are_refused_and_start_nothing() {
+        let crash = Arc::new(Notify::new());
+        let starts = Arc::new(AtomicUsize::new(0));
+        let bridge = RmcpBridge::new("srv".to_owned(), crashing(&crash, &starts));
+        let initialized = bridge.handle(&message(0, "initialize")).await.unwrap();
+        assert_eq!(initialized.unwrap()["result"], handshake());
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        bridge.close().await;
+
+        let listing = json!({"jsonrpc": "2.0", "id": 9, "method": "tools/list"});
+        for refused in [listing, message(10, "initialize")] {
+            assert_eq!(
+                bridge.handle(&refused).await,
+                Err("SDK MCP server 'srv' is closed".to_owned())
+            );
+        }
+        assert!(bridge.session.lock().await.is_none());
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+
+        bridge.close().await;
+        assert!(bridge.session.lock().await.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn waiter_on_a_stuck_call_is_failed_once_the_grace_period_is_up() {
+        let entered = Arc::new(Notify::new());
+        let bridge = Arc::new(RmcpBridge::new(
+            "srv".to_owned(),
+            stuck_in_its_first_call(&entered),
+        ));
+        let initialized = bridge.handle(&message(0, "initialize")).await.unwrap();
+        assert_eq!(initialized.unwrap()["result"], handshake());
+
+        let call = json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {"name": "blocked", "arguments": {}},
+        });
+        let waiter = {
+            let bridge = Arc::clone(&bridge);
+            tokio::spawn(async move { bridge.handle(&call).await })
+        };
+        entered.notified().await;
+
+        let before = tokio::time::Instant::now();
+        bridge.close().await;
+        let waited = before.elapsed();
+        assert!(waited >= SHUTDOWN_GRACE, "{waited:?}");
+        assert!(
+            waited < SHUTDOWN_GRACE + Duration::from_secs(1),
+            "{waited:?}"
+        );
+
+        let outcome = tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("the waiter still hangs after the grace period")
+            .unwrap();
+        assert_eq!(
+            outcome,
+            Err("SDK MCP server 'srv' session closed".to_owned())
         );
     }
 }

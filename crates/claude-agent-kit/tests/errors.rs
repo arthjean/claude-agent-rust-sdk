@@ -146,7 +146,7 @@ fn result_error_carries_payload() {
     assert_eq!(payload["terminal_reason"], "api_error");
     assert_eq!(
         error.to_string(),
-        "Claude CLI returned an error result: API Error: Stream idle timeout - no chunks \
+        "Claude Code returned an error result: API Error: Stream idle timeout - no chunks \
          received (exit code: 1)"
     );
 }

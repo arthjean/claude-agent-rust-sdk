@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use claude_agent_kit::{
     AgentDefinition, AgentEffort, AgentMcpServer, AgentMemory, AssistantMessage, AsyncHookOutput,
-    CanUseTool, ContentBlock, ContextUsageResponse, EffortLevel, ElicitationAction,
-    ElicitationHookSpecificOutput, FastModeDisabledReason, FastModeState, HookCallback,
-    HookContext, HookDecision, HookEvent, HookFailureMode, HookInput, HookMatcher, HookOutput,
-    HookPermissionDecision, HookSpecificOutput, McpServerConnectionStatus, McpServerStatus,
-    McpServerStatusConfig, McpStatusResponse, PermissionBehavior, PermissionMode,
+    BackgroundTaskSummary, CanUseTool, ContentBlock, ContextUsageResponse, EffortLevel,
+    ElicitationAction, ElicitationHookSpecificOutput, FastModeDisabledReason, FastModeState,
+    HookCallback, HookContext, HookDecision, HookEffort, HookEvent, HookFailureMode, HookInput,
+    HookMatcher, HookOutput, HookPermissionDecision, HookSpecificOutput, McpServerConnectionStatus,
+    McpServerStatus, McpServerStatusConfig, McpStatusResponse, PermissionBehavior, PermissionMode,
     PermissionRequestHookSpecificOutput, PermissionResult, PermissionRuleValue, PermissionUpdate,
     PermissionUpdateDestination, PermissionUpdateKind, PostToolUseHookSpecificOutput,
     PreModelSwitchHookSpecificOutput, PreToolUseHookSpecificOutput, ResultMessage,
-    SessionStartHookSpecificOutput, SyncHookOutput, TextBlock, ThinkingBlock,
+    SessionCronSummary, SessionStartHookSpecificOutput, SyncHookOutput, TextBlock, ThinkingBlock,
     ToolPermissionContext, ToolResultBlock, ToolResultContent, ToolUseBlock, UserMessage,
     UserPromptSubmitHookSpecificOutput, WorktreeCreateHookSpecificOutput,
 };
@@ -627,6 +627,89 @@ fn stop_and_subagent_stop_optional_fields_default_to_none() {
     assert_eq!(subagent_stop.last_assistant_message, None);
     assert_eq!(subagent_stop.background_tasks, None);
     assert_eq!(subagent_stop.session_crons, None);
+}
+
+fn without(value: &Value, key: &str) -> Value {
+    let mut value = value.clone();
+    value.as_object_mut().unwrap().remove(key);
+    value
+}
+
+#[test]
+fn background_work_summaries_and_hook_effort_have_the_upstream_required_and_optional_keys() {
+    let required_task = json!({
+        "id": "task-1",
+        "type": "shell",
+        "status": "running",
+        "description": "npm test",
+    });
+    let task: BackgroundTaskSummary = serde_json::from_value(required_task.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&task).unwrap(), required_task);
+    for key in ["id", "type", "status", "description"] {
+        let outcome = serde_json::from_value::<BackgroundTaskSummary>(without(&required_task, key));
+        assert!(
+            outcome.is_err(),
+            "a task summary without {key} was accepted"
+        );
+    }
+
+    let mut full_task = required_task.clone();
+    for key in ["command", "agent_type", "server", "tool", "name"] {
+        let mut with_one = required_task.clone();
+        with_one[key] = json!(format!("{key} value"));
+        let task: BackgroundTaskSummary = serde_json::from_value(with_one.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&task).unwrap(), with_one);
+        full_task[key] = json!(format!("{key} value"));
+    }
+    let task: BackgroundTaskSummary = serde_json::from_value(full_task.clone()).unwrap();
+    assert_eq!(task.kind, "shell");
+    assert_eq!(task.command.as_deref(), Some("command value"));
+    assert_eq!(task.agent_type.as_deref(), Some("agent_type value"));
+    assert_eq!(task.server.as_deref(), Some("server value"));
+    assert_eq!(task.tool.as_deref(), Some("tool value"));
+    assert_eq!(task.name.as_deref(), Some("name value"));
+    let wire = serde_json::to_value(&task).unwrap();
+    assert_eq!(wire, full_task);
+    assert_eq!(
+        keys(&wire),
+        [
+            "agent_type",
+            "command",
+            "description",
+            "id",
+            "name",
+            "server",
+            "status",
+            "tool",
+            "type"
+        ]
+    );
+
+    let required_cron = json!({
+        "id": "cron-1",
+        "schedule": "0 9 * * 1-5",
+        "recurring": true,
+        "prompt": "check CI",
+    });
+    let cron: SessionCronSummary = serde_json::from_value(required_cron.clone()).unwrap();
+    let wire = serde_json::to_value(&cron).unwrap();
+    assert_eq!(wire, required_cron);
+    assert_eq!(keys(&wire), ["id", "prompt", "recurring", "schedule"]);
+    for key in ["id", "schedule", "recurring", "prompt"] {
+        let outcome = serde_json::from_value::<SessionCronSummary>(without(&required_cron, key));
+        assert!(
+            outcome.is_err(),
+            "a cron summary without {key} was accepted"
+        );
+    }
+
+    let effort: HookEffort = serde_json::from_value(json!({"level": "high"})).unwrap();
+    assert_eq!(effort.level, "high");
+    assert_eq!(
+        serde_json::to_value(&effort).unwrap(),
+        json!({"level": "high"})
+    );
+    assert!(serde_json::from_value::<HookEffort>(json!({})).is_err());
 }
 
 #[test]

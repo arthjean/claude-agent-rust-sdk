@@ -3,18 +3,22 @@
 
 mod common;
 
+use std::time::Duration;
+
 use claude_agent_kit::testing::MockTransport;
 use claude_agent_kit::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, InputMessage, Message, PermissionResult, Prompt,
-    query_with_transport,
+    SdkMcpTool, ToolResult, create_sdk_mcp_server, query_with_transport,
 };
 use futures_core::Stream;
 use futures_util::{FutureExt, StreamExt, stream};
 use serde_json::{Value, json};
 
+use common::mcp::initialize_params;
 use common::mock::{
-    assistant, cli, cli_answering, drain, is_control_request, options_with_hook, result,
-    result_texts, session_state, settle, silent_cli, success, system_subtypes, written,
+    Recorder, assistant, cli, cli_answering, drain, is_control_request, options_with_hook,
+    responses, result, result_texts, session_state, settle, silent_cli, success, system_subtypes,
+    written,
 };
 
 fn answering_prompts() -> MockTransport {
@@ -74,6 +78,51 @@ async fn run_ending_with(frames: Vec<Value>, end: Error) -> Vec<Result<Message, 
     }
     transport.push_error(end);
     messages.await.unwrap()
+}
+
+fn one_user_message(text: &str) -> Prompt {
+    Prompt::stream(stream::iter([json!({
+        "type": "user",
+        "message": {"role": "user", "content": text},
+    })]))
+}
+
+fn greeter_options() -> ClaudeAgentOptions {
+    let greet = SdkMcpTool::raw(
+        "greet",
+        "Greet a user",
+        json!({"type": "object", "properties": {"name": {"type": "string"}}}),
+        |arguments| async move {
+            let name = arguments["name"].as_str().unwrap_or_default().to_owned();
+            Ok(ToolResult::text(format!("Hi {name}")))
+        },
+    )
+    .unwrap();
+    ClaudeAgentOptions::builder()
+        .mcp_server(
+            "greeter",
+            create_sdk_mcp_server("greeter", None, [greet]).unwrap(),
+        )
+        .build()
+        .unwrap()
+}
+
+fn greeter_request(request_id: &str, id: u64, method: &str, params: Value) -> Value {
+    json!({
+        "type": "control_request",
+        "request_id": request_id,
+        "request": {
+            "subtype": "mcp_message",
+            "server_name": "greeter",
+            "message": {"jsonrpc": "2.0", "id": id, "method": method, "params": params},
+        },
+    })
+}
+
+fn assert_one_assistant_then_one_result(messages: &[Result<Message, Error>]) {
+    assert_eq!(messages.len(), 2);
+    assert!(matches!(messages[0], Ok(Message::Assistant(_))));
+    assert!(matches!(messages[1], Ok(Message::Result(_))));
 }
 
 fn requires_stream(_: &impl Stream<Item = Result<Message, Error>>) {}
@@ -212,6 +261,150 @@ async fn verbatim_prompts_mark_every_user_frame_as_client_composed() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn text_prompt_with_a_hook_delivers_more_messages_than_the_queue_holds_before_the_result() {
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            let mut turn: Vec<Value> = (0..150)
+                .map(|index| assistant(&format!("step {index}")))
+                .collect();
+            turn.push(result("done"));
+            turn
+        } else {
+            Vec::new()
+        }
+    });
+    let mut stream = query_with_transport("Hello", options_with_hook(), transport.clone());
+    let first = tokio::time::timeout(Duration::from_secs(3600), stream.next())
+        .await
+        .expect("the query stalled before its first message");
+    let Some(Ok(Message::Assistant(first))) = first else {
+        panic!("expected an assistant message");
+    };
+    assert_eq!(first.content[0].as_text(), Some("step 0"));
+    settle().await;
+    assert_eq!(transport.pending_frames(), 49);
+    assert!(!transport.input_ended());
+
+    let rest = drain(stream).await;
+    assert_eq!(rest.len(), 150);
+    assert!(
+        rest[..149]
+            .iter()
+            .all(|message| matches!(message, Ok(Message::Assistant(_))))
+    );
+    assert_eq!(result_texts(&rest), ["done"]);
+    assert!(transport.input_ended());
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_prompt_answers_the_in_process_server_requests_that_follow_the_user_message() {
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            return vec![greeter_request(
+                "mcp_init_1",
+                1,
+                "initialize",
+                initialize_params(),
+            )];
+        }
+        if frame["type"] != "control_response" {
+            return Vec::new();
+        }
+        match frame["response"]["request_id"].as_str() {
+            Some("mcp_init_1") => vec![greeter_request("mcp_init_2", 2, "tools/list", json!({}))],
+            Some("mcp_init_2") => vec![assistant("Hello!"), result("Hello!")],
+            _ => Vec::new(),
+        }
+    });
+    let messages = drain(query_with_transport(
+        one_user_message("Greet Alice"),
+        greeter_options(),
+        transport.clone(),
+    ))
+    .await;
+
+    assert_one_assistant_then_one_result(&messages);
+    assert_eq!(written(&transport, "user").len(), 1);
+    let answers = responses(&transport);
+    assert_eq!(answers.len(), 2);
+    assert_eq!(answers[0]["request_id"], "mcp_init_1");
+    assert_eq!(answers[0]["subtype"], "success");
+    assert_eq!(
+        answers[0]["response"]["mcp_response"]["result"]["serverInfo"]["name"],
+        "greeter"
+    );
+    assert_eq!(answers[1]["request_id"], "mcp_init_2");
+    assert_eq!(answers[1]["subtype"], "success");
+    let tools: Vec<&str> = answers[1]["response"]["mcp_response"]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(tools, ["greet"]);
+    assert!(transport.input_ended());
+}
+
+#[tokio::test(start_paused = true)]
+async fn stream_prompt_with_only_a_permission_callback_answers_the_request_before_stdin_closes() {
+    let asked = Recorder::<String>::new();
+    let options = {
+        let asked = asked.clone();
+        ClaudeAgentOptions::builder()
+            .can_use_tool(move |tool_name, _input, _context| {
+                asked.push(tool_name);
+                async { Ok(PermissionResult::allow()) }
+            })
+            .build()
+            .unwrap()
+    };
+    let stdin_open_at_the_answer = Recorder::<bool>::new();
+    let transport = silent_cli();
+    {
+        let observed = transport.clone();
+        let seen = stdin_open_at_the_answer.clone();
+        transport.respond_with(move |frame| {
+            if frame["type"] == "control_request" {
+                return vec![success(frame, json!({}))];
+            }
+            if frame["type"] == "user" {
+                return vec![json!({
+                    "type": "control_request",
+                    "request_id": "perm_1",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Write",
+                        "input": {"file_path": "/tmp/x", "content": "hi"},
+                        "tool_use_id": "toolu_1",
+                    },
+                })];
+            }
+            if frame["type"] == "control_response" {
+                seen.push(!observed.input_ended());
+                return vec![assistant("Hello!"), result("Hello!")];
+            }
+            Vec::new()
+        });
+    }
+    let messages = drain(query_with_transport(
+        one_user_message("write it"),
+        options,
+        transport.clone(),
+    ))
+    .await;
+
+    assert_eq!(asked.all(), ["Write"]);
+    let answers = responses(&transport);
+    assert_eq!(answers.len(), 1);
+    assert_eq!(answers[0]["request_id"], "perm_1");
+    assert_eq!(answers[0]["subtype"], "success");
+    assert_eq!(answers[0]["response"]["behavior"], "allow");
+    assert_eq!(stdin_open_at_the_answer.all(), [true]);
+    assert_one_assistant_then_one_result(&messages);
+    assert!(transport.input_ended());
+}
+
+#[tokio::test(start_paused = true)]
 async fn dropping_the_stream_closes_the_session() {
     let transport = cli_answering(|frame| {
         if frame["type"] == "user" {
@@ -276,7 +469,7 @@ async fn error_result_followed_by_a_failing_exit_ends_with_a_result_error() {
         let last = items.pop().unwrap().unwrap_err();
         assert_eq!(
             last.to_string(),
-            format!("Claude CLI returned an error result: {text} (exit code: 1)")
+            format!("Claude Code returned an error result: {text} (exit code: 1)")
         );
         let Error::ResultError {
             message,
@@ -288,7 +481,7 @@ async fn error_result_followed_by_a_failing_exit_ends_with_a_result_error() {
         };
         assert_eq!(
             message,
-            format!("Claude CLI returned an error result: {text}")
+            format!("Claude Code returned an error result: {text}")
         );
         assert_eq!(exit_code, Some(1));
         assert_eq!(Value::Object(data.into_inner()), frame);

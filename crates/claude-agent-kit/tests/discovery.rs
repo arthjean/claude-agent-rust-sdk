@@ -4,6 +4,7 @@ mod common;
 
 use std::ffi::OsStr;
 use std::path::Path;
+use std::sync::Mutex;
 
 use claude_agent_kit::cli::{find_cli, managed_install_dir};
 use claude_agent_kit::{ClaudeAgentOptions, Error, SubprocessTransport};
@@ -17,6 +18,8 @@ const CLI_NAME: &str = if cfg!(windows) {
 } else {
     "claude"
 };
+
+static PROCESS_STATE: Mutex<()> = Mutex::new(());
 
 fn set(name: &str, value: impl AsRef<OsStr>) {
     unsafe { std::env::set_var(name, value) }
@@ -42,10 +45,14 @@ fn not_found_message(error: Error) -> String {
 
 #[test]
 fn the_process_environment_drives_discovery_and_the_version_check_switch() {
+    let _serial = PROCESS_STATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let fake = Fake::new(json!({"claude_code_version": null, "steps": [{"exit": 0}]}));
     let root = tempfile::tempdir().unwrap();
     let home = root.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
+    let built_before_the_install = SubprocessTransport::new(ClaudeAgentOptions::default());
     let on_path = install(&root.path().join("bin"));
 
     set("PATH", root.path().join("bin"));
@@ -62,6 +69,14 @@ fn the_process_environment_drives_discovery_and_the_version_check_switch() {
         .unwrap();
 
     assert_eq!(find_cli().unwrap(), on_path);
+    runtime.block_on(async {
+        built_before_the_install.connect().await.unwrap();
+        let mut stream = built_before_the_install.read_messages();
+        let init = next_message(&mut stream).await;
+        assert_eq!(init["subtype"], "init");
+        assert!(init["fake_pid"].is_u64(), "{init}");
+        built_before_the_install.close().await.unwrap();
+    });
     runtime.block_on(async {
         let transport = SubprocessTransport::new(ClaudeAgentOptions::default());
         transport.connect().await.unwrap();
@@ -134,4 +149,65 @@ fn the_process_environment_drives_discovery_and_the_version_check_switch() {
     };
     assert_eq!(read_with_warnings(None).len(), 1);
     assert_eq!(read_with_warnings(Some("1")).len(), 0);
+}
+
+#[cfg(windows)]
+struct WorkingDirectory(std::path::PathBuf);
+
+#[cfg(windows)]
+impl WorkingDirectory {
+    fn enter(directory: &Path) -> Self {
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(directory).unwrap();
+        Self(previous)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WorkingDirectory {
+    fn drop(&mut self) {
+        std::env::set_current_dir(&self.0).unwrap();
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn the_working_directory_and_relative_path_entries_are_never_searched_on_windows() {
+    let _serial = PROCESS_STATE
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let work = root.path().join("work");
+    install(&work);
+    install(&work.join("tools"));
+    let on_path = install(&root.path().join("bin"));
+
+    set("HOME", &home);
+    set("USERPROFILE", &home);
+    set("LOCALAPPDATA", root.path().join("local-app-data"));
+    set("XDG_DATA_HOME", root.path().join("xdg-data"));
+    let _directory = WorkingDirectory::enter(&work);
+    assert!(Path::new(CLI_NAME).is_file());
+    assert!(Path::new("tools").join(CLI_NAME).is_file());
+
+    set(
+        "PATH",
+        std::env::join_paths([
+            Path::new(""),
+            Path::new("."),
+            Path::new("tools"),
+            root.path().join("bin").as_path(),
+        ])
+        .unwrap(),
+    );
+    assert_eq!(find_cli().unwrap(), on_path);
+
+    set(
+        "PATH",
+        std::env::join_paths([Path::new(""), Path::new(".")]).unwrap(),
+    );
+    let message = not_found_message(find_cli().unwrap_err());
+    assert!(message.starts_with("Claude CLI not found."), "{message}");
 }
