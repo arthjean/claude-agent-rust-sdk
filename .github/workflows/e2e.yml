@@ -1,0 +1,45 @@
+name: End-to-end
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CLAUDE_CODE_VERSION: 2.1.325
+
+jobs:
+  e2e:
+    name: End-to-end suite (real CLI)
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Unit and integration tests
+        run: cargo test --workspace --all-features
+
+      - name: Install Claude Code
+        shell: bash
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Claude Code installation
+        run: claude -v
+
+      - name: End-to-end suite
+        run: cargo xtask e2e
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

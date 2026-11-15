@@ -297,6 +297,59 @@ fn ci_runs_the_four_quality_gates_on_three_operating_systems() {
     assert!(workflow.contains("permissions: contents: read"));
 }
 
+fn ci_job(workflow: &str, name: &str) -> String {
+    let mut lines = workflow
+        .lines()
+        .skip_while(|line| *line != format!("  {name}:"))
+        .skip(1);
+    let body: Vec<&str> = lines
+        .by_ref()
+        .take_while(|line| line.is_empty() || line.starts_with("    "))
+        .collect();
+    assert!(!body.is_empty(), "the workflow has no job `{name}`");
+    compact(&body.join("\n"))
+}
+
+#[test]
+fn ci_checks_the_parity_ledgers_on_every_pull_request() {
+    let workflow = read(".github/workflows/ci.yml");
+    assert!(compact(&workflow).starts_with("name: CI on: pull_request: push:"));
+    let job = ci_job(&workflow, "parity");
+    assert!(job.contains("run: cargo xtask parity-check --deny-pending"));
+    assert!(job.contains("submodules: true"));
+    assert!(!job.contains("if:"), "{job}");
+}
+
+#[test]
+fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_on_forks() {
+    let ci = read(".github/workflows/ci.yml");
+    assert!(!ci.contains("secrets.ANTHROPIC_API_KEY"));
+    assert!(!ci.contains("cargo xtask e2e"));
+
+    let workflow = read(".github/workflows/e2e.yml");
+    assert!(compact(&workflow).starts_with("name: End-to-end on: workflow_dispatch: permissions:"));
+    for trigger in ["push:", "pull_request", "schedule:", "workflow_run:"] {
+        assert!(!workflow.contains(trigger), "{trigger}");
+    }
+    assert!(compact(&workflow).contains("permissions: contents: read"));
+
+    let job = ci_job(&workflow, "e2e");
+    assert!(job.contains("if: ${{ !github.event.repository.fork }}"));
+    assert!(job.contains("runs-on: ubuntu-latest"));
+    let tests = job
+        .find("run: cargo test --workspace --all-features")
+        .expect("the job does not run the tests");
+    let suite = job
+        .find("run: cargo xtask e2e")
+        .expect("the job does not run the suite");
+    assert!(tests < suite, "the tests must pass before the suite starts");
+    assert!(job.contains("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}"));
+    assert!(!job.contains("CLAUDE_AGENT_KIT_E2E_AUTH"), "{job}");
+
+    assert!(workflow.contains(&format!("CLAUDE_CODE_VERSION: {CLI_VERSION}")));
+    assert!(job.contains("| bash -s \"$CLAUDE_CODE_VERSION\""));
+}
+
 #[test]
 fn upstream_sdk_is_a_submodule_pinned_to_the_reference_commit() {
     let modules = compact(&read(".gitmodules"));
