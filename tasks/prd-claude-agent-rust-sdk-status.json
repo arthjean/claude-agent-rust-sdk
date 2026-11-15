@@ -48,10 +48,10 @@
     },
     {
       "id": "EP-006",
-      "title": "Distribution, parity and release",
+      "title": "Parity tooling",
       "status": "TODO",
       "priority": "P1",
-      "stories_total": 7,
+      "stories_total": 4,
       "stories_done": 0
     }
   ],
@@ -469,34 +469,6 @@
       "reviewed_at": "2026-11-15"
     },
     {
-      "id": "US-030",
-      "title": "CLI installer with checksum verification",
-      "epic": "EP-006",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "M",
-      "blocked_by": [
-        "US-008"
-      ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
-      "id": "US-031",
-      "title": "Manifest signature verification",
-      "epic": "EP-006",
-      "status": "TODO",
-      "priority": "P2",
-      "size": "M",
-      "blocked_by": [
-        "US-030"
-      ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
       "id": "US-032",
       "title": "Parity ledgers and upstream drift tool",
       "epic": "EP-006",
@@ -549,21 +521,6 @@
       "size": "S",
       "blocked_by": [
         "US-009"
-      ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
-      "id": "US-036",
-      "title": "Release pipeline and CLI version tracking",
-      "epic": "EP-006",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "M",
-      "blocked_by": [
-        "US-032",
-        "US-033"
       ],
       "started_at": null,
       "completed_at": null,

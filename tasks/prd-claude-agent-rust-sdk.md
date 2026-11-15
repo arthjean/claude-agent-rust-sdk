@@ -20,11 +20,11 @@
 
 ## Overview
 
-`claude-agent-kit` is a Rust crate at full behavioral parity with `claude-agent-sdk` (Python) v0.2.182, commit `4720d36`. It spawns the Claude Code CLI as a child process and exchanges newline-delimited JSON (NDJSON, one JSON object per line) over stdin and stdout. It covers the transport, the bidirectional control protocol (hooks, tool-permission callback, dynamic control), the typed data model, in-process MCP tool servers (MCP is the Model Context Protocol through which tools are exposed to the model), the session helpers and stores, and CLI discovery and installation.
+`claude-agent-kit` is a Rust crate at full behavioral parity with `claude-agent-sdk` (Python) v0.2.182, commit `4720d36`. It spawns the Claude Code CLI as a child process and exchanges newline-delimited JSON (NDJSON, one JSON object per line) over stdin and stdout. It covers the transport, the bidirectional control protocol (hooks, tool-permission callback, dynamic control), the typed data model, in-process MCP tool servers (MCP is the Model Context Protocol through which tools are exposed to the model), the session helpers and stores, and CLI discovery.
 
 The Python source is the behavioral reference and is vendored as a git submodule at `upstream/claude-agent-sdk-python`, pinned to a commit. The same tree is available locally at `C:/dev/claude-agent-sdk-python`, at that commit. Every epic and story carries a `Python reference` block listing the source and test files it ports, and `ref:` notes inside acceptance criteria point at the exact rule. All these paths are relative to that root, and line numbers are valid for commit `4720d36` only. Two ledgers make parity measurable: a surface ledger mapping each of the 159 Python exports to a Rust item, and a test ledger mapping each Python unit test to a Rust test or a written reason for exclusion. A drift tool compares a new upstream tag against the pinned commit and lists changed flags, types, and tests.
 
-Key decisions: tokio as the only async runtime; manual dispatch on the wire `type` field so unknown messages and content blocks are kept as raw JSON instead of dropped; an explicit `close()` with a bounded escalation because Rust has no asynchronous destructor; a native JSON-RPC dispatcher for in-process tools with `rmcp` support behind a feature; no bundled CLI binary (crates.io caps a crate at 10 MB), replaced by discovery plus an opt-in installer that verifies checksums. Delivery is phased in three releases: Release 1 (EP-001 to EP-003, core), Release 2 (EP-004 and EP-005, tools and sessions), Release 3 (EP-006, distribution and parity tooling).
+Key decisions: tokio as the only async runtime; manual dispatch on the wire `type` field so unknown messages and content blocks are kept as raw JSON instead of dropped; an explicit `close()` with a bounded escalation because Rust has no asynchronous destructor; a native JSON-RPC dispatcher for in-process tools with `rmcp` support behind a feature; no bundled CLI binary (crates.io caps a crate at 10 MB), replaced by discovery. Delivery is phased in three releases: Release 1 (EP-001 to EP-003, core), Release 2 (EP-004 and EP-005, tools and sessions), Release 3 (EP-006, parity tooling). Distribution and release are deferred to a later PRD.
 
 The project lives in the repository `claude-agent-sdk-rust` (local path `C:/dev/claude-agent-sdk-rust`). The repository name and the crate name differ on purpose: the crate name `claude-agent-sdk-rust` is already taken on crates.io, so the crate keeps the working name `claude-agent-kit` until the owner confirms a final name. The project is licensed GPL-3.0-or-later.
 
@@ -34,8 +34,6 @@ The project lives in the repository `claude-agent-sdk-rust` (local path `C:/dev/
 |------|---------------|----------------|
 | Python public surface mapped in the surface ledger (159 exports) | 65% implemented (Release 1) | 100% implemented or excluded with a written reason |
 | Python unit tests dispositioned in the test ledger (1,171 tests) | 50% | 100% |
-| Lag between a Python SDK release that changes the wire or options and the matching crate release | Not measured | 7 days or less |
-| Lag between a CLI version bump upstream and the pinned-version bump here | Not measured | 48 hours or less, automated |
 | Orphaned CLI processes after the stress test (200 spawn/close cycles, half cancelled) | 0 on Linux | 0 on Linux, macOS, Windows |
 
 ## Target Users
@@ -941,68 +939,20 @@ Reading, editing, storing, and resuming conversation transcripts. Release 2.
 
 ---
 
-### EP-006: Distribution, parity and release
+### EP-006: Parity tooling
 
-Getting the CLI, proving parity, and staying current. Release 3.
+Proving parity, checking it against the real CLI, and detecting upstream drift. Release 3. Distribution and release work (CLI installer, manifest signature, release pipeline, CLI version tracking, publishing) is deferred to a later PRD; see Non-Goals.
 
-**Definition of Done:** the crate is publishable, both ledgers are at 100%, the end-to-end suite passes against the pinned CLI on Linux, and a CLI version bump produces a release without manual steps.
+**Definition of Done:** both ledgers have no pending entry, `cargo xtask parity-check` runs in CI on every pull request, and the end-to-end suite passes against the pinned CLI on Linux.
 
 **Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
-- `scripts/download_cli.py`: 1-403 (CLI download for the wheel)
-- `scripts/build_wheel.py`: platform wheels
-- `scripts/update_cli_version.py`: CLI version bump
-- `src/claude_agent_sdk/_cli_version.py`: 1-3 (pinned CLI version)
-- `RELEASING.md`: 1-86 (release flows)
-- `.github/workflows/test.yml`: unit, end-to-end and example jobs
-- `.github/workflows/auto-release.yml`: release on CLI bump
-- `.github/workflows/build-and-publish.yml`: publishing
+- `src/claude_agent_sdk/__init__.py`: 648-824 (`__all__`)
+- `tests/`: unit tests to disposition
 - `e2e-tests/README.md`: end-to-end guide
+- `.github/workflows/test.yml`: unit, end-to-end and example jobs
 - `README.md`: public usage documentation
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 782-806 (trace context propagation)
-- `tests/test_download_cli.py`: tests
-
-#### US-030: CLI installer with checksum verification
-**Description:** As a Rust application developer, I want an opt-in installer that fetches a verified CLI so that my program works on a machine without Claude Code.
-
-**Priority:** P1
-**Size:** M (3 pts)
-**Dependencies:** Blocked by US-008
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
-- `scripts/download_cli.py`: 49-92 (version and installed binary lookup), 118-160 (installer script checks), 172-305 (retry and download), 308-374 (version record and copy)
-- `scripts/_cli_version_validation.py`: 30-39 (version format, channel-shaped names)
-- `scripts/build_wheel.py`: 91-126 (pinned version read, unpinned versions refused), 158-256 (platform tags and wheel retagging)
-- `src/claude_agent_sdk/_cli_version.py`: 1-3
-- `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 330-343 (bundled binary lookup, counterpart of the managed install directory)
-- `tests/test_download_cli.py`: 29-761 (tests)
-
-**Acceptance Criteria:**
-- [ ] Behind the `download` feature, `cli::install(version)` fetches `manifest.json` for that version from `downloads.claude.ai/claude-code-releases/` and the binary for the current platform
-- [ ] The SHA256 of the binary is compared with the manifest before the file is made executable or moved into the managed install directory
-- [ ] Supported platforms are the eight of the official setup page, including the two musl targets
-- [ ] The crate exposes `CLI_VERSION`, the version it is tested against
-- [ ] The version argument must match `[0-9]+\.[0-9]+\.[0-9]+` with an optional pre-release suffix; channel names are refused
-- [ ] The binary is never modified after download
-- [ ] Given a checksum mismatch, when installing, then the download is deleted and the result is an error naming both hashes
-- [ ] Given no network, when installing, then the result is an error and the managed directory is unchanged
-- [ ] Given an unsupported platform, when installing, then the result is an error naming the platform
-
-#### US-031: Manifest signature verification
-**Description:** As an agent platform engineer, I want the manifest's signature checked so that a compromised download host cannot serve a forged binary.
-
-**Priority:** P2
-**Size:** M (3 pts)
-**Dependencies:** Blocked by US-030
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
-- `scripts/download_cli.py`: 221-305 (the Python build verifies no checksum or signature; this story has no Python counterpart)
-
-**Acceptance Criteria:**
-- [ ] `manifest.json.sig` is fetched and verified against Anthropic's release key, embedded in the crate with its full fingerprint taken from the official setup page
-- [ ] Verification runs before any checksum is trusted
-- [ ] Versions before 2.1.89, which have no signature, are installable only with an explicit `allow_unsigned` option
-- [ ] Given an invalid signature, when installing, then nothing is written and the result is an error
-- [ ] Given a missing signature for a version at or after 2.1.89, when installing, then the result is an error
+- `CHANGELOG.md`: upstream change log
 
 #### US-032: Parity ledgers and upstream drift tool
 **Description:** As an SDK maintainer, I want parity measured and upstream changes listed by a command so that the crate never silently falls behind.
@@ -1096,7 +1046,7 @@ Getting the CLI, proving parity, and staying current. Release 3.
 **Acceptance Criteria:**
 - [ ] Examples exist for: quick start, interactive client, hooks, tool-permission callback, in-process MCP calculator, agents, system prompt variants, partial messages, budget cap, stderr callback, setting sources, and a session store adapter
 - [ ] Every public item has rustdoc, and the crate root documents features, platform support, and the tested CLI version
-- [ ] docs.rs builds with all features
+- [ ] `cargo doc --all-features` builds with no warning
 - [ ] The README states that end users authenticate with their own credentials and that the crate is not an Anthropic product
 - [ ] The README states the license (GPL-3.0-or-later) and that a distributed program linking the crate must be released under a compatible license
 - [ ] A migration table maps each Python name to its Rust name
@@ -1121,32 +1071,6 @@ Getting the CLI, proving parity, and staying current. Release 3.
 - [ ] Given no active span, when connecting, then inherited trace variables are left untouched
 - [ ] Given an injection failure, when connecting, then the connection proceeds and a debug log is written
 
-#### US-036: Release pipeline and CLI version tracking
-**Description:** As an SDK maintainer, I want releases produced automatically when the CLI moves so that users always have a crate tested against a recent CLI.
-
-**Priority:** P1
-**Size:** M (3 pts)
-**Dependencies:** Blocked by US-032, US-033
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
-- `RELEASING.md`: 1-86 (automatic and manual release flows)
-- `.github/workflows/auto-release.yml`: release triggered by a CLI bump
-- `.github/workflows/build-and-publish.yml`: build and publish
-- `.github/workflows/publish.yml`: manual release
-- `.github/workflows/test.yml`: test jobs that gate a release
-- `scripts/update_cli_version.py`: CLI version bump
-- `scripts/update_version.py`: SDK version bump
-- `src/claude_agent_sdk/_cli_version.py`: 1-3
-- `CLAUDE.md`: separation of publishing credentials from jobs that call a model
-
-**Acceptance Criteria:**
-- [ ] A scheduled workflow detects a new CLI version, opens a pull request bumping `CLI_VERSION`, and runs unit and end-to-end tests against it
-- [ ] A merged bump publishes a patch release through crates.io trusted publishing, with no long-lived registry token stored
-- [ ] The publishing job holds no model credentials, and jobs that call a model hold no publishing rights
-- [ ] A scheduled workflow runs `upstream-diff` against the newest Python SDK tag and opens an issue listing the changes when any exist
-- [ ] The first publish to crates.io happens only after the crate name is confirmed by the owner
-- [ ] Given end-to-end tests failing on a new CLI version, when the bump workflow runs, then no release is published and the pull request stays open with the failure summary
-
 ## Functional Requirements
 
 - FR-01: The system must spawn the Claude Code CLI with an argument vector and never through a shell.
@@ -1160,14 +1084,14 @@ Getting the CLI, proving parity, and staying current. Release 3.
 - FR-09: The system must NOT execute `.bat` or `.cmd` files on Windows.
 - FR-10: The system must serve in-process tools through a native JSON-RPC dispatcher and report tool failures as `isError` results, never as protocol errors.
 - FR-11: The system must read, list, rename, tag, delete, fork, import, mirror, and resume session transcripts with the rules of the Python reference.
-- FR-12: The system must NOT bundle, modify, or redistribute the CLI binary; the installer must verify a SHA256 checksum before making a download executable.
+- FR-12: The system must NOT bundle, modify, or redistribute the CLI binary.
 - FR-13: The system must NOT write an OAuth refresh token to a temporary resume directory.
 - FR-14: The system must fail the build of its own CI when an upstream export or test is missing from the parity ledgers.
 
 ## Non-Functional Requirements
 
 - **Performance:** parsing and routing at least 50,000 messages of 1 KiB per second on one core in the benchmark; added latency per message under 1 ms at P99; `list_sessions` over 1,000 transcripts of 1 MiB each under 300 ms on a warm cache; message queue capacity 100; default maximum message size 1,048,576 bytes.
-- **Security:** 0 shell invocations; `unsafe` confined to 1 module; 100% of installer downloads checksum-verified before use; temporary transcript and credential files created with mode `0o600`; 0 refresh tokens written to temporary directories; 0 long-lived registry tokens in CI.
+- **Security:** 0 shell invocations; `unsafe` confined to 1 module; temporary transcript and credential files created with mode `0o600`; 0 refresh tokens written to temporary directories.
 - **Accessibility:** not applicable to a library with no user interface; the equivalent requirement is 100% of public items documented, enforced by `deny(missing_docs)`.
 - **Scalability:** 64 concurrent sessions in one process with no cross-talk between their control channels, verified by test; store listing limited to 16 concurrent loads.
 - **Reliability:** `close()` returns within 20 s in the worst case; 0 orphan processes after 200 spawn/close cycles on each of 3 operating systems; control request timeout 60 s; initialize timeout at least 60 s; mirror appends retried up to 3 attempts; resume cleanup retried 4 times.
@@ -1197,26 +1121,23 @@ Systematic coverage of unhappy paths. Evidence shows earlier defect discovery si
 | 16 | Permission change: unsupported hook guard | `on_failure = block` on an old CLI | `Error::CliConnection` at initialize | "The process answering initialize does not honor on_failure on hook matchers." |
 | 17 | External dependency: store outage | `append` fails 3 times | Batch dropped, `mirror_error` message | "{store error text}" |
 | 18 | External dependency: store too slow on resume | Load exceeds `load_timeout_ms` | Error, temporary directory removed | "Session store load timed out after {n} ms" |
-| 19 | External dependency: download host unreachable | Installer offline | Error, managed directory unchanged | "Could not download Claude Code {version}: {cause}" |
-| 20 | Security: checksum mismatch | Tampered or truncated download | File deleted, error | "Checksum mismatch: expected {a}, got {b}" |
-| 21 | Security: batch-file CLI on Windows | Path ends in `.cmd` | `Error::CliConnection`, nothing spawned | "Refusing to run a batch script as the Claude Code CLI: {path}" |
-| 22 | Forward compatibility: unknown message | Newer CLI | `Message::Unknown` with raw JSON | None |
+| 19 | Security: batch-file CLI on Windows | Path ends in `.cmd` | `Error::CliConnection`, nothing spawned | "Refusing to run a batch script as the Claude Code CLI: {path}" |
+| 20 | Forward compatibility: unknown message | Newer CLI | `Message::Unknown` with raw JSON | None |
 
 ## Risks & Mitigations
 
 | # | Risk | Probability | Impact | Mitigation |
 |---|------|------------|--------|------------|
-| 1 | The undocumented protocol changes and breaks the crate | High | High | Unknowns preserved as raw JSON, `capabilities` feature detection, end-to-end suite on every CLI bump (US-033, US-036) |
-| 2 | The crate falls behind upstream like existing crates | High | High | Parity ledgers and drift tool with scheduled issues (US-032, US-036) |
+| 1 | The undocumented protocol changes and breaks the crate | High | High | Unknowns preserved as raw JSON, `capabilities` feature detection, end-to-end suite against the pinned CLI (US-033); running it on every CLI bump is deferred to the release PRD |
+| 2 | The crate falls behind upstream like existing crates | High | High | Parity ledgers and drift tool (US-032) |
 | 3 | Orphan processes on Windows or under cancellation | Med | High | Job Object, process groups, detached shutdown, stress test in CI (US-010) |
 | 4 | Stdin closed too early or never | Med | High | Dedicated story with the upstream rules and a `fake-claude` scenario (US-015) |
 | 5 | Directory naming diverges from the CLI for unusual paths | Med | Med | Validation spike against the real CLI, one isolated function (US-023) |
 | 6 | Anthropic ships an official Rust SDK | Low | High | Parity naming and a migration table keep switching cost low; scope is not reduced on speculation |
-| 7 | Trademark objection to the crate name | Low | Med | "Claude Agent" is permitted wording; first publish gated on owner confirmation (US-036) |
+| 7 | Trademark objection to the crate name | Low | Med | "Claude Agent" is permitted wording; no publish until the deferred release PRD, which gates the first publish on owner confirmation |
 | 8 | Native MCP dispatcher rejected by a future CLI | Low | Med | `rmcp` bridge as an alternative path (US-020), end-to-end test (US-033) |
-| 9 | Scope of 36 stories stalls before a usable release | Med | Med | Three releases; Release 1 alone is a usable SDK without sessions |
-| 10 | Signature verification pulls a heavy dependency | Med | Low | Separate P2 story behind the `download` feature (US-031) |
-| 11 | GPL-3.0-or-later keeps the crate out of closed-source applications that are distributed, since Rust links statically | High | Med | Accepted owner decision; the README states the licensing consequence so adopters know before they depend on it (US-034) |
+| 9 | Scope of 33 stories stalls before a usable release | Med | Med | Three releases; Release 1 alone is a usable SDK without sessions |
+| 10 | GPL-3.0-or-later keeps the crate out of closed-source applications that are distributed, since Rust links statically | High | Med | Accepted owner decision; the README states the licensing consequence so adopters know before they depend on it (US-034) |
 
 ## Non-Goals
 
@@ -1224,6 +1145,7 @@ What this version explicitly does NOT include:
 
 - Features documented only for the TypeScript SDK (`startup`, `prewarm`, `setMcpServers`, `reloadPlugins`, `supportedModels`, `onElicitation`, and similar). Parity target is Python v0.2.182; revisit after Release 3.
 - Support for async runtimes other than tokio. The Python asyncio/trio layer has no counterpart.
+- Distribution and release: CLI installer with checksum and signature verification, release pipeline, CLI version tracking, and any publish to crates.io. Deferred by the owner on 2026-11-15 to a later PRD.
 - Bundling the CLI binary in the crate. Ruled out by the 10 MB crates.io limit and by the redistribution terms.
 - A derived client-application label. Upstream disables it in practice (it requires CLI 999.0.0); only the explicit `client_app` option is ported.
 - Reference store adapters for Postgres, Redis, and S3 as supported crates. One adapter appears as an example only.
@@ -1240,13 +1162,13 @@ What this version explicitly does NOT include:
 
 Frame as questions for engineering input, not mandates:
 
-- **Architecture:** one library crate with features (`rmcp`, `macros`, `download`, `otel`, `testing`) versus several crates. Recommended: one library plus a proc-macro crate. Engineering to confirm compile-time impact of the default feature set.
+- **Architecture:** one library crate with features (`rmcp`, `macros`, `otel`, `testing`) versus several crates. Recommended: one library plus a proc-macro crate. Engineering to confirm compile-time impact of the default feature set.
 - **Process isolation:** running the child in its own process group changes Ctrl+C behavior: the child no longer receives the terminal's interrupt directly, unlike Python. Recommended: isolate and own the lifecycle. Is an opt-out option needed?
 - **Data Model:** manual dispatch on `type` then `serde_json::from_value` per variant, versus serde internally tagged enums with an untagged fallback. Trade-off: manual dispatch reproduces the upstream required/optional rules exactly and avoids serde's flatten limitations, at the cost of one intermediate `Value`. Does the benchmark target hold with the intermediate value?
 - **API Design:** should callbacks accept `AsyncFn` closures directly or only through constructor helpers that box them? Recommended: helpers, since stored trait objects need boxed futures.
-- **Dependencies:** tokio 1.54, serde 1.0.229, serde_json 1.0.154, schemars 1.2, thiserror 2.0, futures 0.3, tracing 0.1, unicode-normalization 0.1, tempfile 3, uuid 1; optional rmcp 3.10, jsonschema 0.61, reqwest, sha2 0.11, opentelemetry 0.33, windows-sys 0.61. Should raw-schema argument validation (`jsonschema`) be a default feature?
+- **Dependencies:** tokio 1.54, serde 1.0.229, serde_json 1.0.154, schemars 1.2, thiserror 2.0, futures 0.3, tracing 0.1, unicode-normalization 0.1, tempfile 3, uuid 1; optional rmcp 3.10, jsonschema 0.61, opentelemetry 0.33, windows-sys 0.61. Should raw-schema argument validation (`jsonschema`) be a default feature?
 - **Blocking I/O:** disk session functions are synchronous like upstream. Should async wrappers using `spawn_blocking` be offered?
-- **Migration:** none; new crate. Backward compatibility policy: semantic versioning with `#[non_exhaustive]`, minor bumps for MSRV raises. Rollback plan: yank a broken release and pin `CLI_VERSION` back.
+- **Migration:** none; new crate. Backward compatibility policy: semantic versioning with `#[non_exhaustive]`, minor bumps for MSRV raises. Rollback plan: defined with the deferred release PRD.
 
 ## Success Metrics
 
@@ -1254,18 +1176,15 @@ Frame as questions for engineering input, not mandates:
 |--------|-------------------|--------|-----------|-------------|
 | Python exports covered (of 159) | 0 | 100% implemented or excluded with reason | Month-6 | `cargo xtask parity-report` |
 | Python unit tests dispositioned (of 1,171) | 0 | 100% | Month-6 | `cargo xtask parity-report` |
-| Release lag behind a wire-changing Python release | 11 months for the most used community crate | 7 days or less | Month-6 | Dates of upstream tag and crate release |
-| CLI bump lag | N/A (new) | 48 hours or less | Month-6 | Dates of CLI release and bump merge |
-| Orphan processes in the stress test | N/A (new) | 0 on 3 operating systems | Month-1 on Linux, Month-6 on all | CI stress job |
 | End-to-end topics passing against the pinned CLI (of 19) | 0 | 19 | Month-6 | CI `e2e` job |
+| Orphan processes in the stress test | N/A (new) | 0 on 3 operating systems | Month-1 on Linux, Month-6 on all | CI stress job |
 | Public items documented | N/A (new) | 100% | Month-1 | `deny(missing_docs)` |
 
 ## Open Questions
 
-- Crate name: the repository is `claude-agent-sdk-rust`, but that crate name is taken on crates.io, as are `claude-agent`, `claude-agent-rs`, and `claude-agent-sdk`. `claude-agent-kit` is a working name. Owner to confirm before US-036 publishes; a crate name cannot be reused once published.
+- Crate name: the repository is `claude-agent-sdk-rust`, but that crate name is taken on crates.io, as are `claude-agent`, `claude-agent-rs`, and `claude-agent-sdk`. `claude-agent-kit` is a working name. Owner to confirm before the first publish (deferred release PRD); a crate name cannot be reused once published.
 - Does the "never comment code" rule extend to rustdoc on public items? This PRD assumes rustdoc is documentation and requires it. Owner to confirm before US-001.
 - License: decided by the owner on 2026-11-14 as GPL-3.0-or-later, with the upstream MIT notice preserved. Remaining question for the owner before the first publish: is keeping closed-source distributed applications out an intended effect, or would a file-level copyleft (MPL-2.0) fit the goal better?
-- May a third party's installer download the official binary on the user's machine? No source forbids it and the binary is not redistributed, but no source allows it explicitly. Owner to decide whether to ask Anthropic before US-030 ships.
 - Should the child's process-group isolation be the default (US-010), given that it diverges from Python? Engineering to answer during EP-002.
 - Should Release 4 target the TypeScript-only features, or wait for Python to adopt them? Owner to decide after Release 3.
 [/PRD]
