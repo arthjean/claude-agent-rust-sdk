@@ -43,6 +43,22 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features
 
+      - name: Keychain resume (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          keychain="$RUNNER_TEMP/claude-agent-kit-test.keychain-db"
+          security create-keychain -p ci-only "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p ci-only "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security add-generic-password -U -T /usr/bin/security -a "$USER" -s "Claude Code-credentials" \
+            -w '{"claudeAiOauth":{"accessToken":"ci-access","refreshToken":"ci-refresh"}}' "$keychain"
+          trap 'security delete-keychain "$keychain"' EXIT
+          unset CLAUDE_CONFIG_DIR ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+          CLAUDE_AGENT_KIT_KEYCHAIN=1 cargo test -p claude-agent-kit --all-features --test session_resume \
+            keychain -- --ignored --nocapture
+
       - name: Documentation
         run: cargo doc --workspace --all-features --no-deps
         env:
