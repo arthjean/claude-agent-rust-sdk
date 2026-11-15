@@ -391,7 +391,7 @@ impl ControlSession {
         transport: Option<SharedTransport>,
     ) -> Result<(Self, Inbox)> {
         let options = options.for_session()?;
-        let config = SessionConfig::from_options(&options);
+        let config = SessionConfig::from_options(&options)?;
         let transport =
             transport.unwrap_or_else(|| SharedTransport::new(SubprocessTransport::new(options)));
         Ok(Self::new(transport, config))
@@ -573,8 +573,8 @@ impl ControlSession {
     /// nothing.
     ///
     /// Handlers and input tasks stop, the reader stops, every pending
-    /// control request fails, and the queue ends once the application has
-    /// read what it already holds.
+    /// control request fails, the in-process MCP servers stop, and the queue
+    /// ends once the application has read what it already holds.
     ///
     /// A close whose future is dropped part-way is finished by the next
     /// call: what is still to stop stays registered until it is stopped.
@@ -608,6 +608,7 @@ impl ControlSession {
             let _ = reader.await;
         }
         shared.state().fail_pending(session_closed);
+        shared.config.mcp.close().await;
         let result = shared.transport.close().await;
         *closed = true;
         result

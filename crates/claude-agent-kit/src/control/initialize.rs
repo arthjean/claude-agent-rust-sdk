@@ -10,6 +10,8 @@ use serde_json::{Map, Value, json};
 
 use super::TranscriptMirror;
 use super::run_end::run_end_ceiling_ms;
+use crate::error::Result;
+use crate::mcp::McpBridges;
 use crate::types::{
     CanUseTool, ClaudeAgentOptions, HookCallback, HookEvent, HookFailureMode, HookMatcher,
     McpServerConfig, McpServers, Skills, SystemPrompt,
@@ -28,17 +30,19 @@ pub(crate) struct SessionConfig {
     pub(crate) verbatim_prompts: bool,
     pub(crate) run_end_ceiling_ms: u64,
     pub(crate) bidirectional: bool,
+    pub(crate) mcp: McpBridges,
     pub(crate) mirror: Option<Arc<dyn TranscriptMirror>>,
 }
 
 impl SessionConfig {
-    pub(crate) fn from_options(options: &ClaudeAgentOptions) -> Self {
+    pub(crate) fn from_options(options: &ClaudeAgentOptions) -> Result<Self> {
+        let mcp = McpBridges::from_servers(&options.mcp_servers)?;
         let hooks = register_hooks(options.hooks.as_ref());
         let has_hooks = options
             .hooks
             .as_ref()
             .is_some_and(|hooks| !hooks.is_empty());
-        Self {
+        Ok(Self {
             can_use_tool: options.can_use_tool.clone(),
             initialize_request: initialize_request(options, hooks.config),
             hook_callbacks: hooks.callbacks,
@@ -51,8 +55,9 @@ impl SessionConfig {
             bidirectional: has_hooks
                 || options.can_use_tool.is_some()
                 || has_sdk_mcp_server(&options.mcp_servers),
+            mcp,
             mirror: None,
-        }
+        })
     }
 }
 

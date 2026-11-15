@@ -1,0 +1,5 @@
+error: `add_one` must be async: #[tool] turns an `async fn add_one(args: Args) -> Result<ToolResult, E>` into a tool
+ --> tests/ui/tool_not_async.rs:2:1
+  |
+2 | fn add_one(args: f64) -> Result<claude_agent_kit::ToolResult, String> {
+  | ^^

@@ -1,5 +1,5 @@
-//! Handlers of the control requests the CLI sends: tool permission and
-//! hook callbacks.
+//! Handlers of the control requests the CLI sends: tool permission, hook
+//! callbacks, and messages for the in-process MCP servers.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -88,6 +88,7 @@ async fn answer(shared: &Shared, request: &Value) -> Result<Value, String> {
     match request.get("subtype").and_then(Value::as_str) {
         Some("can_use_tool") => can_use_tool(shared, request).await,
         Some("hook_callback") => hook_callback(shared, request).await,
+        Some("mcp_message") => mcp_message(shared, request).await,
         Some(subtype) => Err(format!("Unsupported control request subtype: {subtype}")),
         None => Err(format!(
             "Unsupported control request subtype: {}",
@@ -186,4 +187,19 @@ async fn hook_callback(shared: &Shared, request: &Value) -> Result<Value, String
         .await
         .map_err(|error| error.to_string())?;
     Ok(output.to_wire())
+}
+
+async fn mcp_message(shared: &Shared, request: &Value) -> Result<Value, String> {
+    let server_name = request
+        .get("server_name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty());
+    let message = request
+        .get("message")
+        .filter(|message| message.as_object().is_some_and(|fields| !fields.is_empty()));
+    let (Some(server_name), Some(message)) = (server_name, message) else {
+        return Err("Missing server_name or message for MCP request".to_owned());
+    };
+    let response = shared.config.mcp.handle(server_name, message).await;
+    Ok(json!({"mcp_response": response}))
 }

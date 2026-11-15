@@ -8,7 +8,20 @@
 //!   and changes settings mid-session.
 //!
 //! Both register the hooks and the tool-permission callback of the options
-//! and answer the CLI when it invokes them.
+//! and answer the CLI when it invokes them. Both also serve the tools
+//! defined in this process: [`create_sdk_mcp_server`] turns a set of
+//! [`SdkMcpTool`]s into an MCP server the CLI calls over the control
+//! channel, with no separate server process.
+//!
+//! Cargo features, all off by default:
+//!
+//! - `macros`: the `#[tool]` attribute, which turns an async function into
+//!   a tool.
+//! - `rmcp`: `McpServerConfig::sdk_rmcp`, which serves a server built with
+//!   the `rmcp` crate inside this process.
+//! - `jsonschema`: validation of tool arguments against the JSON Schema of
+//!   the tool, for tools made with [`SdkMcpTool::raw`].
+//! - `testing`: the `testing` module, with a scriptable transport for tests.
 //!
 //! ```no_run
 //! use claude_agent_kit::{ClaudeAgentOptions, Message, query};
@@ -71,6 +84,7 @@ pub mod cli;
 mod client;
 mod control;
 pub mod error;
+pub mod mcp;
 pub mod message_parser;
 mod process;
 mod prompt;
@@ -83,7 +97,61 @@ pub mod types;
 
 pub use client::{ClaudeSdkClient, Messages};
 pub use error::{BoxError, Error, Result, ResultErrorData};
+pub use mcp::{
+    ResourceContents, SdkMcpTool, ToolAnnotations, ToolContent, ToolHandler, ToolResult,
+    create_sdk_mcp_server,
+};
 pub use message_parser::parse_message;
+
+/// Turns an async function into a function returning the [`SdkMcpTool`] it
+/// defines.
+///
+/// The function takes exactly one argument, whose type gives the input
+/// schema of the tool as in [`SdkMcpTool::typed`], and returns
+/// `Result<ToolResult, E>` where `E` converts into [`BoxError`]. The
+/// attribute replaces it with a function of the same name and visibility
+/// that takes no argument and returns the tool.
+///
+/// Arguments of the attribute, all optional:
+///
+/// - `name`: name of the tool. Defaults to the name of the function.
+/// - `description`: description shown to the model. Defaults to the doc
+///   comment of the function. One of the two is required.
+/// - `title`, `read_only_hint`, `destructive_hint`, `idempotent_hint`,
+///   `open_world_hint`, `max_result_size_chars`: the fields of
+///   [`ToolAnnotations`].
+///
+/// ```
+/// use claude_agent_kit::{ToolResult, create_sdk_mcp_server, tool};
+/// use schemars::JsonSchema;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize, JsonSchema)]
+/// struct Divide {
+///     dividend: f64,
+///     divisor: f64,
+/// }
+///
+/// /// Divide one number by another.
+/// #[tool(read_only_hint = true)]
+/// async fn divide(args: Divide) -> Result<ToolResult, String> {
+///     if args.divisor == 0.0 {
+///         return Err("Division by zero".to_owned());
+///     }
+///     Ok(ToolResult::text((args.dividend / args.divisor).to_string()))
+/// }
+///
+/// # fn main() -> Result<(), claude_agent_kit::Error> {
+/// let tool = divide();
+/// assert_eq!(tool.name(), "divide");
+/// assert_eq!(tool.description(), "Divide one number by another.");
+/// let calculator = create_sdk_mcp_server("calculator", None, [tool])?;
+/// # let _ = calculator;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "macros")]
+pub use claude_agent_kit_macros::tool;
 pub use prompt::{InputMessage, InputStream, Prompt};
 pub use query::{QueryStream, query, query_with_transport};
 pub use session_store::{

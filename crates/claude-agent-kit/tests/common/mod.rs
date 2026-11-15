@@ -10,6 +10,8 @@ use futures_util::StreamExt;
 use serde_json::Value;
 
 #[cfg(feature = "testing")]
+pub mod mcp;
+#[cfg(feature = "testing")]
 pub mod mock;
 
 pub const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
@@ -197,6 +199,10 @@ pub mod capture {
             let warnings = Self::default();
             let guard = tracing::subscriber::set_default(Collector(warnings.clone()));
             (warnings, guard)
+        }
+
+        pub fn all(&self) -> Vec<String> {
+            self.0.lock().unwrap().clone()
         }
 
         pub fn about_the_cli_version(&self) -> Vec<String> {

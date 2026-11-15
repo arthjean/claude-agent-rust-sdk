@@ -11,12 +11,19 @@ categories = ["api-bindings", "asynchronous"]
 exclude = ["tests/workspace.rs"]
 
 [features]
+jsonschema = ["dep:jsonschema"]
+macros = ["dep:claude-agent-kit-macros"]
+rmcp = ["dep:rmcp"]
 testing = []
 
 [dependencies]
+claude-agent-kit-macros = { path = "../claude-agent-kit-macros", version = "0.1.0", optional = true }
 futures-core.workspace = true
 futures-util.workspace = true
 indexmap.workspace = true
+jsonschema = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -38,6 +45,7 @@ windows-sys = { workspace = true, features = [
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "test-util", "time"] }
+trybuild.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

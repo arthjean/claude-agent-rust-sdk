@@ -95,7 +95,7 @@ async fn open(options: &ClaudeAgentOptions) -> (MockTransport, ControlSession, I
     let transport = answering_control_requests();
     let (session, inbox) = ControlSession::new(
         SharedTransport::new(transport.clone()),
-        SessionConfig::from_options(options),
+        SessionConfig::from_options(options).unwrap(),
     );
     session.open().await.unwrap();
     (transport, session, inbox)
@@ -168,7 +168,7 @@ async fn closing_the_session_stops_handlers_and_fails_pending_requests() {
     });
     let (session, mut inbox) = ControlSession::new(
         SharedTransport::new(transport.clone()),
-        SessionConfig::from_options(&options),
+        SessionConfig::from_options(&options).unwrap(),
     );
     session.open().await.unwrap();
     transport.push_frame(hook_request("hook-1", "hook_0"));
@@ -242,7 +242,7 @@ async fn close_abandoned_during_the_mirror_flush_is_completed_by_the_next_close(
     let transport = answering_control_requests();
     let (session, _inbox) = ControlSession::with_mirror(
         SharedTransport::new(transport.clone()),
-        SessionConfig::from_options(&ClaudeAgentOptions::default()),
+        SessionConfig::from_options(&ClaudeAgentOptions::default()).unwrap(),
         Arc::clone(&mirror) as Arc<dyn TranscriptMirror>,
     );
     session.open().await.unwrap();
@@ -274,7 +274,7 @@ async fn mirror_frames_go_to_the_attached_mirror_and_results_wait_for_its_flush(
     let transport = answering_control_requests();
     let (session, mut inbox) = ControlSession::with_mirror(
         SharedTransport::new(transport.clone()),
-        SessionConfig::from_options(&ClaudeAgentOptions::default()),
+        SessionConfig::from_options(&ClaudeAgentOptions::default()).unwrap(),
         Arc::clone(&mirror) as Arc<dyn TranscriptMirror>,
     );
     session.open().await.unwrap();

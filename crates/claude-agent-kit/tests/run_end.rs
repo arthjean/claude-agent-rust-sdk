@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use claude_agent_kit::testing::MockTransport;
 use claude_agent_kit::{
-    ClaudeAgentOptions, Error, HookMatcher, InputMessage, McpSdkServerConfig, McpSdkServerInstance,
-    Message, PermissionResult, Prompt, query_with_transport,
+    ClaudeAgentOptions, Error, HookMatcher, InputMessage, Message, PermissionResult, Prompt,
+    create_sdk_mcp_server, query_with_transport,
 };
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
@@ -117,7 +117,7 @@ async fn with_a_callback_stdin_stays_open_until_the_run_has_ended() {
     let in_process_server = ClaudeAgentOptions::builder()
         .mcp_server(
             "greeter",
-            McpSdkServerConfig::new("greeter", McpSdkServerInstance::new(())),
+            create_sdk_mcp_server("greeter", None, []).unwrap(),
         )
         .build()
         .unwrap();

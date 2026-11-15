@@ -519,7 +519,10 @@ pub type McpHttpServerConfig = McpRemoteServerConfig;
 /// Opaque handle to an MCP server that runs inside this process.
 ///
 /// It keeps the server alive and lets the in-process bridge recover its
-/// concrete type.
+/// concrete type. A session serves the handles made by
+/// [`create_sdk_mcp_server`](crate::create_sdk_mcp_server) and, with the
+/// `rmcp` feature, by `McpServerConfig::sdk_rmcp`; it refuses any other
+/// with [`Error::Config`](crate::Error::Config).
 #[derive(Clone)]
 pub struct McpSdkServerInstance(Arc<dyn Any + Send + Sync>);
 
@@ -533,6 +536,10 @@ impl McpSdkServerInstance {
     #[must_use]
     pub fn downcast_ref<T: Any + Send + Sync>(&self) -> Option<&T> {
         self.0.downcast_ref()
+    }
+
+    pub(crate) fn downcast_arc<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        Arc::clone(&self.0).downcast().ok()
     }
 }
 
@@ -589,6 +596,24 @@ impl McpServerConfig {
             Self::Http(_) => "http",
             Self::Sdk(_) => "sdk",
         }
+    }
+
+    /// Creates the configuration of a server built with the `rmcp` crate
+    /// and run inside this process.
+    ///
+    /// Every request the handler implements is served: tools, resources,
+    /// prompts, and the rest. Each query runs the handler over its own
+    /// in-memory connection, started by the first message the CLI sends to
+    /// the server and closed with the query. Requests and notifications the
+    /// server sends to the client (sampling, elicitation, roots, logging,
+    /// progress) are not forwarded: notifications are dropped and requests
+    /// are refused.
+    #[cfg(feature = "rmcp")]
+    pub fn sdk_rmcp(name: impl Into<String>, service: impl rmcp::ServerHandler) -> Self {
+        Self::Sdk(McpSdkServerConfig::new(
+            name,
+            McpSdkServerInstance::new(crate::mcp::rmcp_bridge::RmcpServer::new(service)),
+        ))
     }
 }
 
