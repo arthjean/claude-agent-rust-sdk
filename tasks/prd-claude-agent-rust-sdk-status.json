@@ -25,10 +25,10 @@
     {
       "id": "EP-003",
       "title": "Control protocol, query and client",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 6,
-      "stories_done": 0
+      "stories_done": 6
     },
     {
       "id": "EP-004",
@@ -213,87 +213,87 @@
       "id": "US-012",
       "title": "Message router and control request core",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-004",
         "US-011"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-013",
       "title": "Initialize handshake and hook dispatch",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-012",
         "US-005"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-014",
       "title": "Tool-permission callback",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-012"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-015",
       "title": "Run-end tracking and stdin closing",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-013"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-016",
       "title": "One-shot `query()` and error-result mapping",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-015"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-017",
       "title": "Interactive client and dynamic control",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-015"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-018",
