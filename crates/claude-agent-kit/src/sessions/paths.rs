@@ -98,12 +98,31 @@ pub(crate) fn projects_dir(env: Option<&IndexMap<String, String>>) -> PathBuf {
 }
 
 /// Resolves a directory to its canonical form: the real path, normalized
-/// to NFC. A path that cannot be resolved is made absolute instead.
+/// to NFC.
+///
+/// Like Python's `os.path.realpath`, a path that does not exist yet keeps
+/// its missing tail but has its longest existing ancestor resolved, so
+/// symbolic links (`/var` on macOS) and Windows short names (`RUNNER~1`)
+/// above it give the same key as once it exists. A path with no existing
+/// ancestor is made absolute instead.
 pub(crate) fn canonicalize_path(directory: &Path) -> String {
-    let resolved = std::fs::canonicalize(directory)
-        .map(strip_verbatim_prefix)
-        .or_else(|_| std::path::absolute(directory))
-        .unwrap_or_else(|_| directory.to_path_buf());
+    let absolute = std::path::absolute(directory).unwrap_or_else(|_| directory.to_path_buf());
+    let mut existing = absolute.as_path();
+    let mut missing = Vec::new();
+    let resolved = loop {
+        if let Ok(real) = std::fs::canonicalize(existing) {
+            let mut resolved = strip_verbatim_prefix(real);
+            resolved.extend(missing.iter().rev());
+            break resolved;
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name);
+                existing = parent;
+            }
+            _ => break absolute.clone(),
+        }
+    };
     nfc(&resolved.to_string_lossy())
 }
 
@@ -321,6 +340,28 @@ mod tests {
         let canonical = canonicalize_path(&decomposed);
         assert!(canonical.ends_with("caf\u{e9}-missing-dir"), "{canonical}");
         assert!(project_key_for_directory(Some(&decomposed)).ends_with("caf--missing-dir"));
+    }
+
+    #[test]
+    fn a_missing_path_resolves_its_existing_ancestor() {
+        let root = tempfile::tempdir().unwrap();
+        let real = canonicalize_path(root.path());
+        let missing = root.path().join("not").join("there");
+        assert_eq!(
+            PathBuf::from(canonicalize_path(&missing)),
+            PathBuf::from(&real).join("not").join("there")
+        );
+        #[cfg(unix)]
+        {
+            let target = root.path().join("target");
+            std::fs::create_dir(&target).unwrap();
+            let link = root.path().join("link");
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert_eq!(
+                PathBuf::from(canonicalize_path(&link.join("missing"))),
+                PathBuf::from(&real).join("target").join("missing")
+            );
+        }
     }
 
     #[test]
