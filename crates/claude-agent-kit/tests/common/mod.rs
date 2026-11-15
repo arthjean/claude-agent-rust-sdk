@@ -9,6 +9,9 @@ use claude_agent_kit::{ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, Mes
 use futures_util::StreamExt;
 use serde_json::Value;
 
+#[cfg(feature = "testing")]
+pub mod mock;
+
 pub const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
 pub const STEP_LIMIT: Duration = Duration::from_secs(30);
 

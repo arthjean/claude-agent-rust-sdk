@@ -25,6 +25,7 @@ tempfile = "3"
 thiserror = "2.0"
 tokio = "1.54"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+uuid = { version = "1", features = ["v4"] }
 windows-sys = "0.61"
 
 [workspace.lints.clippy]

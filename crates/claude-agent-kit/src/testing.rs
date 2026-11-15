@@ -38,10 +38,15 @@ type Responder = Arc<dyn Fn(&Value) -> Vec<Value> + Send + Sync>;
 /// Cloning the transport shares its state, so a test keeps one clone to
 /// script and inspect while the code under test owns another.
 ///
+/// Connecting again after a close reopens the transport, so one mock can
+/// serve several sessions in a row.
+///
 /// Scripted frames are yielded by [`read_messages`](Transport::read_messages)
 /// in the order they were pushed, whether they were pushed before or after
 /// the stream was created. The stream ends after a scripted error, after
-/// [`finish`](Self::finish), or when the transport is closed.
+/// [`finish`](Self::finish), when the transport is closed, or, with
+/// [`finish_when_input_ends`](Self::finish_when_input_ends), when the input
+/// is ended.
 #[derive(Clone, Default)]
 pub struct MockTransport {
     state: Arc<Mutex<MockState>>,
@@ -52,6 +57,7 @@ struct MockState {
     written: Vec<String>,
     scripted: VecDeque<Result<Value>>,
     finished: bool,
+    finish_when_input_ends: bool,
     connected: bool,
     closed: bool,
     input_ended: bool,
@@ -115,6 +121,17 @@ impl MockTransport {
         state.wake_reader();
     }
 
+    /// Makes the message stream end once the input is ended, the way the
+    /// CLI exits when its standard input closes.
+    pub fn finish_when_input_ends(&self) {
+        let mut state = self.state();
+        state.finish_when_input_ends = true;
+        if state.input_ended {
+            state.finished = true;
+            state.wake_reader();
+        }
+    }
+
     /// Registers a function called with each written frame that parses as
     /// JSON. The frames it returns are scripted as replies.
     pub fn respond_with(&self, responder: impl Fn(&Value) -> Vec<Value> + Send + Sync + 'static) {
@@ -151,6 +168,12 @@ impl MockTransport {
             .collect()
     }
 
+    /// Number of scripted frames and errors not read yet.
+    #[must_use]
+    pub fn pending_frames(&self) -> usize {
+        self.state().scripted.len()
+    }
+
     /// Number of calls to [`connect`](Transport::connect).
     #[must_use]
     pub fn connect_count(&self) -> usize {
@@ -169,7 +192,8 @@ impl MockTransport {
         self.state().input_ended
     }
 
-    /// Whether [`close`](Transport::close) was called.
+    /// Whether the transport is closed: [`close`](Transport::close) was
+    /// called and [`connect`](Transport::connect) was not called since.
     #[must_use]
     pub fn is_closed(&self) -> bool {
         self.state().closed
@@ -184,6 +208,7 @@ impl Transport for MockTransport {
             return Err(Error::cli_connection(message.clone()));
         }
         state.connected = true;
+        state.closed = false;
         Ok(())
     }
 
@@ -251,7 +276,12 @@ impl Transport for MockTransport {
     }
 
     async fn end_input(&self) -> Result<()> {
-        self.state().input_ended = true;
+        let mut state = self.state();
+        state.input_ended = true;
+        if state.finish_when_input_ends {
+            state.finished = true;
+            state.wake_reader();
+        }
         Ok(())
     }
 }

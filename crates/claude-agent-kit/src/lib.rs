@@ -1,9 +1,31 @@
 //! Rust SDK for building agents on top of the Claude CLI.
 //!
 //! The crate spawns the CLI as a child process and exchanges
-//! newline-delimited JSON with it. This release provides the foundation:
-//! the error model, the typed data model, the message parser, the session
-//! options, and the transport that runs the CLI process.
+//! newline-delimited JSON with it. It has two entry points:
+//!
+//! - [`query()`] runs one prompt and returns the stream of its messages.
+//! - [`ClaudeSdkClient`] keeps a session open for a multi-turn conversation
+//!   and changes settings mid-session.
+//!
+//! Both register the hooks and the tool-permission callback of the options
+//! and answer the CLI when it invokes them.
+//!
+//! ```no_run
+//! use claude_agent_kit::{ClaudeAgentOptions, Message, query};
+//! use futures_util::StreamExt;
+//!
+//! # async fn demo() -> Result<(), claude_agent_kit::Error> {
+//! let mut messages = query("What is 2 + 2?", ClaudeAgentOptions::default());
+//! while let Some(message) = messages.next().await {
+//!     if let Message::Assistant(assistant) = message? {
+//!         println!("{:?}", assistant.content);
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The building blocks are public too:
 //!
 //! - [`Error`] is the single error type of the crate.
 //! - [`SubprocessTransport`] spawns the CLI, frames its output into JSON
@@ -46,17 +68,24 @@
 #![deny(unsafe_code)]
 
 pub mod cli;
+mod client;
+mod control;
 pub mod error;
 pub mod message_parser;
 mod process;
+mod prompt;
+mod query;
 pub mod session_store;
-#[cfg(feature = "testing")]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod transport;
 pub mod types;
 
+pub use client::{ClaudeSdkClient, Messages};
 pub use error::{BoxError, Error, Result, ResultErrorData};
 pub use message_parser::parse_message;
+pub use prompt::{InputMessage, InputStream, Prompt};
+pub use query::{QueryStream, query, query_with_transport};
 pub use session_store::{
     SessionKey, SessionListSubkeysKey, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
     SessionStoreError, SessionStoreFlushMode, SessionStoreListEntry, SessionSummaryEntry,

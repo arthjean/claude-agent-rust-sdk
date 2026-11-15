@@ -243,6 +243,20 @@ impl ClaudeAgentOptions {
         }
         shadowed_warning_message(self.permission_mode.as_ref(), &allowed_tools)
     }
+
+    /// Returns the options a session starts from: the checks of
+    /// [`ClaudeAgentOptionsBuilder::build`] are applied again, so options
+    /// changed after they were built are still consistent.
+    pub(crate) fn for_session(&self) -> Result<Self, Error> {
+        let mut options = self.clone();
+        validate_session_store(&options)?;
+        let forced_by_callback = options.can_use_tool.is_some()
+            && options.permission_prompt_tool_name.as_deref() == Some(STDIO_PERMISSION_PROMPT_TOOL);
+        if !forced_by_callback {
+            configure_can_use_tool(&mut options)?;
+        }
+        Ok(options)
+    }
 }
 
 fn whole_tool_allowed(entry: &str) -> Option<&str> {
@@ -587,7 +601,47 @@ impl ClaudeAgentOptionsBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{PermissionMode, shadowed_warning_message, whole_tool_allowed};
+    use super::{ClaudeAgentOptions, PermissionMode, shadowed_warning_message, whole_tool_allowed};
+    use crate::error::Error;
+    use crate::types::{CanUseTool, PermissionResult};
+
+    fn allow_everything() -> CanUseTool {
+        CanUseTool::new(async |_tool_name, _input, _context| Ok(PermissionResult::allow()))
+    }
+
+    #[test]
+    fn session_options_force_the_stdio_prompt_tool_for_a_callback_set_after_the_build() {
+        let mut options = ClaudeAgentOptions::default();
+        assert_eq!(
+            options.for_session().unwrap().permission_prompt_tool_name,
+            None
+        );
+        options.can_use_tool = Some(allow_everything());
+        assert_eq!(
+            options
+                .for_session()
+                .unwrap()
+                .permission_prompt_tool_name
+                .as_deref(),
+            Some("stdio")
+        );
+
+        let built = ClaudeAgentOptions::builder()
+            .can_use_tool(allow_everything())
+            .build()
+            .unwrap();
+        assert_eq!(
+            built
+                .for_session()
+                .unwrap()
+                .permission_prompt_tool_name
+                .as_deref(),
+            Some("stdio")
+        );
+
+        options.permission_prompt_tool_name = Some("mcp__approver__ask".to_owned());
+        assert!(matches!(options.for_session(), Err(Error::Config { .. })));
+    }
 
     #[test]
     fn whole_tool_allowed_mirrors_the_cli_rule_parser() {

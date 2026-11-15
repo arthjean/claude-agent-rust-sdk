@@ -7,8 +7,9 @@
 //! exits with code 0 when stdin closes.
 //!
 //! The init frame carries `fake_args` (the arguments received), `fake_env`
-//! (the variables a scenario asks to report) and, on Windows,
-//! `fake_console_window` (whether the process has a console window).
+//! (the variables a scenario asks to report), `fake_pid` (the identifier of
+//! the process) and, on Windows, `fake_console_window` (whether the process
+//! has a console window).
 //!
 //! `--version` or `-v` prints the version and exits. A scenario that cannot
 //! be loaded exits with code 64, an expectation that is not met in time
@@ -282,6 +283,7 @@ fn init_frame(scenario: &Scenario, arguments: Vec<String>) -> Value {
         "apiKeySource": "none",
         "fake_args": arguments,
         "fake_env": reported,
+        "fake_pid": std::process::id(),
     });
     if let Some(version) = &scenario.claude_code_version {
         frame["claude_code_version"] = Value::String(version.clone());

@@ -184,6 +184,70 @@ impl Error {
         }
     }
 
+    /// Builds [`Error::Control`].
+    #[must_use]
+    pub fn control(message: impl Into<String>) -> Self {
+        Self::Control {
+            message: message.into(),
+        }
+    }
+
+    /// Builds [`Error::ControlTimeout`].
+    #[must_use]
+    pub fn control_timeout(subtype: impl Into<String>) -> Self {
+        Self::ControlTimeout {
+            subtype: subtype.into(),
+        }
+    }
+
+    /// Copies the error so one failure can be reported to several waiters.
+    /// The JSON error of [`Error::JsonDecode`] is rebuilt from its text.
+    pub(crate) fn duplicate(&self) -> Self {
+        match self {
+            Self::CliNotFound { message } => Self::CliNotFound {
+                message: message.clone(),
+            },
+            Self::CliConnection { message } => Self::CliConnection {
+                message: message.clone(),
+            },
+            Self::Process {
+                message,
+                exit_code,
+                stderr,
+            } => Self::Process {
+                message: message.clone(),
+                exit_code: *exit_code,
+                stderr: stderr.clone(),
+            },
+            Self::ResultError {
+                message,
+                data,
+                exit_code,
+            } => Self::ResultError {
+                message: message.clone(),
+                data: data.clone(),
+                exit_code: *exit_code,
+            },
+            Self::JsonDecode { line, source } => Self::JsonDecode {
+                line: line.clone(),
+                source: <serde_json::Error as serde::de::Error>::custom(source.to_string()),
+            },
+            Self::MessageParse { message, data } => Self::MessageParse {
+                message: message.clone(),
+                data: data.clone(),
+            },
+            Self::ControlTimeout { subtype } => Self::ControlTimeout {
+                subtype: subtype.clone(),
+            },
+            Self::Control { message } => Self::Control {
+                message: message.clone(),
+            },
+            Self::Config { message } => Self::Config {
+                message: message.clone(),
+            },
+        }
+    }
+
     /// Exit code of the CLI process, for the variants that carry one.
     #[must_use]
     pub fn exit_code(&self) -> Option<i32> {

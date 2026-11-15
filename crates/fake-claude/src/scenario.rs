@@ -21,7 +21,8 @@
 //!   [`DEFAULT_VERSION`].
 //! - `init`: whether an init frame is emitted first. Defaults to `true`.
 //!   The frame carries `fake_args`, the arguments the process received,
-//!   and `fake_env`, the value of each variable named in `report_env`.
+//!   `fake_env`, the value of each variable named in `report_env`, and
+//!   `fake_pid`, the identifier of the process.
 //! - `auto_reply`: answers every `control_request` read from stdin with a
 //!   success response, as soon as it arrives. Defaults to `false`.
 //! - `read_stdin`: whether stdin is read at all. Defaults to `true`. When
