@@ -20,6 +20,8 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 indexmap = { version = "2.7", features = ["serde"] }
 jsonschema = { version = "0.61", default-features = false }
 libc = "0.2"
+opentelemetry = { version = "0.33", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace"] }
 proc-macro2 = "1.0"
 quote = "1.0"
 rmcp = { version = "3.10", default-features = false, features = ["server"] }

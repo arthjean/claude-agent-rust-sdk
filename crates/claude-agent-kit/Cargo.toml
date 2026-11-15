@@ -13,6 +13,7 @@ exclude = ["tests/workspace.rs"]
 [features]
 jsonschema = ["dep:jsonschema"]
 macros = ["dep:claude-agent-kit-macros"]
+otel = ["dep:opentelemetry"]
 rmcp = ["dep:rmcp"]
 testing = []
 
@@ -22,6 +23,7 @@ futures-core.workspace = true
 futures-util.workspace = true
 indexmap.workspace = true
 jsonschema = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
 rmcp = { workspace = true, optional = true }
 schemars.workspace = true
 serde.workspace = true
@@ -46,6 +48,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+opentelemetry_sdk.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "test-util", "time"] }
 trybuild.workspace = true
