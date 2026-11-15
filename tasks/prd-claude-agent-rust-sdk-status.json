@@ -49,7 +49,7 @@
     {
       "id": "EP-006",
       "title": "Parity tooling",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "stories_total": 4,
       "stories_done": 0
@@ -472,13 +472,13 @@
       "id": "US-032",
       "title": "Parity ledgers and upstream drift tool",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-001"
       ],
-      "started_at": null,
+      "started_at": "2026-11-15",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -486,14 +486,14 @@
       "id": "US-033",
       "title": "End-to-end suite against the real CLI",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "size": "L",
       "blocked_by": [
         "US-017",
         "US-019"
       ],
-      "started_at": null,
+      "started_at": "2026-11-15",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -501,14 +501,14 @@
       "id": "US-034",
       "title": "Examples and API documentation",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-017",
         "US-019"
       ],
-      "started_at": null,
+      "started_at": "2026-11-15",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -516,13 +516,13 @@
       "id": "US-035",
       "title": "OpenTelemetry trace propagation",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P2",
       "size": "S",
       "blocked_by": [
         "US-009"
       ],
-      "started_at": null,
+      "started_at": "2026-11-15",
       "completed_at": null,
       "reviewed_at": null
     }

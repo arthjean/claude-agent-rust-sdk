@@ -82,7 +82,7 @@ Key findings that informed this PRD:
 
 ### Assumptions (to validate)
 - The CLI names project directories by counting UTF-16 code units, as JavaScript does, while the Python reference counts Unicode code points (`ref: src/claude_agent_sdk/_internal/sessions.py:84-114`). Validated by US-023.
-- The CLI treats `CLAUDE_CODE_ENTRYPOINT=sdk-rs` like the Python and TypeScript labels beyond the handshake. The handshake was probed successfully on 2026-11-14; later behavior is covered by US-033.
+- The CLI treats `CLAUDE_CODE_ENTRYPOINT=sdk-rs` like the Python and TypeScript labels beyond the handshake. The handshake was probed successfully on 2026-11-14; later behavior is covered by US-033. Result of 2026-11-15: validated for the protocol (the 52 end-to-end tests pass with the label), invalidated for billing (see risk 11).
 - A native MCP dispatcher that implements `initialize`, `ping`, `tools/list`, and `tools/call` satisfies the CLI's MCP client. Covered by US-033.
 - The performance targets in Non-Functional Requirements are reachable; they are targets, not measurements.
 - Licensing a port of MIT-licensed code under GPL-3.0-or-later is permitted when the upstream MIT notice is preserved, and the licenses of the planned dependencies (MIT, Apache-2.0) are compatible with GPL version 3. Not legal advice.
@@ -1014,7 +1014,7 @@ Proving parity, checking it against the real CLI, and detecting upstream drift. 
 - [ ] The suite pins the model through `ANTHROPIC_DEFAULT_MODEL`
 - [ ] A test asserts the handshake and one full turn succeed with `CLAUDE_CODE_ENTRYPOINT=sdk-rs`
 - [ ] A test asserts the native MCP dispatcher is accepted by the CLI: the tool appears as `mcp__<key>__<tool>` and a call returns its result
-- [ ] CI runs the suite on Linux after unit tests pass and never on forks
+- [ ] CI runs the suite on Linux after unit tests pass and never on forks. Owner decision of 2026-11-15: the run starts on manual dispatch only, because each run spends purchased API credits (0.78 USD measured)
 - [ ] Given no credentials, when the suite starts, then it fails with a message naming the missing variable instead of skipping
 - [ ] Given a CLI older than 2.0.0, when a session starts, then a warning is logged and the test asserts it
 
@@ -1138,6 +1138,7 @@ Systematic coverage of unhappy paths. Evidence shows earlier defect discovery si
 | 8 | Native MCP dispatcher rejected by a future CLI | Low | Med | `rmcp` bridge as an alternative path (US-020), end-to-end test (US-033) |
 | 9 | Scope of 33 stories stalls before a usable release | Med | Med | Three releases; Release 1 alone is a usable SDK without sessions |
 | 10 | GPL-3.0-or-later keeps the crate out of closed-source applications that are distributed, since Rust links statically | High | Med | Accepted owner decision; the README states the licensing consequence so adopters know before they depend on it (US-034) |
+| 11 | API calls labeled `sdk-rs` are not paid by the monthly API credit of the Max and Ultra plans: measured on 2026-11-15 with CLI 2.1.325, the same `claude -p` call passed with the default label and was refused ("Credit balance is too low") with `CLAUDE_CODE_ENTRYPOINT=sdk-rs` | High | Med | The label stays truthful: the crate does not take the label of an official SDK. The README states the limit (US-034). Open, deferred by the owner (see Open Questions): ask Anthropic whether third-party SDK labels can be covered; fallback to discuss is to set no label and let the CLI name itself |
 
 ## Non-Goals
 
@@ -1187,4 +1188,5 @@ Frame as questions for engineering input, not mandates:
 - License: decided by the owner on 2026-11-14 as GPL-3.0-or-later, with the upstream MIT notice preserved. Remaining question for the owner before the first publish: is keeping closed-source distributed applications out an intended effect, or would a file-level copyleft (MPL-2.0) fit the goal better?
 - Should the child's process-group isolation be the default (US-010), given that it diverges from Python? Engineering to answer during EP-002.
 - Should Release 4 target the TypeScript-only features, or wait for Python to adopt them? Owner to decide after Release 3.
+- To ask Anthropic, deferred by the owner on 2026-11-15 (not the right time yet, but it must be done): are API calls from a third-party SDK label meant to be excluded from the monthly API credit of the Max and Ultra plans, and is there a supported way for a third-party SDK to identify itself? Evidence is in risk 11. The answer decides between keeping `sdk-rs` and setting no label. Draft of the message: "I maintain an open-source Rust SDK that drives the Claude Code CLI headlessly with a Console API key and sets `CLAUDE_CODE_ENTRYPOINT=sdk-rs`. On CLI 2.1.325, the same `claude -p` call is paid by my plan's monthly API credit with the default label, and refused with 'Credit balance is too low' when the label is `sdk-rs`. Is usage from third-party SDK labels meant to be excluded from the monthly API credit, and is there a supported way for a third-party SDK to identify itself?"
 [/PRD]
