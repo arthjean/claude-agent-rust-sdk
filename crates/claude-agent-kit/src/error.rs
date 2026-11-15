@@ -104,6 +104,38 @@ pub enum Error {
         /// Description of the invalid configuration.
         message: String,
     },
+
+    /// A session transcript was not found.
+    #[error("{message}")]
+    SessionNotFound {
+        /// Description naming the session and where it was searched.
+        message: String,
+    },
+
+    /// A filesystem operation on a transcript or a temporary directory
+    /// failed.
+    #[error("{message}: {source}")]
+    Io {
+        /// What was being done.
+        message: String,
+        /// The underlying error.
+        source: std::io::Error,
+    },
+
+    /// A session store failed or took too long.
+    #[error("{message}")]
+    SessionStore {
+        /// Description of the failure, including the text of the store
+        /// error.
+        message: String,
+        /// The error returned by the store, when it returned one.
+        source: Option<BoxError>,
+    },
+
+    /// A session store does not implement an optional method the operation
+    /// needs.
+    #[error(transparent)]
+    StoreUnsupported(#[from] crate::session_store::UnsupportedStoreOperation),
 }
 
 const JSON_DECODE_PREVIEW_CHARS: usize = 100;
@@ -200,6 +232,32 @@ impl Error {
         }
     }
 
+    /// Builds [`Error::SessionNotFound`].
+    #[must_use]
+    pub fn session_not_found(message: impl Into<String>) -> Self {
+        Self::SessionNotFound {
+            message: message.into(),
+        }
+    }
+
+    /// Builds [`Error::Io`].
+    #[must_use]
+    pub fn io(message: impl Into<String>, source: std::io::Error) -> Self {
+        Self::Io {
+            message: message.into(),
+            source,
+        }
+    }
+
+    /// Builds [`Error::SessionStore`] from the error a store returned.
+    #[must_use]
+    pub fn session_store(context: &str, source: BoxError) -> Self {
+        Self::SessionStore {
+            message: format!("{context}: {source}"),
+            source: Some(source),
+        }
+    }
+
     /// Copies the error so one failure can be reported to several waiters.
     /// The JSON error of [`Error::JsonDecode`] is rebuilt from its text.
     pub(crate) fn duplicate(&self) -> Self {
@@ -245,6 +303,20 @@ impl Error {
             Self::Config { message } => Self::Config {
                 message: message.clone(),
             },
+            Self::SessionNotFound { message } => Self::SessionNotFound {
+                message: message.clone(),
+            },
+            Self::Io { message, source } => Self::Io {
+                message: message.clone(),
+                source: std::io::Error::new(source.kind(), source.to_string()),
+            },
+            Self::SessionStore { message, source } => Self::SessionStore {
+                message: message.clone(),
+                source: source
+                    .as_ref()
+                    .map(|source| BoxError::from(source.to_string())),
+            },
+            Self::StoreUnsupported(unsupported) => Self::StoreUnsupported(*unsupported),
         }
     }
 

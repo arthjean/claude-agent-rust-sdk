@@ -13,6 +13,7 @@ use serde_json::Value;
 pub mod mcp;
 #[cfg(feature = "testing")]
 pub mod mock;
+pub mod transcripts;
 
 pub const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
 pub const STEP_LIMIT: Duration = Duration::from_secs(30);

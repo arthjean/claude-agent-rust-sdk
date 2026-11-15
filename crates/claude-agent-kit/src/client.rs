@@ -157,7 +157,8 @@ impl ClaudeSdkClient {
         if let Some(previous) = self.take_connection() {
             previous.close().await;
         }
-        let (session, inbox) = ControlSession::for_options(&self.options, self.transport.clone())?;
+        let (session, inbox) =
+            ControlSession::prepare(&self.options, self.transport.clone()).await?;
         let connection = Arc::new(Connection {
             session,
             inbox: tokio::sync::Mutex::new(inbox),

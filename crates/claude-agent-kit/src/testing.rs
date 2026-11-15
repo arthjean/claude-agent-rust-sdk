@@ -18,6 +18,16 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! [`run_session_store_conformance`] checks that a
+//! [`SessionStore`](crate::SessionStore) adapter honors the storage
+//! contract.
+
+mod conformance;
+
+pub use conformance::{
+    ConformanceFailure, run_session_store_conformance, run_session_store_conformance_skipping,
+};
 
 use std::collections::VecDeque;
 use std::fmt;

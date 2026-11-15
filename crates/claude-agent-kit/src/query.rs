@@ -78,6 +78,10 @@ pub struct QueryStream {
 
 enum Phase {
     Idle(Box<Request>),
+    Preparing {
+        prepare: BoxFuture<'static, Result<(ControlSession, Inbox)>>,
+        prompt: Prompt,
+    },
     Starting {
         start: BoxFuture<'static, Result<()>>,
         inbox: Inbox,
@@ -155,17 +159,30 @@ impl Stream for QueryStream {
                         transport,
                     } = *request;
                     this.runtime = Handle::try_current().ok();
-                    match ControlSession::for_options(&options, transport) {
-                        Ok((session, inbox)) => {
-                            this.session = Some(session.clone());
-                            this.phase = Phase::Starting {
-                                start: Box::pin(start(session, prompt)),
-                                inbox,
-                            };
-                        }
-                        Err(error) => return Poll::Ready(Some(Err(error))),
-                    }
+                    this.phase = Phase::Preparing {
+                        prepare: Box::pin(async move {
+                            ControlSession::prepare(&options, transport).await
+                        }),
+                        prompt,
+                    };
                 }
+                Phase::Preparing {
+                    mut prepare,
+                    prompt,
+                } => match prepare.as_mut().poll(context) {
+                    Poll::Pending => {
+                        this.phase = Phase::Preparing { prepare, prompt };
+                        return Poll::Pending;
+                    }
+                    Poll::Ready(Ok((session, inbox))) => {
+                        this.session = Some(session.clone());
+                        this.phase = Phase::Starting {
+                            start: Box::pin(start(session, prompt)),
+                            inbox,
+                        };
+                    }
+                    Poll::Ready(Err(error)) => return Poll::Ready(Some(Err(error))),
+                },
                 Phase::Starting { mut start, inbox } => match start.as_mut().poll(context) {
                     Poll::Pending => {
                         this.phase = Phase::Starting { start, inbox };
@@ -217,6 +234,7 @@ impl fmt::Debug for QueryStream {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let phase = match self.phase {
             Phase::Idle(_) => "idle",
+            Phase::Preparing { .. } => "preparing",
             Phase::Starting { .. } => "starting",
             Phase::Running(_) => "running",
             Phase::Closing(_) => "closing",
