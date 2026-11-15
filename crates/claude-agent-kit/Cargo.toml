@@ -8,6 +8,7 @@ license.workspace = true
 authors.workspace = true
 keywords = ["claude", "agent", "sdk", "anthropic", "ai"]
 categories = ["api-bindings", "asynchronous"]
+readme = "../../README.md"
 exclude = ["tests/workspace.rs"]
 
 [features]
