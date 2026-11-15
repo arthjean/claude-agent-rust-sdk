@@ -1,74 +1,40 @@
 //! Maintenance tasks for the workspace, run as `cargo xtask <command>`.
 
-use std::ffi::OsString;
-use std::process::{Command, ExitCode};
+mod gates;
+mod parity;
 
-struct Gate {
-    name: &'static str,
-    args: &'static [&'static str],
-    env: &'static [(&'static str, &'static str)],
-}
+use std::process::ExitCode;
 
-const GATES: &[Gate] = &[
-    Gate {
-        name: "format",
-        args: &["fmt", "--all", "--check"],
-        env: &[],
-    },
-    Gate {
-        name: "lint",
-        args: &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--no-deps",
-        ],
-        env: &[],
-    },
-    Gate {
-        name: "test",
-        args: &["test", "--workspace", "--all-features"],
-        env: &[],
-    },
-    Gate {
-        name: "doc",
-        args: &["doc", "--workspace", "--all-features", "--no-deps"],
-        env: &[("RUSTDOCFLAGS", "-D warnings")],
-    },
-];
+const USAGE: &str = "\
+usage: cargo xtask <command>
+
+  gates                 run the format, lint, test, and documentation checks
+  parity-check          fail when a ledger misses an upstream export or test,
+                        or names a Rust path that does not exist
+                        (--deny-pending also fails on pending entries)
+  parity-report         print the share of upstream exports and tests
+                        implemented, excluded, and pending
+  parity-tests          print the Rust test paths parity/tests.toml may name
+  migration-table       regenerate the table of docs/migration.md from
+                        parity/surface.toml (--check only compares)
+  upstream-diff <tag>   list what upstream changed between the pinned commit
+                        and <tag>
+  e2e [test arguments]  run the end-to-end suite against the real CLI";
 
 fn main() -> ExitCode {
-    match std::env::args().nth(1).as_deref() {
-        Some("gates") => run_gates(),
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let rest = arguments.get(1..).unwrap_or_default();
+    match arguments.first().map(String::as_str) {
+        Some("gates") => gates::run(),
+        Some("parity-check") => parity::run_check(rest),
+        Some("parity-report") => parity::run_report(rest),
+        Some("parity-tests") => parity::run_tests(rest),
+        Some("migration-table") => parity::run_migration(rest),
+        Some("upstream-diff") => parity::run_diff(rest),
+        Some("e2e") => gates::run_e2e(rest),
         _ => {
-            eprintln!("usage: cargo xtask gates");
+            eprintln!("{USAGE}");
             ExitCode::from(2)
         }
     }
-}
-
-fn run_gates() -> ExitCode {
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
-    for gate in GATES {
-        eprintln!("xtask: gate `{}`: cargo {}", gate.name, gate.args.join(" "));
-        let mut command = Command::new(&cargo);
-        command.args(gate.args);
-        for (key, value) in gate.env {
-            command.env(key, value);
-        }
-        match command.status() {
-            Ok(status) if status.success() => {}
-            Ok(status) => {
-                eprintln!("xtask: gate `{}` failed with {status}", gate.name);
-                return ExitCode::FAILURE;
-            }
-            Err(error) => {
-                eprintln!("xtask: gate `{}` could not start: {error}", gate.name);
-                return ExitCode::FAILURE;
-            }
-        }
-    }
-    eprintln!("xtask: all gates passed");
-    ExitCode::SUCCESS
 }

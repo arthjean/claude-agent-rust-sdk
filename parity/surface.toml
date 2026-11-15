@@ -1,0 +1,168 @@
+# Surface ledger: every name of the upstream `__all__`
+# (upstream/claude-agent-sdk-python/src/claude_agent_sdk/__init__.py) with
+# the Rust path that replaces it, or the key of an `[exclusions]` reason.
+#
+# `cargo xtask parity-check` fails when upstream exports a name this file
+# does not list, and when a Rust path listed here does not compile.
+# `cargo xtask migration-table` renders this file into docs/migration.md.
+
+[names]
+query = { rust = "claude_agent_kit::query", note = "Returns a `Stream` of `Result<Message, Error>`." }
+__version__ = { rust = "claude_agent_kit::VERSION" }
+Transport = { rust = "claude_agent_kit::Transport", note = "A trait; `SubprocessTransport` is the implementation that runs the CLI." }
+ClaudeSDKClient = { rust = "claude_agent_kit::ClaudeSdkClient" }
+PermissionMode = { rust = "claude_agent_kit::PermissionMode" }
+EffortLevel = { rust = "claude_agent_kit::EffortLevel" }
+McpServerConfig = { rust = "claude_agent_kit::McpServerConfig" }
+McpSdkServerConfig = { rust = "claude_agent_kit::McpSdkServerConfig" }
+McpServerStatus = { rust = "claude_agent_kit::McpServerStatus" }
+McpServerStatusConfig = { rust = "claude_agent_kit::McpServerStatusConfig" }
+McpServerConnectionStatus = { rust = "claude_agent_kit::McpServerConnectionStatus" }
+McpServerInfo = { rust = "claude_agent_kit::McpServerInfo" }
+McpStatusResponse = { rust = "claude_agent_kit::McpStatusResponse" }
+McpToolAnnotations = { rust = "claude_agent_kit::McpToolAnnotations" }
+McpToolInfo = { rust = "claude_agent_kit::McpToolInfo" }
+UserMessage = { rust = "claude_agent_kit::UserMessage" }
+AssistantMessage = { rust = "claude_agent_kit::AssistantMessage" }
+SystemMessage = { rust = "claude_agent_kit::SystemMessage" }
+SystemInitData = { rust = "claude_agent_kit::SystemInitData" }
+SystemInitMcpServer = { rust = "claude_agent_kit::SystemInitMcpServer" }
+SystemInitPlugin = { rust = "claude_agent_kit::SystemInitPlugin" }
+SystemInitPluginError = { rust = "claude_agent_kit::SystemInitPluginError" }
+FastModeState = { rust = "claude_agent_kit::FastModeState" }
+FastModeDisabledReason = { rust = "claude_agent_kit::FastModeDisabledReason" }
+TaskStartedMessage = { rust = "claude_agent_kit::TaskStartedMessage" }
+TaskProgressMessage = { rust = "claude_agent_kit::TaskProgressMessage" }
+TaskUpdatedMessage = { rust = "claude_agent_kit::TaskUpdatedMessage" }
+TaskNotificationMessage = { rust = "claude_agent_kit::TaskNotificationMessage" }
+TaskNotificationStatus = { rust = "claude_agent_kit::TaskNotificationStatus" }
+TaskUpdatedStatus = { rust = "claude_agent_kit::TaskUpdatedStatus" }
+TERMINAL_TASK_STATUSES = { rust = "claude_agent_kit::TERMINAL_TASK_STATUSES" }
+TaskUsage = { rust = "claude_agent_kit::TaskUsage" }
+ResultMessage = { rust = "claude_agent_kit::ResultMessage" }
+ModelUsage = { rust = "claude_agent_kit::ModelUsage" }
+DeferredToolUse = { rust = "claude_agent_kit::DeferredToolUse" }
+RateLimitEvent = { rust = "claude_agent_kit::RateLimitEvent" }
+RateLimitInfo = { rust = "claude_agent_kit::RateLimitInfo" }
+RateLimitStatus = { rust = "claude_agent_kit::RateLimitStatus" }
+RateLimitType = { rust = "claude_agent_kit::RateLimitType" }
+StreamEvent = { rust = "claude_agent_kit::StreamEvent" }
+ConversationResetMessage = { rust = "claude_agent_kit::ConversationResetMessage" }
+Message = { rust = "claude_agent_kit::Message" }
+MessageOrigin = { rust = "claude_agent_kit::MessageOrigin" }
+MessageOriginKind = { rust = "claude_agent_kit::MessageOriginKind" }
+TaskNotificationOriginSubkind = { rust = "claude_agent_kit::TaskNotificationOriginSubkind" }
+ClaudeAgentOptions = { rust = "claude_agent_kit::ClaudeAgentOptions" }
+TaskBudget = { rust = "claude_agent_kit::TaskBudget" }
+TextBlock = { rust = "claude_agent_kit::TextBlock" }
+ThinkingBlock = { rust = "claude_agent_kit::ThinkingBlock" }
+ThinkingConfig = { rust = "claude_agent_kit::ThinkingConfig" }
+ThinkingConfigAdaptive = { rust = "claude_agent_kit::ThinkingConfig::Adaptive", note = "Variant of `ThinkingConfig`." }
+ThinkingConfigEnabled = { rust = "claude_agent_kit::ThinkingConfig::Enabled", note = "Variant of `ThinkingConfig`." }
+ThinkingConfigDisabled = { rust = "claude_agent_kit::ThinkingConfig::Disabled", note = "Variant of `ThinkingConfig`." }
+ToolUseBlock = { rust = "claude_agent_kit::ToolUseBlock" }
+ToolResultBlock = { rust = "claude_agent_kit::ToolResultBlock" }
+ServerToolName = { rust = "claude_agent_kit::ServerToolName" }
+ServerToolUseBlock = { rust = "claude_agent_kit::ServerToolUseBlock" }
+ServerToolResultBlock = { rust = "claude_agent_kit::ServerToolResultBlock" }
+ContentBlock = { rust = "claude_agent_kit::ContentBlock" }
+ContextUsageCategory = { rust = "claude_agent_kit::ContextUsageCategory" }
+ContextUsageResponse = { rust = "claude_agent_kit::ContextUsageResponse" }
+CanUseTool = { rust = "claude_agent_kit::CanUseTool" }
+CanUseToolShadowedWarning = { rust = "claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning", note = "Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect." }
+ToolPermissionContext = { rust = "claude_agent_kit::ToolPermissionContext" }
+PermissionResult = { rust = "claude_agent_kit::PermissionResult" }
+PermissionResultAllow = { rust = "claude_agent_kit::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
+PermissionResultDeny = { rust = "claude_agent_kit::PermissionResult::Deny", note = "Variant of `PermissionResult`." }
+PermissionUpdate = { rust = "claude_agent_kit::PermissionUpdate" }
+HookCallback = { rust = "claude_agent_kit::HookCallback" }
+HookContext = { rust = "claude_agent_kit::HookContext" }
+HookInput = { rust = "claude_agent_kit::HookInput" }
+HookEventMessage = { rust = "claude_agent_kit::HookEventMessage" }
+BaseHookInput = { rust = "claude_agent_kit::HookInputBase" }
+PreToolUseHookInput = { rust = "claude_agent_kit::PreToolUseHookInput" }
+PostToolUseHookInput = { rust = "claude_agent_kit::PostToolUseHookInput" }
+PostToolUseFailureHookInput = { rust = "claude_agent_kit::PostToolUseFailureHookInput" }
+PostToolUseFailureHookSpecificOutput = { rust = "claude_agent_kit::PostToolUseFailureHookSpecificOutput" }
+UserPromptSubmitHookInput = { rust = "claude_agent_kit::UserPromptSubmitHookInput" }
+StopHookInput = { rust = "claude_agent_kit::StopHookInput" }
+SubagentStopHookInput = { rust = "claude_agent_kit::SubagentStopHookInput" }
+PreCompactHookInput = { rust = "claude_agent_kit::PreCompactHookInput" }
+NotificationHookInput = { rust = "claude_agent_kit::NotificationHookInput" }
+SubagentStartHookInput = { rust = "claude_agent_kit::SubagentStartHookInput" }
+PermissionRequestHookInput = { rust = "claude_agent_kit::PermissionRequestHookInput" }
+NotificationHookSpecificOutput = { rust = "claude_agent_kit::NotificationHookSpecificOutput" }
+SubagentStartHookSpecificOutput = { rust = "claude_agent_kit::SubagentStartHookSpecificOutput" }
+PermissionRequestHookSpecificOutput = { rust = "claude_agent_kit::PermissionRequestHookSpecificOutput" }
+PreToolUseHookSpecificOutput = { rust = "claude_agent_kit::PreToolUseHookSpecificOutput" }
+PostToolUseHookSpecificOutput = { rust = "claude_agent_kit::PostToolUseHookSpecificOutput" }
+UserPromptSubmitHookSpecificOutput = { rust = "claude_agent_kit::UserPromptSubmitHookSpecificOutput" }
+SessionStartHookSpecificOutput = { rust = "claude_agent_kit::SessionStartHookSpecificOutput" }
+HookEffort = { rust = "claude_agent_kit::HookEffort" }
+BackgroundTaskSummary = { rust = "claude_agent_kit::BackgroundTaskSummary" }
+SessionCronSummary = { rust = "claude_agent_kit::SessionCronSummary" }
+UserPromptExpansionHookSpecificOutput = { rust = "claude_agent_kit::UserPromptExpansionHookSpecificOutput" }
+PostToolBatchHookSpecificOutput = { rust = "claude_agent_kit::PostToolBatchHookSpecificOutput" }
+StopHookSpecificOutput = { rust = "claude_agent_kit::StopHookSpecificOutput" }
+SubagentStopHookSpecificOutput = { rust = "claude_agent_kit::SubagentStopHookSpecificOutput" }
+PermissionDeniedHookSpecificOutput = { rust = "claude_agent_kit::PermissionDeniedHookSpecificOutput" }
+PreModelSwitchHookSpecificOutput = { rust = "claude_agent_kit::PreModelSwitchHookSpecificOutput" }
+PostModelSwitchHookSpecificOutput = { rust = "claude_agent_kit::PostModelSwitchHookSpecificOutput" }
+ElicitationHookSpecificOutput = { rust = "claude_agent_kit::ElicitationHookSpecificOutput" }
+ElicitationResultHookSpecificOutput = { rust = "claude_agent_kit::ElicitationResultHookSpecificOutput" }
+CwdChangedHookSpecificOutput = { rust = "claude_agent_kit::CwdChangedHookSpecificOutput" }
+FileChangedHookSpecificOutput = { rust = "claude_agent_kit::FileChangedHookSpecificOutput" }
+WorktreeCreateHookSpecificOutput = { rust = "claude_agent_kit::WorktreeCreateHookSpecificOutput" }
+MessageDisplayHookSpecificOutput = { rust = "claude_agent_kit::MessageDisplayHookSpecificOutput" }
+HookJSONOutput = { rust = "claude_agent_kit::HookOutput" }
+HookMatcher = { rust = "claude_agent_kit::HookMatcher" }
+AgentDefinition = { rust = "claude_agent_kit::AgentDefinition" }
+SettingSource = { rust = "claude_agent_kit::SettingSource" }
+SdkPluginConfig = { rust = "claude_agent_kit::SdkPluginConfig" }
+list_sessions = { rust = "claude_agent_kit::list_sessions" }
+get_session_info = { rust = "claude_agent_kit::get_session_info" }
+get_session_messages = { rust = "claude_agent_kit::get_session_messages" }
+list_subagents = { rust = "claude_agent_kit::list_subagents" }
+get_subagent_messages = { rust = "claude_agent_kit::get_subagent_messages" }
+SDKSessionInfo = { rust = "claude_agent_kit::SdkSessionInfo" }
+SessionMessage = { rust = "claude_agent_kit::SessionMessage" }
+SessionKey = { rust = "claude_agent_kit::SessionKey" }
+SessionStore = { rust = "claude_agent_kit::SessionStore" }
+SessionStoreEntry = { rust = "claude_agent_kit::SessionStoreEntry" }
+SessionStoreFlushMode = { rust = "claude_agent_kit::SessionStoreFlushMode" }
+SessionStoreListEntry = { rust = "claude_agent_kit::SessionStoreListEntry" }
+SessionSummaryEntry = { rust = "claude_agent_kit::SessionSummaryEntry" }
+SessionListSubkeysKey = { rust = "claude_agent_kit::SessionListSubkeysKey" }
+InMemorySessionStore = { rust = "claude_agent_kit::InMemorySessionStore" }
+fold_session_summary = { rust = "claude_agent_kit::fold_session_summary" }
+MirrorErrorMessage = { rust = "claude_agent_kit::MirrorErrorMessage" }
+project_key_for_directory = { rust = "claude_agent_kit::project_key_for_directory" }
+import_session_to_store = { rust = "claude_agent_kit::import_session_to_store" }
+list_sessions_from_store = { rust = "claude_agent_kit::list_sessions_from_store" }
+get_session_info_from_store = { rust = "claude_agent_kit::get_session_info_from_store" }
+get_session_messages_from_store = { rust = "claude_agent_kit::get_session_messages_from_store" }
+list_subagents_from_store = { rust = "claude_agent_kit::list_subagents_from_store" }
+get_subagent_messages_from_store = { rust = "claude_agent_kit::get_subagent_messages_from_store" }
+rename_session = { rust = "claude_agent_kit::rename_session" }
+tag_session = { rust = "claude_agent_kit::tag_session" }
+delete_session = { rust = "claude_agent_kit::delete_session" }
+fork_session = { rust = "claude_agent_kit::fork_session" }
+ForkSessionResult = { rust = "claude_agent_kit::ForkSessionResult" }
+rename_session_via_store = { rust = "claude_agent_kit::rename_session_via_store" }
+tag_session_via_store = { rust = "claude_agent_kit::tag_session_via_store" }
+delete_session_via_store = { rust = "claude_agent_kit::delete_session_via_store" }
+fork_session_via_store = { rust = "claude_agent_kit::fork_session_via_store" }
+SdkBeta = { rust = "claude_agent_kit::SdkBeta" }
+SandboxSettings = { rust = "claude_agent_kit::SandboxSettings" }
+SandboxNetworkConfig = { rust = "claude_agent_kit::SandboxNetworkConfig" }
+SandboxIgnoreViolations = { rust = "claude_agent_kit::SandboxIgnoreViolations" }
+create_sdk_mcp_server = { rust = "claude_agent_kit::create_sdk_mcp_server" }
+tool = { rust = "claude_agent_kit::tool", note = "Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature." }
+SdkMcpTool = { rust = "claude_agent_kit::SdkMcpTool" }
+ToolAnnotations = { rust = "claude_agent_kit::ToolAnnotations" }
+ClaudeSDKError = { rust = "claude_agent_kit::Error", note = "One enum holds every error; match on its variants." }
+CLIConnectionError = { rust = "claude_agent_kit::Error::CliConnection", note = "Variant of `Error`." }
+CLINotFoundError = { rust = "claude_agent_kit::Error::CliNotFound", note = "Variant of `Error`." }
+ProcessError = { rust = "claude_agent_kit::Error::Process", note = "Variant of `Error`." }
+ResultError = { rust = "claude_agent_kit::Error::ResultError", note = "Variant of `Error`; its fields are in `ResultErrorData`." }
+CLIJSONDecodeError = { rust = "claude_agent_kit::Error::JsonDecode", note = "Variant of `Error`." }
