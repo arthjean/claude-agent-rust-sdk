@@ -20,7 +20,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{Instant, timeout, timeout_at};
 
 use super::command::build_arguments;
-use super::environment::build_environment;
+use super::environment::{active_trace_context, build_environment};
 use super::framing::{LineFramer, oversize_error, parse_stdout_line};
 use super::{MessageStream, Transport};
 use crate::cli::{Platform, find_cli, reject_windows_batch_cli};
@@ -187,8 +187,12 @@ impl SubprocessTransport {
         };
         reject_windows_batch_cli(&cli_path, Platform::current())?;
         let arguments = self.command_arguments()?;
-        let environment =
-            build_environment(&self.options, std::env::vars_os(), Platform::current());
+        let environment = build_environment(
+            &self.options,
+            std::env::vars_os(),
+            Platform::current(),
+            &active_trace_context(),
+        );
 
         let mut command = Command::new(&cli_path);
         command

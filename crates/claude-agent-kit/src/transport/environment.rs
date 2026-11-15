@@ -14,6 +14,34 @@ pub(crate) const SDK_READS_SESSION_STATE_VARIABLE: &str = "CLAUDE_CODE_SDK_READS
 pub(crate) const FILE_CHECKPOINTING_VARIABLE: &str = "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING";
 const NESTED_SESSION_VARIABLE: &str = "CLAUDECODE";
 const WORKING_DIRECTORY_VARIABLE: &str = "PWD";
+const TRACE_PARENT_KEY: &str = "traceparent";
+const INHERITED_TRACE_VARIABLES: [&str; 2] = ["TRACEPARENT", "TRACESTATE"];
+
+/// Keys and values the OpenTelemetry propagator writes for the context
+/// active on the calling thread. Empty without the `otel` feature, and when
+/// the propagator panics.
+#[cfg(feature = "otel")]
+pub(crate) fn active_trace_context() -> Vec<(String, String)> {
+    let injected = std::panic::catch_unwind(|| {
+        let mut carrier = std::collections::HashMap::new();
+        opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.inject_context(&opentelemetry::Context::current(), &mut carrier);
+        });
+        carrier
+    });
+    match injected {
+        Ok(carrier) => carrier.into_iter().collect(),
+        Err(_) => {
+            tracing::debug!("OTEL trace context injection failed");
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(not(feature = "otel"))]
+pub(crate) fn active_trace_context() -> Vec<(String, String)> {
+    Vec::new()
+}
 
 #[derive(Debug)]
 pub(crate) struct Environment {
@@ -71,6 +99,7 @@ pub(crate) fn build_environment(
     options: &ClaudeAgentOptions,
     inherited: impl IntoIterator<Item = (OsString, OsString)>,
     platform: Platform,
+    trace_context: &[(String, String)],
 ) -> Environment {
     let mut environment = Environment::new(platform);
     for (name, value) in inherited {
@@ -86,6 +115,20 @@ pub(crate) fn build_environment(
     environment.remove(DERIVED_CLIENT_APP_VARIABLE);
     if let Some(client_app) = &options.client_app {
         environment.set(EXPLICIT_CLIENT_APP_VARIABLE, client_app);
+    }
+
+    if trace_context.iter().any(|(key, _)| key == TRACE_PARENT_KEY) {
+        for name in INHERITED_TRACE_VARIABLES {
+            if !options.env.contains_key(name) {
+                environment.remove(name);
+            }
+        }
+        for (key, value) in trace_context {
+            let name = key.to_uppercase();
+            if !options.env.contains_key(&name) {
+                environment.set(name, value);
+            }
+        }
     }
 
     if !environment.contains_in_any_case(SDK_READS_SESSION_STATE_VARIABLE) {
@@ -129,10 +172,23 @@ mod tests {
         ambient: &[(&str, &str)],
         platform: Platform,
     ) -> Vec<(String, String)> {
+        build_traced(options, ambient, platform, &[])
+    }
+
+    fn build_traced(
+        options: &ClaudeAgentOptions,
+        ambient: &[(&str, &str)],
+        platform: Platform,
+        trace_context: &[(&str, &str)],
+    ) -> Vec<(String, String)> {
         let inherited = ambient
             .iter()
             .map(|(name, value)| (OsString::from(name), OsString::from(value)));
-        build_environment(options, inherited, platform)
+        let trace_context: Vec<(String, String)> = trace_context
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect();
+        build_environment(options, inherited, platform, &trace_context)
             .into_entries()
             .into_iter()
             .map(|(name, value)| {
@@ -265,5 +321,144 @@ mod tests {
         assert_eq!(get(&entries, "path"), Some("C:\\override"));
         assert_eq!(get(&entries, "Path"), None);
         assert_eq!(get(&entries, "ClaudeCode"), None);
+    }
+
+    const TRACE_PARENT: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    #[test]
+    fn trace_context_is_written_with_upper_case_names() {
+        let options = ClaudeAgentOptions::default();
+        let entries = build_traced(
+            &options,
+            &[],
+            Platform::Unix,
+            &[
+                ("traceparent", TRACE_PARENT),
+                ("tracestate", "vendor=value"),
+                ("baggage", "tenant=acme"),
+            ],
+        );
+        assert_eq!(get(&entries, "TRACEPARENT"), Some(TRACE_PARENT));
+        assert_eq!(get(&entries, "TRACESTATE"), Some("vendor=value"));
+        assert_eq!(get(&entries, "BAGGAGE"), Some("tenant=acme"));
+        assert_eq!(get(&entries, "traceparent"), None);
+    }
+
+    #[test]
+    fn inherited_trace_variables_are_removed_before_the_fresh_values() {
+        let options = ClaudeAgentOptions::default();
+        let entries = build_traced(
+            &options,
+            &[
+                ("TRACEPARENT", "00-stale-stale-00"),
+                ("TRACESTATE", "stale=1"),
+            ],
+            Platform::Unix,
+            &[("traceparent", TRACE_PARENT)],
+        );
+        assert_eq!(get(&entries, "TRACEPARENT"), Some(TRACE_PARENT));
+        assert_eq!(get(&entries, "TRACESTATE"), None);
+    }
+
+    #[test]
+    fn trace_variables_of_the_options_are_never_overwritten() {
+        let options = with_variables(&[
+            ("TRACEPARENT", "00-explicit-explicit-01"),
+            ("BAGGAGE", "explicit=1"),
+        ])
+        .build()
+        .unwrap();
+        let entries = build_traced(
+            &options,
+            &[("TRACESTATE", "stale=1")],
+            Platform::Unix,
+            &[
+                ("traceparent", TRACE_PARENT),
+                ("tracestate", "vendor=value"),
+                ("baggage", "tenant=acme"),
+            ],
+        );
+        assert_eq!(
+            get(&entries, "TRACEPARENT"),
+            Some("00-explicit-explicit-01")
+        );
+        assert_eq!(get(&entries, "TRACESTATE"), Some("vendor=value"));
+        assert_eq!(get(&entries, "BAGGAGE"), Some("explicit=1"));
+
+        let options = with_variables(&[("TRACESTATE", "explicit=1")])
+            .build()
+            .unwrap();
+        let entries = build_traced(
+            &options,
+            &[("TRACESTATE", "stale=1")],
+            Platform::Unix,
+            &[("traceparent", TRACE_PARENT)],
+        );
+        assert_eq!(get(&entries, "TRACESTATE"), Some("explicit=1"));
+    }
+
+    #[test]
+    fn without_a_trace_parent_inherited_trace_variables_are_left_untouched() {
+        let options = ClaudeAgentOptions::default();
+        let ambient = [
+            ("TRACEPARENT", "00-inherited-inherited-01"),
+            ("TRACESTATE", "inherited=1"),
+        ];
+        let baggage_only = [("baggage", "tenant=acme")];
+        for trace_context in [&[][..], &baggage_only[..]] {
+            let entries = build_traced(&options, &ambient, Platform::Unix, trace_context);
+            assert_eq!(
+                get(&entries, "TRACEPARENT"),
+                Some("00-inherited-inherited-01")
+            );
+            assert_eq!(get(&entries, "TRACESTATE"), Some("inherited=1"));
+            assert_eq!(get(&entries, "BAGGAGE"), None);
+        }
+    }
+
+    #[test]
+    fn the_client_app_option_wins_over_the_variable_set_in_the_options() {
+        let options = with_variables(&[(EXPLICIT_CLIENT_APP_VARIABLE, "from-env/1.0")])
+            .client_app("from-option/2.0")
+            .build()
+            .unwrap();
+        let entries = build(
+            &options,
+            &[(DERIVED_CLIENT_APP_VARIABLE, "outer-app")],
+            Platform::Unix,
+        );
+        assert_eq!(
+            get(&entries, EXPLICIT_CLIENT_APP_VARIABLE),
+            Some("from-option/2.0")
+        );
+        assert_eq!(get(&entries, DERIVED_CLIENT_APP_VARIABLE), None);
+    }
+
+    #[test]
+    fn a_client_app_variable_set_in_the_options_reaches_the_cli_unchanged() {
+        let options = with_variables(&[(EXPLICIT_CLIENT_APP_VARIABLE, "from-env/1.0")])
+            .build()
+            .unwrap();
+        let entries = build(&options, &[], Platform::Unix);
+        assert_eq!(
+            get(&entries, EXPLICIT_CLIENT_APP_VARIABLE),
+            Some("from-env/1.0")
+        );
+        assert_eq!(get(&entries, DERIVED_CLIENT_APP_VARIABLE), None);
+    }
+
+    #[test]
+    fn an_empty_client_app_option_is_sent_as_an_empty_value() {
+        let options = ClaudeAgentOptions::builder()
+            .client_app("")
+            .build()
+            .unwrap();
+        let entries = build(
+            &options,
+            &[(EXPLICIT_CLIENT_APP_VARIABLE, "ambient-app")],
+            Platform::Unix,
+        );
+        assert_eq!(get(&entries, EXPLICIT_CLIENT_APP_VARIABLE), Some(""));
+        assert_eq!(get(&entries, DERIVED_CLIENT_APP_VARIABLE), None);
     }
 }
