@@ -121,6 +121,55 @@ pub fn tests(root: &Path) -> Result<BTreeSet<String>, String> {
     Ok(tests)
 }
 
+fn declares(source: &Path, declaration: &str) -> bool {
+    std::fs::read_to_string(source).is_ok_and(|text| text.contains(declaration))
+}
+
+fn any_source_declares(directory: &Path, declaration: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            any_source_declares(&path, declaration)
+        } else {
+            path.extension().is_some_and(|extension| extension == "rs")
+                && declares(&path, declaration)
+        }
+    })
+}
+
+/// Whether the sources of the target a test path names declare a function
+/// with the name of the test.
+///
+/// This stands in for [`tests`] when the test is compiled on another
+/// platform only, so the toolchain of this host cannot list it. A test at
+/// the root of its target is looked up in the source file of the target; a
+/// test inside modules is looked up in every source file under the
+/// directory of that file.
+pub fn test_is_declared(root: &Path, path: &str) -> bool {
+    let mut segments = path.split("::");
+    let Some(target) = segments.next() else {
+        return false;
+    };
+    let modules: Vec<&str> = segments.collect();
+    let Some(name) = modules.last() else {
+        return false;
+    };
+    let source = root.join(target);
+    if !source.is_file() {
+        return false;
+    }
+    let declaration = format!("fn {name}(");
+    if modules.len() == 1 {
+        return declares(&source, &declaration);
+    }
+    source
+        .parent()
+        .is_some_and(|directory| any_source_declares(directory, &declaration))
+}
+
 fn metadata(root: &Path) -> Result<Value, String> {
     let output = Command::new(tool("CARGO", "cargo"))
         .current_dir(root)
@@ -309,4 +358,71 @@ pub fn unresolved_paths(root: &Path, paths: &[&str]) -> Result<Vec<usize>, Strin
         .into_iter()
         .map(|position| not_imported[position])
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, text: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn a_test_of_another_platform_is_looked_up_in_the_sources_of_its_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        write(
+            &root.join("tests/transport.rs"),
+            "#[cfg(windows)]
+#[test]
+fn refused_on_windows() {}
+",
+        );
+        write(
+            &root.join("tests/other.rs"),
+            "#[test]
+fn only_in_the_other_target() {}
+",
+        );
+        write(
+            &root.join("src/lib.rs"),
+            "mod cli;
+",
+        );
+        write(
+            &root.join("src/cli/mod.rs"),
+            "mod tests {
+    #[test]
+    fn batch_scripts() {}
+}
+",
+        );
+
+        assert!(test_is_declared(
+            root,
+            "tests/transport.rs::refused_on_windows"
+        ));
+        assert!(test_is_declared(
+            root,
+            "src/lib.rs::cli::tests::batch_scripts"
+        ));
+
+        assert!(!test_is_declared(root, "tests/transport.rs::on_windows"));
+        assert!(!test_is_declared(root, "tests/transport.rs::no_such_test"));
+        assert!(!test_is_declared(
+            root,
+            "tests/transport.rs::only_in_the_other_target"
+        ));
+        assert!(!test_is_declared(
+            root,
+            "tests/missing.rs::refused_on_windows"
+        ));
+        assert!(!test_is_declared(
+            root,
+            "src/lib.rs::cli::tests::no_such_test"
+        ));
+        assert!(!test_is_declared(root, "tests/transport.rs"));
+    }
 }

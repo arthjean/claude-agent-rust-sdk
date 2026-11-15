@@ -210,6 +210,35 @@ fn a_rust_test_that_does_not_exist_fails_the_check() {
 }
 
 #[test]
+fn a_test_of_another_platform_is_checked_against_the_sources() {
+    let elsewhere = if cfg!(windows) { "unix" } else { "windows" };
+    let declared = Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(EXISTING_PATH))]),
+        &tests_ledger(&rust(&format!("{EXISTING_TEST} @{elsewhere}"))),
+    );
+    let check = declared.run("parity-check", &[]);
+    assert!(check.status.success(), "{}", stderr(&check));
+
+    let undeclared = "xtask/tests/parity.rs::declared_on_no_platform";
+    let missing = Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(EXISTING_PATH))]),
+        &tests_ledger(&rust(&format!("{undeclared} @{elsewhere}"))),
+    );
+    let check = missing.run("parity-check", &[]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains(&format!(
+            "parity/tests.toml: `tests/test_sample.py::test_one` names Rust path \
+             `{undeclared} @{elsewhere}`, which does not exist"
+        )),
+        "{}",
+        stderr(&check)
+    );
+}
+
+#[test]
 fn a_pending_entry_passes_by_default_and_fails_with_deny_pending() {
     let fixture = Fixture::new(
         &["query"],

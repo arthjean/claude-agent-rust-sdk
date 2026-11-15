@@ -4,8 +4,9 @@
 #
 # A Rust test is named `<target source file>::<test name>`, as printed by
 # `cargo xtask parity-tests`. A test compiled on one platform only carries a
-# ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix and is checked on
-# that platform.
+# ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix: on that platform it
+# is checked against the compiled tests, on the others against the sources
+# of its target, which must declare a function of that name.
 #
 # `cargo xtask parity-check` fails when upstream has a test this file does
 # not list, and when a Rust test named here does not exist.

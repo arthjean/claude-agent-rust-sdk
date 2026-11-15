@@ -281,7 +281,11 @@ fn check(arguments: &Arguments) -> Result<Vec<String>, String> {
             .map(|path| {
                 let (path, platform) = ledger::split_platform(path);
                 let compiled = platform.and_then(ledger::compiled_here).unwrap_or(true);
-                !compiled || tests.contains(path)
+                if compiled {
+                    tests.contains(path)
+                } else {
+                    rust::test_is_declared(&locations.root, path)
+                }
             })
             .collect())
     })?);
