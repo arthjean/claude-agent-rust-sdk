@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use claude_agent_kit::{CLI_VERSION, MINIMUM_CLI_VERSION, UPSTREAM_SDK_VERSION};
+
 const UPSTREAM_COMMIT: &str = "4720d367f7db9d5df8a166c74d7f36a538ac8c34";
 const UPSTREAM_PATH: &str = "upstream/claude-agent-sdk-python";
 
@@ -164,6 +166,82 @@ fn library_sources_carry_no_implementation_comments() {
                 code.starts_with("//") && !code.starts_with("///") && !code.starts_with("//!");
             assert!(!is_comment, "{}:{}: {line}", source.display(), number + 1);
         }
+    }
+}
+
+#[test]
+fn readme_states_who_authenticates_the_affiliation_and_the_license_consequence() {
+    let readme = compact(&read("README.md").replace("\n> ", " "));
+    for statement in [
+        "End users authenticate with their own credentials.",
+        "This is not an Anthropic product.",
+        "It is not affiliated with, endorsed by, or supported by Anthropic.",
+        "GNU General Public License, version 3 or later (GPL-3.0-or-later)",
+        "If you distribute a program that links `claude-agent-kit`, you must release that \
+         program under the GPL-3.0-or-later or a license compatible with it",
+    ] {
+        assert!(readme.contains(statement), "{statement}");
+    }
+    assert!(readme.contains(&format!("tested against {CLI_VERSION}")));
+    assert!(readme.contains(&format!("at parity with version {UPSTREAM_SDK_VERSION}")));
+
+    let library = read("crates/claude-agent-kit/src/lib.rs");
+    assert!(library.contains("#[doc = include_str!(\"../../../README.md\")]"));
+    let manifest = read("crates/claude-agent-kit/Cargo.toml");
+    assert!(manifest.contains("readme = \"../../README.md\""));
+}
+
+#[test]
+fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
+    let library = read("crates/claude-agent-kit/src/lib.rs");
+    let manifest = read("crates/claude-agent-kit/Cargo.toml");
+    let features = manifest
+        .split("[features]")
+        .nth(1)
+        .and_then(|rest| rest.split("\n[").next())
+        .expect("the manifest has no [features] table");
+    let mut documented = 0;
+    for feature in features.lines().filter_map(|line| line.split(" = ").next()) {
+        let feature = feature.trim();
+        if feature.is_empty() {
+            continue;
+        }
+        assert!(
+            library.contains(&format!("//! - `{feature}`: ")),
+            "the crate root does not document the feature `{feature}`"
+        );
+        documented += 1;
+    }
+    assert!(documented >= 5, "{features}");
+    for statement in [
+        "//! # Platform support",
+        "//! Linux, macOS, and Windows are supported",
+        &format!("//! {CLI_VERSION} ([`CLI_VERSION`])"),
+        &format!("//! {MINIMUM_CLI_VERSION} ([`MINIMUM_CLI_VERSION`])"),
+    ] {
+        assert!(library.contains(statement), "{statement}");
+    }
+}
+
+#[test]
+fn every_example_of_the_readme_exists() {
+    let readme = read("README.md");
+    let table = readme
+        .split("## Examples")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .expect("the README has no Examples section");
+    let named: Vec<&str> = table
+        .lines()
+        .filter_map(|line| line.strip_prefix("| `"))
+        .filter_map(|line| line.split('`').next())
+        .collect();
+    assert_eq!(named.len(), 12, "{named:?}");
+    for example in named {
+        let file = workspace_root()
+            .join("crates/claude-agent-kit/examples")
+            .join(format!("{example}.rs"));
+        assert!(file.is_file(), "{} is missing", file.display());
     }
 }
 

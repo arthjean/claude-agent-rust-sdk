@@ -13,7 +13,9 @@
 //! [`SdkMcpTool`]s into an MCP server the CLI calls over the control
 //! channel, with no separate server process.
 //!
-//! Cargo features, all off by default:
+//! # Cargo features
+//!
+//! All features are off by default:
 //!
 //! - `macros`: the `#[tool]` attribute, which turns an async function into
 //!   a tool.
@@ -21,7 +23,29 @@
 //!   the `rmcp` crate inside this process.
 //! - `jsonschema`: validation of tool arguments against the JSON Schema of
 //!   the tool, for tools made with [`SdkMcpTool::raw`].
+//! - `otel`: OpenTelemetry trace propagation. When a span is active as the
+//!   CLI starts, its context is handed to the CLI through the `TRACEPARENT`
+//!   and `TRACESTATE` environment variables, so the spans of the CLI join
+//!   the trace of the caller. Variables set in the `env` option are never
+//!   overwritten.
 //! - `testing`: the `testing` module, with a scriptable transport for tests.
+//!
+//! # Platform support
+//!
+//! Linux, macOS, and Windows are supported and tested on every change.
+//! tokio is the only async runtime supported. The CLI runs as the root of
+//! its own process tree, which the crate ends as a whole: through a process
+//! group on Unix and a Job Object on Windows.
+//!
+//! # Claude Code CLI
+//!
+//! The crate does not bundle the CLI: it runs the `claude` executable
+//! already installed on the machine (see [`cli::find_cli`]), with the
+//! credentials of the person running the program. It is tested against CLI
+//! 2.1.325 ([`CLI_VERSION`]), and warns when the installed CLI is older than
+//! 2.0.0 ([`MINIMUM_CLI_VERSION`]).
+//!
+//! # Example
 //!
 //! ```no_run
 //! use claude_agent_kit::{ClaudeAgentOptions, Message, query};
@@ -174,6 +198,11 @@ pub use sessions::{
 };
 pub use transport::{MessageStream, SharedTransport, SubprocessTransport, Transport};
 pub use types::*;
+
+/// The code blocks of the README, compiled as documentation tests.
+#[cfg(doctest)]
+#[doc = include_str!("../../../README.md")]
+struct ReadmeExamples;
 
 /// Version of this crate, reported to the CLI.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
