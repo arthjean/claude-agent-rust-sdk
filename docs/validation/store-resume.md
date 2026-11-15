@@ -34,6 +34,8 @@ On macOS, with no config directory, API key, or OAuth token set, the credentials
 
 Here the macOS job of `.github/workflows/ci.yml` creates a throwaway keychain holding a `Claude Code-credentials` item for `$USER` with fake tokens, then runs the ignored test `keychain_credentials_are_copied_without_the_refresh_token` of `crates/claude-agent-kit/tests/session_resume.rs`. The test resumes through `query()` against the fake CLI and checks that the child's `.credentials.json` holds the Keychain access token, without the refresh token, with mode `0o600`. It proves the real `security` call on a real Keychain. It does not prove that the CLI names its item `Claude Code-credentials`; that name is taken from upstream.
 
+Observed on 2026-11-15, CI run 43723818870 on `macos-latest`, commit `50ec0af`: the test passed.
+
 ## Definition of done: surface ledger
 
 The definition of done asks that every session function exported by Python has a Rust counterpart in the surface ledger. The ledger file (`parity/surface.toml`) is delivered by US-032 in EP-006. Decision of 2026-11-15: for EP-005 the clause is met by checking the exports directly. The 39 session-related names of upstream `__all__` (`src/claude_agent_sdk/__init__.py:648-824`), and `run_session_store_conformance` of `claude_agent_sdk.testing`, each have a public Rust counterpart exported from `crates/claude-agent-kit/src/lib.rs` or `claude_agent_kit::testing`. US-032 records them in the ledger.
