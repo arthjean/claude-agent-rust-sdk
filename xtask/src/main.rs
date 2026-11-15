@@ -8,7 +8,8 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 usage: cargo xtask <command>
 
-  gates                 run the format, lint, test, and documentation checks
+  gates                 run the format, lint, example build, test, and
+                        documentation checks
   parity-check          fail when a ledger misses an upstream export or test,
                         or names a Rust path that does not exist
                         (--deny-pending also fails on pending entries)

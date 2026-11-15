@@ -40,6 +40,9 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --all-features --no-deps
 
+      - name: Examples (default features)
+        run: cargo check --package claude-agent-kit --examples
+
       - name: Test
         run: cargo test --workspace --all-features
 

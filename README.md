@@ -183,7 +183,7 @@ call the real API with your credentials.
 ## Development
 
 ```text
-cargo xtask gates                  format, lint, test, and documentation checks
+cargo xtask gates                  format, lint, examples, test, and doc checks
 cargo xtask parity-check           check the parity ledgers against upstream
 cargo xtask parity-report          print how much of upstream is implemented
 cargo xtask upstream-diff <tag>    list what upstream changed up to a tag

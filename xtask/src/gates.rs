@@ -28,6 +28,11 @@ const GATES: &[Gate] = &[
         env: &[],
     },
     Gate {
+        name: "examples",
+        args: &["check", "--package", "claude-agent-kit", "--examples"],
+        env: &[],
+    },
+    Gate {
         name: "test",
         args: &["test", "--workspace", "--all-features"],
         env: &[],

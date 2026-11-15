@@ -297,6 +297,14 @@ fn ci_runs_the_four_quality_gates_on_three_operating_systems() {
     assert!(workflow.contains("permissions: contents: read"));
 }
 
+#[test]
+fn the_examples_are_built_with_default_features_in_ci_and_in_the_gates() {
+    let workflow = compact(&read(".github/workflows/ci.yml"));
+    assert!(workflow.contains("run: cargo check --package claude-agent-kit --examples"));
+    let gates = compact(&read("xtask/src/gates.rs"));
+    assert!(gates.contains(r#"&["check", "--package", "claude-agent-kit", "--examples"]"#));
+}
+
 fn ci_job(workflow: &str, name: &str) -> String {
     let mut lines = workflow
         .lines()
