@@ -33,10 +33,10 @@
     {
       "id": "EP-004",
       "title": "In-process MCP tools",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 4,
-      "stories_done": 0
+      "stories_done": 4
     },
     {
       "id": "EP-005",
@@ -299,58 +299,58 @@
       "id": "US-018",
       "title": "Tool definition and schema generation",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-006"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-019",
       "title": "Native JSON-RPC server and `mcp_message` bridge",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-018",
         "US-012"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-020",
       "title": "`rmcp` server bridge",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-019"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-021",
       "title": "`#[tool]` attribute macro",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "M",
       "blocked_by": [
         "US-018"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-15",
+      "completed_at": "2026-11-15",
+      "reviewed_at": "2026-11-15"
     },
     {
       "id": "US-022",
