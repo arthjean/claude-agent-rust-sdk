@@ -184,6 +184,19 @@ jobs:
       - name: Coverage floor
         run: cargo llvm-cov report --fail-under-lines 91.5 --ignore-filename-regex "$COVERAGE_IGNORE"
 
+  scripts:
+    name: Workflow scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Offline: `gh` is replaced by a stand-in, so no token is needed.
+      - name: Test the action freshness script
+        run: bash .github/scripts/actions-freshness.test.sh
+
   lockfile:
     name: Workflow lockfile
     runs-on: ubuntu-latest
