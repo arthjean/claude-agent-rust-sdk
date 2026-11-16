@@ -177,3 +177,9 @@ jobs:
         with:
           name: coverage-html
           path: target/coverage/html
+
+      # A floor, not a target: raise it when coverage climbs, and never lower
+      # it to make a change pass. It runs last so that a failure still leaves
+      # the summary and the HTML report.
+      - name: Coverage floor
+        run: cargo llvm-cov report --fail-under-lines 91.5 --ignore-filename-regex "$COVERAGE_IGNORE"
