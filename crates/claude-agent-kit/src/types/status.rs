@@ -3,6 +3,14 @@
 //! These types use the wire key names (camelCase where the CLI uses it)
 //! because they come straight from the CLI output. A missing field takes
 //! its default value.
+//!
+//! The Python SDK returns these responses as the dictionaries the CLI sent.
+//! To keep every key reachable, each struct holds the keys it does not
+//! model in a flattened `extra` map, written back on serialization. A
+//! server configuration of a known type is the one exception to typing:
+//! the configuration types are shared with the options and have no
+//! `extra`, so a configuration carrying a key they do not model is kept
+//! whole as [`McpServerStatusConfig::Unknown`].
 
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -18,6 +26,10 @@ use super::macros::wire_enum;
 pub struct McpSdkServerConfigStatus {
     /// Name of the server.
     pub name: String,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Configuration of a server proxied through claude.ai, as returned in
@@ -29,6 +41,10 @@ pub struct McpClaudeAiProxyServerConfig {
     pub url: String,
     /// Id of the proxied server.
     pub id: String,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Server configuration as returned in status responses.
@@ -64,6 +80,18 @@ impl McpServerStatusConfig {
     }
 
     fn from_wire(raw: Value) -> Self {
+        let modeled: &[&str] = match raw.get("type").and_then(Value::as_str) {
+            None | Some("stdio") => &["type", "command", "args", "env"],
+            Some("sse" | "http") => &["type", "url", "headers"],
+            _ => &[],
+        };
+        if !modeled.is_empty()
+            && raw
+                .as_object()
+                .is_some_and(|object| object.keys().any(|key| !modeled.contains(&key.as_str())))
+        {
+            return Self::Unknown(raw);
+        }
         let parsed = match raw.get("type").and_then(Value::as_str) {
             None | Some("stdio") => McpStdioServerConfig::deserialize(&raw).map(Self::Stdio),
             Some("sse") => McpSseServerConfig::deserialize(&raw).map(Self::Sse),
@@ -121,6 +149,10 @@ pub struct McpToolAnnotations {
     /// The tool reaches outside its own system.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_world: Option<bool>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// A tool provided by an MCP server.
@@ -136,6 +168,10 @@ pub struct McpToolInfo {
     /// Annotations of the tool.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub annotations: Option<McpToolAnnotations>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Server information from the MCP handshake.
@@ -147,6 +183,10 @@ pub struct McpServerInfo {
     pub name: String,
     /// Version the server reports.
     pub version: String,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 wire_enum! {
@@ -191,6 +231,10 @@ pub struct McpServerStatus {
     /// Tools provided by the server, when connected.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<McpToolInfo>>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Response to an MCP status request.
@@ -201,6 +245,10 @@ pub struct McpStatusResponse {
     /// Status of every configured server.
     #[serde(rename = "mcpServers")]
     pub mcp_servers: Vec<McpServerStatus>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// One category of context usage, such as the system prompt or the tools.
@@ -217,6 +265,10 @@ pub struct ContextUsageCategory {
     /// Whether the category is deferred.
     #[serde(rename = "isDeferred", skip_serializing_if = "Option::is_none")]
     pub is_deferred: Option<bool>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Response to a context usage request: a breakdown of the context window
@@ -271,4 +323,8 @@ pub struct ContextUsageResponse {
     /// Cumulative API usage of the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_usage: Option<Value>,
+    /// Keys of the response this version of the crate does not model,
+    /// kept as the CLI sent them and written back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }

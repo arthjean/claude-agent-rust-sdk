@@ -3,7 +3,7 @@
 //!
 //! The parser dispatches on the `type` field by hand and reproduces the
 //! required and optional fields of the upstream Python parser. It differs
-//! from upstream in three deliberate ways:
+//! from upstream in four deliberate ways:
 //!
 //! - a message whose `type` is unknown becomes [`Message::Unknown`] with
 //!   its raw JSON instead of being skipped;
@@ -12,7 +12,11 @@
 //! - a required field of the wrong JSON type is an error, and an optional
 //!   field of the wrong JSON type reads as absent. An integer field accepts
 //!   any JSON number: a fraction is truncated and a value out of range
-//!   saturates, so a negative count reads as zero.
+//!   saturates, so a negative count reads as zero;
+//! - `modelUsage` is typed as [`ModelUsage`] per model, where upstream keeps
+//!   the dictionary: keys the struct does not model stay reachable in
+//!   [`ModelUsage::extra`], and an entry that is not a JSON object is
+//!   skipped.
 
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
@@ -414,10 +418,25 @@ fn parse_system(fields: &Fields<'_>) -> Parsed<SystemMessage> {
     Ok(message)
 }
 
-fn parse_model_usage(value: &Value) -> ModelUsage {
+const MODEL_USAGE_KEYS: [&str; 10] = [
+    "inputTokens",
+    "outputTokens",
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "webSearchRequests",
+    "costUSD",
+    "contextWindow",
+    "maxOutputTokens",
+    "canonicalModel",
+    "provider",
+];
+
+/// Usage of one model. `None` when the entry is not a JSON object.
+fn parse_model_usage(value: &Value) -> Option<ModelUsage> {
+    let object = value.as_object()?;
     let count = |key: &str| value.get(key).and_then(as_unsigned).unwrap_or_default();
     let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
-    ModelUsage {
+    Some(ModelUsage {
         input_tokens: count("inputTokens"),
         output_tokens: count("outputTokens"),
         cache_read_input_tokens: count("cacheReadInputTokens"),
@@ -431,7 +450,12 @@ fn parse_model_usage(value: &Value) -> ModelUsage {
         max_output_tokens: count("maxOutputTokens"),
         canonical_model: text("canonicalModel"),
         provider: text("provider"),
-    }
+        extra: object
+            .iter()
+            .filter(|(key, _)| !MODEL_USAGE_KEYS.contains(&key.as_str()))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    })
 }
 
 fn parse_deferred_tool_use(fields: &Fields<'_>) -> Parsed<Option<DeferredToolUse>> {
@@ -459,7 +483,7 @@ fn parse_result(fields: &Fields<'_>) -> Parsed<ResultMessage> {
         .map(|models| {
             models
                 .iter()
-                .map(|(model, usage)| (model.clone(), parse_model_usage(usage)))
+                .filter_map(|(model, usage)| Some((model.clone(), parse_model_usage(usage)?)))
                 .collect::<IndexMap<_, _>>()
         });
     Ok(ResultMessage {

@@ -181,7 +181,7 @@ of date. Paths are written from the crate root.
 | `ClaudeSDKError` | `claude_agent_kit::Error` | One enum holds every error; match on its variants. |
 | `ContentBlock` | `claude_agent_kit::ContentBlock` |  |
 | `ContextUsageCategory` | `claude_agent_kit::ContextUsageCategory` |  |
-| `ContextUsageResponse` | `claude_agent_kit::ContextUsageResponse` |  |
+| `ContextUsageResponse` | `claude_agent_kit::ContextUsageResponse` | Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`. |
 | `ConversationResetMessage` | `claude_agent_kit::ConversationResetMessage` |  |
 | `CwdChangedHookSpecificOutput` | `claude_agent_kit::CwdChangedHookSpecificOutput` |  |
 | `DeferredToolUse` | `claude_agent_kit::DeferredToolUse` |  |
@@ -205,8 +205,8 @@ of date. Paths are written from the crate root.
 | `McpServerConnectionStatus` | `claude_agent_kit::McpServerConnectionStatus` |  |
 | `McpServerInfo` | `claude_agent_kit::McpServerInfo` |  |
 | `McpServerStatus` | `claude_agent_kit::McpServerStatus` |  |
-| `McpServerStatusConfig` | `claude_agent_kit::McpServerStatusConfig` |  |
-| `McpStatusResponse` | `claude_agent_kit::McpStatusResponse` |  |
+| `McpServerStatusConfig` | `claude_agent_kit::McpServerStatusConfig` | Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable. |
+| `McpStatusResponse` | `claude_agent_kit::McpStatusResponse` | Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`. |
 | `McpToolAnnotations` | `claude_agent_kit::McpToolAnnotations` |  |
 | `McpToolInfo` | `claude_agent_kit::McpToolInfo` |  |
 | `Message` | `claude_agent_kit::Message` |  |
@@ -214,7 +214,7 @@ of date. Paths are written from the crate root.
 | `MessageOrigin` | `claude_agent_kit::MessageOrigin` |  |
 | `MessageOriginKind` | `claude_agent_kit::MessageOriginKind` |  |
 | `MirrorErrorMessage` | `claude_agent_kit::MirrorErrorMessage` |  |
-| `ModelUsage` | `claude_agent_kit::ModelUsage` |  |
+| `ModelUsage` | `claude_agent_kit::ModelUsage` | Typed struct where Python keeps the dictionary; keys it does not model are kept in `extra`, and an entry that is not an object is skipped. |
 | `NotificationHookInput` | `claude_agent_kit::NotificationHookInput` |  |
 | `NotificationHookSpecificOutput` | `claude_agent_kit::NotificationHookSpecificOutput` |  |
 | `PermissionDeniedHookSpecificOutput` | `claude_agent_kit::PermissionDeniedHookSpecificOutput` |  |

@@ -777,7 +777,8 @@ pub struct DeferredToolUse {
 
 /// Token usage and cost of one model.
 ///
-/// The wire keys are camelCase; a missing key takes its default value.
+/// The wire keys are camelCase; a missing key takes its default value, and
+/// a key the struct does not model lands in [`extra`](Self::extra).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -805,6 +806,11 @@ pub struct ModelUsage {
     /// API provider that served the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Keys this version of the crate does not model, kept as the CLI sent
+    /// them (the Python SDK passes the whole dictionary through) and written
+    /// back on serialization.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Result message with cost and usage information.
@@ -833,7 +839,8 @@ pub struct ResultMessage {
     pub result: Option<String>,
     /// Structured output, when an output format was requested.
     pub structured_output: Option<Value>,
-    /// Usage per model, keyed by model name (`modelUsage` on the wire).
+    /// Usage per model, keyed by model name (`modelUsage` on the wire). An
+    /// entry that is not a JSON object is skipped.
     pub model_usage: Option<IndexMap<String, ModelUsage>>,
     /// Permission denials, as raw JSON.
     pub permission_denials: Option<Vec<Value>>,

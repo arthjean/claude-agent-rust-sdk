@@ -16,10 +16,10 @@ EffortLevel = { rust = "claude_agent_kit::EffortLevel" }
 McpServerConfig = { rust = "claude_agent_kit::McpServerConfig" }
 McpSdkServerConfig = { rust = "claude_agent_kit::McpSdkServerConfig" }
 McpServerStatus = { rust = "claude_agent_kit::McpServerStatus" }
-McpServerStatusConfig = { rust = "claude_agent_kit::McpServerStatusConfig" }
+McpServerStatusConfig = { rust = "claude_agent_kit::McpServerStatusConfig", note = "Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable." }
 McpServerConnectionStatus = { rust = "claude_agent_kit::McpServerConnectionStatus" }
 McpServerInfo = { rust = "claude_agent_kit::McpServerInfo" }
-McpStatusResponse = { rust = "claude_agent_kit::McpStatusResponse" }
+McpStatusResponse = { rust = "claude_agent_kit::McpStatusResponse", note = "Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`." }
 McpToolAnnotations = { rust = "claude_agent_kit::McpToolAnnotations" }
 McpToolInfo = { rust = "claude_agent_kit::McpToolInfo" }
 UserMessage = { rust = "claude_agent_kit::UserMessage" }
@@ -40,7 +40,7 @@ TaskUpdatedStatus = { rust = "claude_agent_kit::TaskUpdatedStatus" }
 TERMINAL_TASK_STATUSES = { rust = "claude_agent_kit::TERMINAL_TASK_STATUSES" }
 TaskUsage = { rust = "claude_agent_kit::TaskUsage" }
 ResultMessage = { rust = "claude_agent_kit::ResultMessage" }
-ModelUsage = { rust = "claude_agent_kit::ModelUsage" }
+ModelUsage = { rust = "claude_agent_kit::ModelUsage", note = "Typed struct where Python keeps the dictionary; keys it does not model are kept in `extra`, and an entry that is not an object is skipped." }
 DeferredToolUse = { rust = "claude_agent_kit::DeferredToolUse" }
 RateLimitEvent = { rust = "claude_agent_kit::RateLimitEvent" }
 RateLimitInfo = { rust = "claude_agent_kit::RateLimitInfo" }
@@ -67,7 +67,7 @@ ServerToolUseBlock = { rust = "claude_agent_kit::ServerToolUseBlock" }
 ServerToolResultBlock = { rust = "claude_agent_kit::ServerToolResultBlock" }
 ContentBlock = { rust = "claude_agent_kit::ContentBlock" }
 ContextUsageCategory = { rust = "claude_agent_kit::ContextUsageCategory" }
-ContextUsageResponse = { rust = "claude_agent_kit::ContextUsageResponse" }
+ContextUsageResponse = { rust = "claude_agent_kit::ContextUsageResponse", note = "Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`." }
 CanUseTool = { rust = "claude_agent_kit::CanUseTool" }
 CanUseToolShadowedWarning = { rust = "claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning", note = "Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect." }
 ToolPermissionContext = { rust = "claude_agent_kit::ToolPermissionContext" }
