@@ -88,8 +88,8 @@ lock_entries() {
 }
 
 # Refreshes the lockfile, then holds it to the commits checked above: an entry
-# the script approved must name the commit it checked, and no other entry that
-# was already locked may change.
+# the script approved must name the commit it checked, no other entry that was
+# already locked may change, and a new entry must be past the cooldown too.
 lock_and_check() {
   local key sha ok=0
   declare -A before=() after=()
@@ -102,7 +102,7 @@ lock_and_check() {
     gh actions-lock --no-interactive --relock || return 1
   fi
 
-  while read -r key sha; do
+  while read -r key sha <&4; do
     after["$key"]="$sha"
     if [ -n "${approved["$key"]:-}" ]; then
       if [ "$sha" != "${approved["$key"]}" ]; then
@@ -110,12 +110,18 @@ lock_and_check() {
         ok=1
       fi
     elif [ -z "${before["$key"]:-}" ]; then
-      echo "$key: new entry at ${sha:0:7}, brought in by another action and not checked here"
+      # An action that another action calls: held to the same cooldown.
+      if [ "$(commit_age "${key%@*}" "$sha")" = settled ]; then
+        echo "$key: new entry at ${sha:0:7}, brought in by another action"
+      else
+        echo "$key: new entry at ${sha:0:7}, brought in by another action, and nothing shows that this commit is $cooldown_days days old" >&2
+        ok=1
+      fi
     elif [ "$sha" != "${before["$key"]}" ]; then
       echo "$key: moved from ${before["$key"]:0:7} to ${sha:0:7} without being checked" >&2
       ok=1
     fi
-  done < <(lock_entries)
+  done 4< <(lock_entries)
   for key in "${!approved[@]}"; do
     if [ -z "${after["$key"]:-}" ]; then
       echo "$key: missing from $lockfile" >&2
@@ -186,7 +192,8 @@ while IFS= read -r value <&3; do
       continue
     fi
 
-    if ! sha="$(gh api "repos/$repository/commits/$latest" --jq .sha)"; then
+    # Read as a tag only: a branch of the same name must not stand in for it.
+    if ! sha="$(gh api "repos/$repository/commits/refs/tags/$latest" --jq .sha)"; then
       report "$repository: could not read the commit of $latest"
       findings=1
       continue
