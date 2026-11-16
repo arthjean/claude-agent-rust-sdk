@@ -856,6 +856,11 @@ async fn query_warns_about_a_shadowed_permission_callback_before_connecting() {
     let items: Vec<_> = query("Hello", options).collect().await;
 
     assert!(matches!(items.as_slice(), [Err(Error::CliNotFound { .. })]));
+    let [Err(error)] = items.as_slice() else {
+        unreachable!()
+    };
+    assert!(error.is_cli_connection(), "{error:?}");
+    assert!(!error.is_process(), "{error:?}");
     let messages = shadowed_warnings(&warnings);
     assert_eq!(messages.len(), 1, "{messages:?}");
     assert!(messages[0].starts_with("can_use_tool will not be invoked for: Write."));

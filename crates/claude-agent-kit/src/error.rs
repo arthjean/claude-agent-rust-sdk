@@ -6,6 +6,12 @@
 //!
 //! Message texts follow the upstream Python SDK, with one deliberate
 //! difference: they name the executable "Claude CLI".
+//!
+//! The error model differs from upstream in one deliberate way: Python has
+//! a class hierarchy (`ResultError` is a `ProcessError`, `CLINotFoundError`
+//! is a `CLIConnectionError`), and this crate has sibling variants of one
+//! enum. [`Error::is_process`] and [`Error::is_cli_connection`] answer the
+//! questions an `except` on the parent class asks.
 
 use std::fmt;
 use std::ops::Deref;
@@ -19,6 +25,39 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Every failure this crate reports.
+///
+/// The variants are siblings, while the Python SDK nests some of its
+/// exception classes: `ResultError` is a subclass of `ProcessError`, and
+/// `CLINotFoundError` a subclass of `CLIConnectionError`. A Rust `match` on
+/// [`Error::Process`] therefore does not see [`Error::ResultError`]. Use
+/// the predicates to keep the Python meaning:
+///
+/// ```python
+/// try:
+///     ...
+/// except ProcessError as error:        # also catches ResultError
+///     report(error.exit_code)
+/// except CLIConnectionError:           # also catches CLINotFoundError
+///     reconnect()
+/// ```
+///
+/// ```
+/// use claude_agent_kit::Error;
+///
+/// fn handle(error: &Error) -> &'static str {
+///     if error.is_process() {
+///         "process failed"
+///     } else if error.is_cli_connection() {
+///         "reconnect"
+///     } else {
+///         "other"
+///     }
+/// }
+///
+/// assert_eq!(handle(&Error::result_error(serde_json::json!({}), Some(1))), "process failed");
+/// assert_eq!(handle(&Error::cli_not_found(None, None)), "reconnect");
+/// assert_eq!(handle(&Error::config("bad option")), "other");
+/// ```
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -320,6 +359,52 @@ impl Error {
         }
     }
 
+    /// Whether the CLI process failed: true for [`Error::Process`] and
+    /// [`Error::ResultError`].
+    ///
+    /// This is the Rust form of `except ProcessError`, which in Python also
+    /// catches `ResultError`.
+    #[must_use]
+    pub fn is_process(&self) -> bool {
+        match self {
+            Self::Process { .. } | Self::ResultError { .. } => true,
+            Self::CliNotFound { .. }
+            | Self::CliConnection { .. }
+            | Self::JsonDecode { .. }
+            | Self::MessageParse { .. }
+            | Self::ControlTimeout { .. }
+            | Self::Control { .. }
+            | Self::Config { .. }
+            | Self::SessionNotFound { .. }
+            | Self::Io { .. }
+            | Self::SessionStore { .. }
+            | Self::StoreUnsupported(_) => false,
+        }
+    }
+
+    /// Whether the CLI could not be reached: true for
+    /// [`Error::CliConnection`] and [`Error::CliNotFound`].
+    ///
+    /// This is the Rust form of `except CLIConnectionError`, which in
+    /// Python also catches `CLINotFoundError`.
+    #[must_use]
+    pub fn is_cli_connection(&self) -> bool {
+        match self {
+            Self::CliConnection { .. } | Self::CliNotFound { .. } => true,
+            Self::Process { .. }
+            | Self::ResultError { .. }
+            | Self::JsonDecode { .. }
+            | Self::MessageParse { .. }
+            | Self::ControlTimeout { .. }
+            | Self::Control { .. }
+            | Self::Config { .. }
+            | Self::SessionNotFound { .. }
+            | Self::Io { .. }
+            | Self::SessionStore { .. }
+            | Self::StoreUnsupported(_) => false,
+        }
+    }
+
     /// Exit code of the CLI process, for the variants that carry one.
     #[must_use]
     pub fn exit_code(&self) -> Option<i32> {
@@ -502,5 +587,79 @@ impl fmt::Display for ProcessText<'_> {
             write!(formatter, "\nError output: {stderr}")?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::Error;
+    use crate::session_store::UnsupportedStoreOperation;
+
+    /// One value of every variant. The match in [`expected`] has no
+    /// wildcard, so a new variant does not compile until it is listed there
+    /// with a decision, and [`one_of_each`] must then build it for the test
+    /// to keep its count.
+    fn one_of_each() -> Vec<Error> {
+        vec![
+            Error::cli_not_found(None, None),
+            Error::cli_connection("not connected"),
+            Error::process("failed", Some(1), None),
+            Error::result_error(json!({"subtype": "error_max_turns"}), Some(1)),
+            Error::json_decode(
+                "{",
+                serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+            ),
+            Error::message_parse("bad", None),
+            Error::control_timeout("initialize"),
+            Error::control("refused"),
+            Error::config("bad option"),
+            Error::session_not_found("missing"),
+            Error::io("write", std::io::Error::other("disk")),
+            Error::session_store("append", "down".into()),
+            Error::StoreUnsupported(UnsupportedStoreOperation { operation: "list" }),
+        ]
+    }
+
+    const VARIANTS: usize = 13;
+
+    /// `(is_process, is_cli_connection)` as the Python hierarchy decides it.
+    fn expected(error: &Error) -> (bool, bool) {
+        match error {
+            Error::Process { .. } | Error::ResultError { .. } => (true, false),
+            Error::CliConnection { .. } | Error::CliNotFound { .. } => (false, true),
+            Error::JsonDecode { .. }
+            | Error::MessageParse { .. }
+            | Error::ControlTimeout { .. }
+            | Error::Control { .. }
+            | Error::Config { .. }
+            | Error::SessionNotFound { .. }
+            | Error::Io { .. }
+            | Error::SessionStore { .. }
+            | Error::StoreUnsupported(_) => (false, false),
+        }
+    }
+
+    #[test]
+    fn predicates_follow_the_python_exception_hierarchy_for_every_variant() {
+        let errors = one_of_each();
+        let distinct: std::collections::HashSet<_> =
+            errors.iter().map(std::mem::discriminant).collect();
+        assert_eq!(distinct.len(), VARIANTS);
+        assert_eq!(errors.len(), VARIANTS);
+        for error in &errors {
+            assert_eq!(
+                (error.is_process(), error.is_cli_connection()),
+                expected(error),
+                "{error:?}"
+            );
+        }
+        let processes = errors.iter().filter(|error| error.is_process()).count();
+        let connections = errors
+            .iter()
+            .filter(|error| error.is_cli_connection())
+            .count();
+        assert_eq!((processes, connections), (2, 2));
     }
 }

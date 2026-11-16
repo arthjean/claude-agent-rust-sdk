@@ -161,8 +161,8 @@ tool = { rust = "claude_agent_kit::tool", note = "Attribute macro behind the `ma
 SdkMcpTool = { rust = "claude_agent_kit::SdkMcpTool" }
 ToolAnnotations = { rust = "claude_agent_kit::ToolAnnotations" }
 ClaudeSDKError = { rust = "claude_agent_kit::Error", note = "One enum holds every error; match on its variants." }
-CLIConnectionError = { rust = "claude_agent_kit::Error::CliConnection", note = "Variant of `Error`." }
+CLIConnectionError = { rust = "claude_agent_kit::Error::CliConnection", note = "Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`." }
 CLINotFoundError = { rust = "claude_agent_kit::Error::CliNotFound", note = "Variant of `Error`." }
-ProcessError = { rust = "claude_agent_kit::Error::Process", note = "Variant of `Error`." }
+ProcessError = { rust = "claude_agent_kit::Error::Process", note = "Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`." }
 ResultError = { rust = "claude_agent_kit::Error::ResultError", note = "Variant of `Error`; its fields are in `ResultErrorData`." }
 CLIJSONDecodeError = { rust = "claude_agent_kit::Error::JsonDecode", note = "Variant of `Error`." }

@@ -16,6 +16,23 @@ fn invalid_json_error(line: &str) -> Error {
 }
 
 #[test]
+fn config_error_is_neither_a_process_nor_a_connection_failure() {
+    let error = Error::config("bad option");
+    assert!(!error.is_process());
+    assert!(!error.is_cli_connection());
+}
+
+#[test]
+fn result_error_is_a_process_failure_and_cli_not_found_a_connection_failure() {
+    let result = Error::result_error(json!({"subtype": "error_max_turns"}), Some(1));
+    assert!(result.is_process());
+    assert!(!result.is_cli_connection());
+    let missing = Error::cli_not_found(None, Some("/nowhere/claude"));
+    assert!(missing.is_cli_connection());
+    assert!(!missing.is_process());
+}
+
+#[test]
 fn error_is_send_sync_and_static() {
     fn assert_bounds<T: Send + Sync + 'static + std::error::Error>() {}
     assert_bounds::<Error>();

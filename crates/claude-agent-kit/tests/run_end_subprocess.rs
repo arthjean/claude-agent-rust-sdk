@@ -194,6 +194,9 @@ async fn error_result_then_failing_exit_ends_the_stream_with_a_result_error() {
     let (last, earlier) = items.split_last().unwrap();
     assert!(earlier.iter().all(Result::is_ok));
     assert!(matches!(earlier.last(), Some(Ok(Message::Result(result))) if result.is_error));
+    let error = last.as_ref().unwrap_err();
+    assert!(error.is_process(), "{error:?}");
+    assert!(!error.is_cli_connection(), "{error:?}");
     let Err(Error::ResultError {
         message,
         data,

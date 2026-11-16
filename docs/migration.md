@@ -70,8 +70,15 @@ the variant where Python caught a class.
 
 One difference matters when you port an `except` clause: in Python,
 `ResultError` is a subclass of `ProcessError`, so `except ProcessError` also
-catches it. In Rust, `Error::ResultError` and `Error::Process` are two variants;
-match both when you mean both.
+catches it. In Rust, `Error::ResultError` and `Error::Process` are two variants,
+so a `match` arm on `Error::Process` alone misses a result error. The same holds
+for `CLINotFoundError`, a subclass of `CLIConnectionError`. Two predicates keep
+the Python meaning:
+
+| Python | Rust |
+|---|---|
+| `except ProcessError:` | `if error.is_process()`: true for `Error::Process` and `Error::ResultError` |
+| `except CLIConnectionError:` | `if error.is_cli_connection()`: true for `Error::CliConnection` and `Error::CliNotFound` |
 
 ## Hooks and the permission callback
 
@@ -164,7 +171,7 @@ of date. Paths are written from the crate root.
 | `AssistantMessage` | `claude_agent_kit::AssistantMessage` |  |
 | `BackgroundTaskSummary` | `claude_agent_kit::BackgroundTaskSummary` |  |
 | `BaseHookInput` | `claude_agent_kit::HookInputBase` |  |
-| `CLIConnectionError` | `claude_agent_kit::Error::CliConnection` | Variant of `Error`. |
+| `CLIConnectionError` | `claude_agent_kit::Error::CliConnection` | Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
 | `CLIJSONDecodeError` | `claude_agent_kit::Error::JsonDecode` | Variant of `Error`. |
 | `CLINotFoundError` | `claude_agent_kit::Error::CliNotFound` | Variant of `Error`. |
 | `CanUseTool` | `claude_agent_kit::CanUseTool` |  |
@@ -228,7 +235,7 @@ of date. Paths are written from the crate root.
 | `PreModelSwitchHookSpecificOutput` | `claude_agent_kit::PreModelSwitchHookSpecificOutput` |  |
 | `PreToolUseHookInput` | `claude_agent_kit::PreToolUseHookInput` |  |
 | `PreToolUseHookSpecificOutput` | `claude_agent_kit::PreToolUseHookSpecificOutput` |  |
-| `ProcessError` | `claude_agent_kit::Error::Process` | Variant of `Error`. |
+| `ProcessError` | `claude_agent_kit::Error::Process` | Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
 | `RateLimitEvent` | `claude_agent_kit::RateLimitEvent` |  |
 | `RateLimitInfo` | `claude_agent_kit::RateLimitInfo` |  |
 | `RateLimitStatus` | `claude_agent_kit::RateLimitStatus` |  |
