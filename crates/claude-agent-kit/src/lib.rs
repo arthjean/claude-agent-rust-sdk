@@ -15,14 +15,18 @@
 //!
 //! # Cargo features
 //!
-//! All features are off by default:
+//! `jsonschema` is the one feature on by default; the others are off:
 //!
+//! - `jsonschema`: on by default. Validation of tool arguments against the
+//!   JSON Schema of the tool, for tools made with [`SdkMcpTool::raw`], as the
+//!   Python SDK always does. A call whose arguments break the schema gets an
+//!   error result and the handler does not run. Remote `$ref` targets are
+//!   never fetched. Turn it off with `default-features = false`: arguments
+//!   then reach the handler as the model sent them.
 //! - `macros`: the `#[tool]` attribute, which turns an async function into
 //!   a tool.
 //! - `rmcp`: `McpServerConfig::sdk_rmcp`, which serves a server built with
 //!   the `rmcp` crate inside this process.
-//! - `jsonschema`: validation of tool arguments against the JSON Schema of
-//!   the tool, for tools made with [`SdkMcpTool::raw`].
 //! - `otel`: OpenTelemetry trace propagation. When a span is active as the
 //!   CLI starts, its context is handed to the CLI through the `TRACEPARENT`
 //!   and `TRACESTATE` environment variables, so the spans of the CLI join

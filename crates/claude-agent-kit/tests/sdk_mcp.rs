@@ -1113,11 +1113,74 @@ mod schema_validation {
             |_| async { Ok(ToolResult::text("unreachable")) },
         )
         .unwrap();
-        let client = SdkMcpClient::connected(server([broken])).await;
+        let healthy = SdkMcpTool::raw(
+            "healthy",
+            "Has a valid schema",
+            json!({"type": "object"}),
+            |_| async { Ok(ToolResult::text("still serving")) },
+        )
+        .unwrap();
+        let client = SdkMcpClient::connected(server([broken, healthy])).await;
         let outcome = client.call_tool("srv", "broken", json!({"x": 1})).await;
         assert_eq!(outcome["isError"], true);
         assert!(texts(&outcome)[0].contains("bogus"), "{outcome}");
+
+        let again = client.call_tool("srv", "broken", json!({"x": 1})).await;
+        assert_eq!(again["isError"], true);
+        let next = client.call_tool("srv", "healthy", json!({})).await;
+        assert_eq!(texts(&next), ["still serving"]);
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn remote_schema_reference_is_an_error_result_naming_it_without_a_request() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let reference = format!("http://{address}/schema.json");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&calls);
+        let remote = SdkMcpTool::raw(
+            "remote",
+            "Points at a remote schema",
+            json!({"type": "object", "properties": {"x": {"$ref": reference}}}),
+            move |_| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                async { Ok(ToolResult::text("unreachable")) }
+            },
+        )
+        .unwrap();
+        let client = SdkMcpClient::connected(server([remote])).await;
+        let outcome = client.call_tool("srv", "remote", json!({"x": 1})).await;
+        assert_eq!(outcome["isError"], true);
+        assert!(texts(&outcome)[0].contains(&reference), "{outcome}");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(
+            listener.accept().is_err(),
+            "the validator connected to {reference}"
+        );
+    }
+}
+
+#[cfg(not(feature = "jsonschema"))]
+#[tokio::test(start_paused = true)]
+async fn raw_tool_arguments_reach_the_handler_unvalidated_without_the_jsonschema_feature() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let echo = SdkMcpTool::raw(
+        "echo",
+        "Requires b",
+        json!({"type": "object", "properties": {"b": {"type": "string"}}, "required": ["b"]}),
+        move |arguments| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            async move { Ok(ToolResult::text(arguments.to_string())) }
+        },
+    )
+    .unwrap();
+    let client = SdkMcpClient::connected(server([echo])).await;
+    let outcome = client.call_tool("srv", "echo", json!({"a": 1})).await;
+    assert_ne!(outcome["isError"], true, "{outcome}");
+    assert_eq!(texts(&outcome), [r#"{"a":1}"#]);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
 #[cfg(feature = "rmcp")]

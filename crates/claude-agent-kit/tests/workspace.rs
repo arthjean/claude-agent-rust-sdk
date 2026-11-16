@@ -201,9 +201,19 @@ fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
         .and_then(|rest| rest.split("\n[").next())
         .expect("the manifest has no [features] table");
     let mut documented = 0;
-    for feature in features.lines().filter_map(|line| line.split(" = ").next()) {
+    let mut defaults = Vec::new();
+    for line in features.lines() {
+        let Some((feature, enables)) = line.split_once(" = ") else {
+            continue;
+        };
         let feature = feature.trim();
-        if feature.is_empty() {
+        if feature == "default" {
+            defaults = enables
+                .trim_matches(|c| c == '[' || c == ']')
+                .split(',')
+                .map(|name| name.trim().trim_matches('"').to_owned())
+                .filter(|name| !name.is_empty())
+                .collect();
             continue;
         }
         assert!(
@@ -213,6 +223,13 @@ fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
         documented += 1;
     }
     assert!(documented >= 5, "{features}");
+    assert_eq!(defaults, ["jsonschema"], "{features}");
+    for feature in &defaults {
+        assert!(
+            library.contains(&format!("//! - `{feature}`: on by default.")),
+            "the crate root does not say that `{feature}` is on by default"
+        );
+    }
     for statement in [
         "//! # Platform support",
         "//! Linux, macOS, and Windows are supported",
@@ -295,6 +312,21 @@ fn ci_runs_the_four_quality_gates_on_three_operating_systems() {
         assert!(workflow.contains(gate), "{gate}");
     }
     assert!(workflow.contains("permissions: contents: read"));
+}
+
+#[test]
+fn ci_tests_the_crate_without_its_default_features() {
+    let job = ci_job(&read(".github/workflows/ci.yml"), "gates");
+    assert!(
+        job.contains(
+            "run: cargo test --package claude-agent-kit --no-default-features --features testing"
+        ),
+        "{job}"
+    );
+    let gates = compact(&read("xtask/src/gates.rs"));
+    assert!(gates.contains(
+        r#"&[ "test", "--package", "claude-agent-kit", "--no-default-features", "--features", "testing", ]"#
+    ));
 }
 
 #[test]

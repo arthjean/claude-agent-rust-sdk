@@ -38,6 +38,18 @@ const GATES: &[Gate] = &[
         env: &[],
     },
     Gate {
+        name: "test without default features",
+        args: &[
+            "test",
+            "--package",
+            "claude-agent-kit",
+            "--no-default-features",
+            "--features",
+            "testing",
+        ],
+        env: &[],
+    },
+    Gate {
         name: "doc",
         args: &["doc", "--workspace", "--all-features", "--no-deps"],
         env: &[("RUSTDOCFLAGS", "-D warnings")],

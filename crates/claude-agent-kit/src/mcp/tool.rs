@@ -403,9 +403,15 @@ impl SdkMcpTool {
     /// Creates a tool from a JSON Schema and a handler taking the arguments
     /// as JSON.
     ///
-    /// With the `jsonschema` feature, the arguments of a call are validated
-    /// against the schema before the handler runs. Without it, the handler
-    /// receives the arguments as the model sent them.
+    /// With the `jsonschema` feature, which is on by default, the arguments
+    /// of a call are validated against the schema before the handler runs,
+    /// as in the Python SDK: arguments that break the schema, a schema the
+    /// validator cannot compile, and a `$ref` to a remote document (never
+    /// fetched) all give an error result, and the handler is not called.
+    /// The schema is compiled once, when the server is created.
+    ///
+    /// In a build with `default-features = false`, arguments are not
+    /// validated: the handler receives them as the model sent them.
     ///
     /// # Errors
     ///

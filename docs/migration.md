@@ -113,7 +113,12 @@ SDK logs it through `tracing` when a session starts.
 - `SdkMcpTool::typed::<Args>(name, description, handler)` derives the input
   schema from a Rust type (`Args` implements `Deserialize` and `JsonSchema`).
 - `SdkMcpTool::raw(name, description, schema, handler)` takes a JSON Schema you
-  wrote.
+  wrote. As in Python, the arguments of each call are validated against it
+  before the handler runs, through the `jsonschema` feature, which is on by
+  default. A build with `default-features = false` turns validation off, and
+  the handler then receives the arguments as the model sent them. A remote
+  `$ref` is never fetched: a schema that needs one makes every call an error
+  result.
 - With the `macros` feature, `#[tool]` on an async function does the same as
   the Python decorator.
 

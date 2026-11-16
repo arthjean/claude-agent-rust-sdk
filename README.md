@@ -147,13 +147,13 @@ async fn main() -> Result<(), claude_agent_kit::Error> {
 
 ## Cargo features
 
-All features are off by default.
+`jsonschema` is on by default; the other features are off by default.
 
 | Feature | What it adds |
 |---|---|
+| `jsonschema` | On by default. Validation of tool arguments against the JSON Schema of the tool, as the Python SDK does. Set `default-features = false` to turn it off. |
 | `macros` | The `#[tool]` attribute, which turns an async function into a tool. |
 | `rmcp` | Serving a server built with the `rmcp` crate inside your process. |
-| `jsonschema` | Validation of tool arguments against the JSON Schema of the tool. |
 | `otel` | OpenTelemetry trace propagation: the spans of the CLI join the trace that is active when the session starts. |
 | `testing` | A scriptable transport for your own tests. |
 

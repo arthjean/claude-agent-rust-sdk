@@ -326,3 +326,38 @@ impl NativeSession {
         }
     }
 }
+
+#[cfg(all(test, feature = "jsonschema"))]
+mod tests {
+    use serde_json::json;
+
+    use super::SdkMcpServer;
+    use crate::mcp::tool::{SdkMcpTool, ToolResult};
+
+    #[test]
+    fn each_validator_is_compiled_when_the_server_is_created() {
+        let raw = |name: &str, schema| {
+            SdkMcpTool::raw(name, "", schema, |_| async { Ok(ToolResult::text("")) }).unwrap()
+        };
+        let server = SdkMcpServer::new(
+            "srv".to_owned(),
+            "1.0.0".to_owned(),
+            vec![
+                raw("valid", json!({"type": "object", "required": ["b"]})),
+                raw("broken", json!({"type": "bogus"})),
+            ],
+        )
+        .unwrap();
+        let compiled: Vec<bool> = server
+            .tools
+            .iter()
+            .map(|tool| tool.validator.is_ok())
+            .collect();
+        assert_eq!(compiled, [true, false]);
+        let Ok(validator) = &server.tools[0].validator else {
+            unreachable!()
+        };
+        assert!(!validator.is_valid(&json!({})));
+        assert!(validator.is_valid(&json!({"b": 1})));
+    }
+}

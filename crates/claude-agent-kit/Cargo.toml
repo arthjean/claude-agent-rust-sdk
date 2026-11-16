@@ -12,6 +12,7 @@ readme = "../../README.md"
 exclude = ["tests/workspace.rs"]
 
 [features]
+default = ["jsonschema"]
 jsonschema = ["dep:jsonschema"]
 macros = ["dep:claude-agent-kit-macros"]
 otel = ["dep:opentelemetry"]

@@ -47,6 +47,9 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features
 
+      - name: Test (no default features)
+        run: cargo test --package claude-agent-kit --no-default-features --features testing
+
       - name: Keychain resume (macOS)
         if: runner.os == 'macOS'
         shell: bash
