@@ -6,6 +6,7 @@
 | Version | Date | Author | Summary |
 |---------|------|--------|---------|
 | 1.0 | 2026-11-16 | Arthur Jean | Initial draft, from `docs/research/python-sdk-parity.md` |
+| 1.1 | 2026-11-16 | Arthur Jean | Add the Fedora path of the Python SDK checkout next to the Windows one |
 
 ## Problem Statement
 
@@ -24,7 +25,7 @@ This PRD turns the audit into four deliverables. First, close the five risky div
 
 Key decisions. Stories continue the numbering of the first PRD (`tasks/prd-claude-agent-rust-sdk.md` ends at EP-006 and US-035), so an identifier stays unique in the repository. Upstream work produces ready-to-file dossiers; filing is a manual step of the owner, because nothing is posted in his name without his explicit go and because upstream merges few external pull requests (about 50 of the last 54 merged pull requests came from Anthropic accounts). The differential harness follows the model of the Model Context Protocol conformance suite: a narrow list of expected differences, where an entry that is no longer needed fails the run. Comparison is done on parsed JSON values with a small normalizer written for this harness; the `insta` crate was considered and not chosen, because it compares a value to a stored snapshot and not two live recordings. Raw-schema validation becomes a default cargo feature; `jsonschema` 0.61.2 with its own default features off carries no network code.
 
-The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python`. Every epic and story carries a `Python reference` block. Delivery is phased in four releases, one per epic, in the order EP-007, EP-008, EP-009, EP-010.
+The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python` (Windows) or `/home/arthur/dev/claude-agent-sdk-python` (Fedora). Every epic and story carries a `Python reference` block. Delivery is phased in four releases, one per epic, in the order EP-007, EP-008, EP-009, EP-010.
 
 ## Goals
 
@@ -90,7 +91,7 @@ Key findings that informed this PRD:
 
 ### Hard Constraints
 - Every hard constraint of `tasks/prd-claude-agent-rust-sdk.md` still holds: Rust 1.88 minimum, edition 2024, tokio only, GPL-3.0-or-later, no implementation comments (`//`) in code, rustdoc required on public items.
-- The upstream submodule and `C:/dev/claude-agent-sdk-python` are read-only.
+- The upstream submodule and the local checkout (`C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora) are read-only.
 - Nothing is posted on GitHub in the owner's name (issue, pull request, comment) without his explicit go for that item.
 - Runs against the real CLI cost money and are manual: an implementer asks the owner before launching one. No story may require a real-CLI run to pass its quality gates.
 - The repository is public: no secret is read in a job triggered by `pull_request`.
@@ -113,7 +114,7 @@ For stories of EP-009 and EP-010 that land after US-049, one additional gate:
 
 ## Epics & User Stories
 
-Reference root for every `Python reference` block and `ref:` note: `C:/dev/claude-agent-sdk-python` at commit `4720d36` (the same tree as the submodule `upstream/claude-agent-sdk-python`). Line numbers are valid for that commit only. Rust paths are relative to `C:/dev/claude-agent-sdk-rust` and valid for commit `c15579f`.
+Reference root for every `Python reference` block and `ref:` note: `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, at commit `4720d36` (the same tree as the submodule `upstream/claude-agent-sdk-python`). Line numbers are valid for that commit only. Rust paths are relative to the repository root (`C:/dev/claude-agent-sdk-rust` on Windows, `/home/arthur/dev/claude-agent-sdk-rust` on Fedora) and valid for commit `c15579f`.
 
 ### EP-007: Close the risky behavioral gaps
 
@@ -121,7 +122,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 
 **Definition of Done:** the five divergences of section 4.4 items 1 to 4 and section 6 of `docs/research/python-sdk-parity.md` are closed, each by a test that fails on the code as it stands at commit `c15579f`.
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/__init__.py`: 436-456 (schema building), 604-645 (`create_sdk_mcp_server`, validation at 628-632)
 - `src/claude_agent_sdk/_errors.py`: 6-134 (exception hierarchy)
 - `src/claude_agent_sdk/_internal/session_resume.py`: 130-219 (`materialize_resume_session`, cleanup at 183-191), 326-393 (`_copy_auth_files`), 431-455 (`_write_redacted_credentials`)
@@ -139,7 +140,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** M (3 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/__init__.py`: 620-641 (`run_tool`: validation, error mapping)
 - `pyproject.toml`: 32 (`jsonschema>=4.20.0` is a required dependency)
 - `tests/test_sdk_mcp_integration.py`: 989-1016 (validation error texts)
@@ -162,7 +163,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_errors.py`: 10-22 (`CLINotFoundError` is a `CLIConnectionError`), 25-56 (`ResultError` is a `ProcessError`)
 - `tests/test_errors.py`: 16-100 (hierarchy assertions)
 - `e2e-tests/test_error_results.py`: 37-42 (`isinstance(exc, ProcessError)` on a `ResultError`)
@@ -182,7 +183,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/session_resume.py`: 431-455 (`_write_redacted_credentials`: the write at 452 is not guarded), 183-191 (any failure removes the temporary directory and re-raises), 476-493 (`_copy_if_present`, the tolerant path used for the other files)
 - `tests/test_session_resume.py`: 156-217 (credentials tests)
 
@@ -201,7 +202,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** M (3 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/message_parser.py`: 322 (`usage`), 325 (`modelUsage`), 326 (`permission_denials`), 324 (`structured_output`), 352 (`event`), 374 (`raw` of the rate limit info)
 - `src/claude_agent_sdk/_internal/query.py`: 813-819 (`get_mcp_status` and `get_context_usage` return the response dictionary)
 - `src/claude_agent_sdk/client.py`: 471-538 (the client returns that dictionary)
@@ -223,7 +224,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `tests/test_transcript_mirror.py`: 211-219 (`test_empty_entries_batch_skips_append`), 450-463 (`test_unmapped_file_path_is_dropped_silently`)
 - `tests/test_sdk_mcp_integration.py`: 422-456 (`test_close_does_not_hang_on_a_tool_blocked_outside_the_event_loop`)
 - `tests/test_tool_callbacks.py`: 981-992 (`test_new_hook_events_registered_in_hooks_config`)
@@ -244,7 +245,7 @@ Make the crate behave like Python in the five places where the audit found a dif
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `e2e-tests/test_error_results.py`: 22-60 (payload equality at 50-59)
 - `e2e-tests/test_include_partial_messages.py`: 26-93 (text block looked for in assistant messages only)
 - `e2e-tests/test_subagent_session_reads.py`: 30-107 (every result checked for errors)
@@ -270,7 +271,7 @@ Prepare, for four defects of `claude-agent-sdk` (Python), a dossier the owner ca
 
 Every dossier is one English Markdown file with these parts, in this order: a title of 80 characters or fewer; the upstream version and commit; a minimal reproduction with its captured output; expected versus actual behavior; the root cause with a permalink to the line at the pinned commit; a proposed patch as a unified diff against that commit; a test that fails before the patch and passes after it. Reproductions live in `docs/upstream/repro/`, patches in `docs/upstream/patches/`. The Python SDK is imported from the submodule through `PYTHONPATH`, never installed into it.
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/sessions.py`: 43-48 and 81-114 (directory naming), 145, 172, 613, 1751, 1951 (callers of `_sanitize_path`)
 - `src/claude_agent_sdk/_internal/query.py`: 406-415, 417-464, 541-604, 606-733, 735-780
 - `examples/hooks.py`: 73-82, 196-206
@@ -287,7 +288,7 @@ Every dossier is one English Markdown file with these parts, in this order: a ti
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/sessions.py`: 81-101 (`_simple_hash` iterates code points), 104-114 (`_sanitize_path` substitutes per code point and measures length in code points)
 - `tests/test_sessions.py`: 143-160 (existing tests of both functions)
 - Evidence already gathered against CLI 2.1.325: `docs/validation/project-dir-naming.md` in this repository
@@ -308,7 +309,7 @@ Every dossier is one English Markdown file with these parts, in this order: a ti
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `examples/hooks.py`: 73-82 (returns `hookEventName: "SessionStart"`), 196-206 (registers the callback under `UserPromptSubmit`)
 - `e2e-tests/test_dynamic_control.py`: 13-41, 44-76 (no assertion), 79-98 (the interrupt error is caught and printed)
 - `e2e-tests/test_agents_and_settings.py`: 42-72 (the assertions sit inside `if ... subtype == "init"`, so no init message means a pass); the same shape at 213-247, 249-289, 291-325, 327-381
@@ -330,7 +331,7 @@ Every dossier is one English Markdown file with these parts, in this order: a ti
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/query.py`: 406-410 (`request["request_id"]` raises `KeyError` inside the reader), 441-447 (the call site), 457-464 (`message["filePath"]`, `message["entries"]`), 541-583 (any exception is fatal to the stream), 606-612 (`request_data["subtype"]` is read before the `try`, so no response is written)
 - `tests/test_query.py`: existing reader tests, as the model for the new tests
 
@@ -349,7 +350,7 @@ Every dossier is one English Markdown file with these parts, in this order: a ti
 **Size:** M (3 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/query.py`: 735-780 (`_send_control_request`, timeout default 60 s at 736, wait at 765-766), 572-575 (pending requests are failed only inside `except Exception`), 584-604 (the `finally` block ends the stream and fails nothing), 1178-1236 (`close`)
 - `src/claude_agent_sdk/client.py`: 308-312 (`interrupt`), 341-362 (`set_model`): the public calls that would wait
 
@@ -369,7 +370,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 
 **Definition of Done:** `cargo xtask parity-diff` runs every case of `parity/cases/` through both SDKs against `fake-claude`, passes with no unexplained difference, fails on a stale entry of `parity/differences.toml`, and runs in CI on every pull request.
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 251-252 (`cli_path`), 268-270 (version check skip), 394-423 (script refusal on Windows), 519-744 (`_build_command`), 746-840 (`connect`: environment at 759-823, spawn at 828-836), 1153-1167 (version read from the init frame)
 - `src/claude_agent_sdk/_internal/query.py`: 314-391 (`initialize` request), 606-733 (answers to inbound control requests), 735-780 (control request envelope), 813-897 (outbound control requests), 1122-1162 (`stream_input`)
 - `src/claude_agent_sdk/client.py`: 93-258 (`connect`), 272-303 (`query`), 308-469 (control methods)
@@ -385,7 +386,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** M (3 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 759-823 (every environment variable the SDK sets or removes: the names the recording must capture), 828-836 (spawn arguments)
 
 **Acceptance Criteria:**
@@ -404,7 +405,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** S (2 pts)
 **Dependencies:** Blocked by US-046
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 251-252, 268-270, 394-423, 1153-1167
 - `src/claude_agent_sdk/query.py`: 1-132
 - `pyproject.toml`: 10, 27-33
@@ -424,7 +425,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** L (5 pts)
 **Dependencies:** Blocked by US-047
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/types.py`: 2392-2878 (option field names, which the case format reuses)
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 519-744 (how each option reaches the command line)
 - `src/claude_agent_sdk/query.py`: 1-132; `src/claude_agent_sdk/_internal/client.py`: 1-211 (the one-shot path)
@@ -446,7 +447,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** M (3 pts)
 **Dependencies:** Blocked by US-048
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/_internal/query.py`: 746-749 (request id format `req_{n}_{8 hex}`), 333-347 (hook callback ids `hook_{n}`)
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 767-769 (`CLAUDE_CODE_ENTRYPOINT` is `sdk-py`, `CLAUDE_AGENT_SDK_VERSION` is the package version: two expected differences), 563 (`--max-budget-usd` uses `str()`, a known difference of format)
 
@@ -469,7 +470,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** L (5 pts)
 **Dependencies:** Blocked by US-049
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/client.py`: 93-258, 272-303, 308-469, 471-538
 - `src/claude_agent_sdk/_internal/query.py`: 314-391 (initialize payload with hooks and agents), 606-733 (responses to `can_use_tool`, `hook_callback`, `mcp_message`), 813-897 (outbound subtypes)
 - `src/claude_agent_sdk/__init__.py`: 277-361 (`tool`), 517-645 (`create_sdk_mcp_server`)
@@ -492,7 +493,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** M (3 pts)
 **Dependencies:** Blocked by US-050
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/types.py`: 2392-2878 (the 50 fields of `ClaudeAgentOptions`)
 - `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 519-744 (fields that reach the command line), 759-823 (fields that reach the environment)
 - `src/claude_agent_sdk/_internal/query.py`: 350-365 (fields that reach the initialize request)
@@ -512,7 +513,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 **Size:** S (2 pts)
 **Dependencies:** Blocked by US-049
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `.github/workflows/test.yml`: 20-27 (Python 3.13 setup), 53-61 (the pinned `mcp` install)
 - `pyproject.toml`: 27-33 (dependencies to lock)
 
@@ -533,7 +534,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 
 **Definition of Done:** `docs/parity.md` is generated from the ledgers and checked by `parity-check`; the surface ledger reports adapted entries separately; a scheduled workflow has opened a tracking issue in a dry run.
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/__init__.py`: 648-824 (`__all__`, the 159 exported names)
 - `src/claude_agent_sdk/types.py`: 2254-2262 (`CanUseToolShadowedWarning`), 2263-2372 (the shadow warning and the `can_use_tool` conflict check)
 - `src/claude_agent_sdk/_errors.py`: 6-134
@@ -547,7 +548,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 **Size:** S (2 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `src/claude_agent_sdk/types.py`: 2254-2262 (`CanUseToolShadowedWarning` is a warning class), 2338-2344 (how it is emitted)
 - `src/claude_agent_sdk/__init__.py`: 648-824
 
@@ -567,7 +568,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 **Size:** M (3 pts)
 **Dependencies:** Blocked by US-049, US-053
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `pyproject.toml`: 7 (the version the page states)
 - `src/claude_agent_sdk/_errors.py`: 10-56 (hierarchy, for the error divergence)
 - `src/claude_agent_sdk/types.py`: 2338-2372 (shadow warning, conflict check)
@@ -593,7 +594,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 **Size:** M (3 pts)
 **Dependencies:** None
 
-**Python reference** (root `C:/dev/claude-agent-sdk-python`, commit `4720d36`):
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
 - `CHANGELOG.md`: release notes the issue quotes
 - `pyproject.toml`: 7 (version)
 - `.github/workflows/auto-release.yml`, `.github/workflows/publish.yml`: how upstream tags releases (tags of the form `v0.2.182`)
@@ -688,7 +689,7 @@ What this version explicitly does NOT include:
 ## Files NOT to Modify
 
 - `upstream/claude-agent-sdk-python/**`: read-only behavioral reference, changed only by moving the submodule pin. Patches for upstream are stored under `docs/upstream/patches/`, never applied here.
-- `C:/dev/claude-agent-sdk-python/**`: the original checkout stays untouched; nothing is installed into it and no file is written under it.
+- `C:/dev/claude-agent-sdk-python/**` (Windows) and `/home/arthur/dev/claude-agent-sdk-python/**` (Fedora): the original checkout stays untouched; nothing is installed into it and no file is written under it.
 - `.github/workflows/actions.lock`: changed only through `gh actions-lock`.
 - `Cargo.lock`: changed only by cargo.
 - The generated regions of `docs/migration.md` and, once it exists, `docs/parity.md`: changed only by their xtask commands.
