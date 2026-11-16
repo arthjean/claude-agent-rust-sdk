@@ -121,6 +121,12 @@ mod query;
 mod resume;
 pub mod session_store;
 pub mod sessions;
+/// The `tracing` capture helper of the integration tests, shared with the
+/// unit tests so both assert logged warnings the same way.
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../tests/common/capture.rs"]
+mod test_capture;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod transport;

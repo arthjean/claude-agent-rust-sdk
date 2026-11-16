@@ -982,7 +982,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestHookEventCallbacks::test_subagent_start_hook_callback" = { rust = ["crates/claude-agent-kit/tests/control_protocol.rs::hook_callback_receives_the_typed_input_and_answers_with_wire_names", "crates/claude-agent-kit/tests/types.rs::subagent_start_hook_input", "crates/claude-agent-kit/tests/types.rs::hook_specific_output_key_sets_match_upstream"] }
 "TestHookEventCallbacks::test_post_tool_use_hook_with_updated_mcp_output" = { rust = ["crates/claude-agent-kit/tests/control_protocol.rs::hook_callback_receives_the_typed_input_and_answers_with_wire_names", "crates/claude-agent-kit/tests/types.rs::hook_specific_output_builders_produce_the_wire_names"] }
 "TestHookEventCallbacks::test_pre_tool_use_hook_with_additional_context" = { rust = ["crates/claude-agent-kit/tests/control_protocol.rs::hook_callback_receives_the_typed_input_and_answers_with_wire_names", "crates/claude-agent-kit/tests/types.rs::hook_specific_output_key_sets_match_upstream"] }
-"TestHookInitializeRegistration::test_new_hook_events_registered_in_hooks_config" = { rust = "crates/claude-agent-kit/tests/types.rs::hook_event_has_the_ten_values" }
+"TestHookInitializeRegistration::test_new_hook_events_registered_in_hooks_config" = { rust = "crates/claude-agent-kit/tests/control_protocol.rs::hooks_under_notification_subagent_start_and_permission_request_are_registered" }
 
 [tests."tests/test_transcript_mirror.py"]
 "TestFilePathToSessionKey::test_main_transcript" = { rust = "crates/claude-agent-kit/tests/session_store.rs::file_paths_map_to_keys_relative_to_the_projects_directory" }
@@ -998,7 +998,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestGetProjectsDirEnvOverride::test_falls_back_to_os_environ_when_override_absent" = { rust = "crates/claude-agent-kit/tests/sessions.rs::config_dir_comes_from_the_environment" }
 "TestGetProjectsDirEnvOverride::test_empty_string_override_ignored" = { rust = "crates/claude-agent-kit/tests/transcript_mirror.rs::an_empty_config_dir_in_the_options_falls_back_to_the_process_environment" }
 "TestTranscriptMirrorBatcher::test_enqueue_then_flush_calls_store_append" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::entries_are_grouped_per_file_in_first_seen_order" }
-"TestTranscriptMirrorBatcher::test_empty_entries_batch_skips_append" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::paths_outside_the_projects_directory_are_dropped" }
+"TestTranscriptMirrorBatcher::test_empty_entries_batch_skips_append" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::an_empty_batch_makes_no_append_call" }
 "TestTranscriptMirrorBatcher::test_coalesces_per_file_path_preserving_order" = { rust = "crates/claude-agent-kit/tests/transcript_mirror.rs::a_flush_appends_once_per_file_in_first_seen_order" }
 "TestTranscriptMirrorBatcher::test_eager_flush_on_entry_count_threshold" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::thresholds_start_a_background_flush" }
 "TestTranscriptMirrorBatcher::test_eager_flush_on_byte_threshold" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::thresholds_start_a_background_flush" }
@@ -1010,7 +1010,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestTranscriptMirrorBatcher::test_append_retries_exhausted_reports_error_once" = { rust = "crates/claude-agent-kit/src/lib.rs::mirror::tests::a_batch_dropped_after_three_attempts_is_reported" }
 "TestTranscriptMirrorBatcher::test_close_flushes_pending" = { rust = "crates/claude-agent-kit/tests/transcript_mirror.rs::pending_entries_are_flushed_on_disconnect" }
 "TestTranscriptMirrorBatcher::test_drain_never_raises_on_unexpected_do_flush_error" = { excluded = "python-exception-guard" }
-"TestTranscriptMirrorBatcher::test_unmapped_file_path_is_dropped_silently" = { rust = ["crates/claude-agent-kit/src/lib.rs::mirror::tests::paths_outside_the_projects_directory_are_dropped", "crates/claude-agent-kit/tests/transcript_mirror.rs::frames_outside_the_projects_directory_are_dropped"] }
+"TestTranscriptMirrorBatcher::test_unmapped_file_path_is_dropped_silently" = { rust = ["crates/claude-agent-kit/src/lib.rs::mirror::tests::a_frame_outside_the_projects_directory_makes_no_append_call_and_reports_no_error", "crates/claude-agent-kit/tests/transcript_mirror.rs::frames_outside_the_projects_directory_are_dropped"] }
 "TestTranscriptMirrorBatcher::test_two_eager_flushes_do_not_interleave_or_duplicate" = { rust = ["crates/claude-agent-kit/src/lib.rs::mirror::tests::flushes_are_serialized_so_appends_keep_their_order", "crates/claude-agent-kit/src/lib.rs::mirror::tests::concurrent_background_flushes_keep_the_order_of_a_key"] }
 "TestTranscriptMirrorBatcher::test_flush_awaits_in_flight_eager_flush" = { rust = ["crates/claude-agent-kit/src/lib.rs::mirror::tests::flushes_are_serialized_so_appends_keep_their_order", "crates/claude-agent-kit/src/lib.rs::mirror::tests::concurrent_background_flushes_keep_the_order_of_a_key"] }
 "TestBuildMirrorBatcherFlushMode::test_flush_mode_sets_thresholds" = { rust = ["crates/claude-agent-kit/src/lib.rs::mirror::tests::eager_mode_flushes_every_frame", "crates/claude-agent-kit/src/lib.rs::mirror::tests::thresholds_start_a_background_flush"] }

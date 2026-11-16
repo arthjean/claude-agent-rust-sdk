@@ -506,6 +506,41 @@ mod tests {
         assert_eq!(store.size(), 0);
     }
 
+    fn counting() -> (Arc<FlakyStore>, Arc<TranscriptMirrorBatcher>) {
+        let store = Arc::new(FlakyStore::new(0, None));
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(Shared(Arc::clone(&store))),
+            projects(),
+            &SessionStoreFlushMode::Batched,
+        );
+        (store, batcher)
+    }
+
+    #[tokio::test]
+    async fn an_empty_batch_makes_no_append_call() {
+        let (store, batcher) = counting();
+        batcher.enqueue(path("s"), Vec::new());
+        batcher.flush().await;
+        batcher.close().await;
+        assert_eq!(store.attempts.load(Ordering::SeqCst), 0);
+
+        batcher.enqueue(path("s"), entries(1, "kept"));
+        batcher.flush().await;
+        assert_eq!(store.attempts.load(Ordering::SeqCst), 1, "the store counts");
+    }
+
+    #[tokio::test]
+    async fn a_frame_outside_the_projects_directory_makes_no_append_call_and_reports_no_error() {
+        let (store, batcher) = counting();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(4);
+        batcher.attach(MirrorErrorReporter::new(sender.downgrade()));
+        batcher.enqueue("/elsewhere/proj/s.jsonl".to_owned(), entries(1, "o"));
+        batcher.flush().await;
+        batcher.close().await;
+        assert_eq!(store.attempts.load(Ordering::SeqCst), 0);
+        assert!(receiver.try_recv().is_err(), "a mirror error was reported");
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_background_flushes_keep_the_order_of_a_key() {
         for _ in 0..20 {

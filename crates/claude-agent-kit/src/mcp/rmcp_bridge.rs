@@ -486,6 +486,7 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::{ChannelTransport, RmcpBridge, RmcpServer, SHUTDOWN_GRACE};
+    use crate::test_capture as capture;
     use crate::testing::MockTransport;
     use crate::types::{McpSdkServerConfig, McpSdkServerInstance};
     use crate::{ClaudeAgentOptions, ClaudeSdkClient};
@@ -713,6 +714,7 @@ mod tests {
         post(&transport, "mcp-1", 0, "ping");
         settle().await;
 
+        let (warnings, _guard) = capture::Warnings::install();
         let before = tokio::time::Instant::now();
         client.disconnect().await.unwrap();
         let waited = before.elapsed();
@@ -721,6 +723,13 @@ mod tests {
         assert!(
             waited < SHUTDOWN_GRACE + Duration::from_secs(1),
             "{waited:?}"
+        );
+        let logged = warnings.all();
+        assert!(
+            logged.iter().any(|warning| warning
+                == "SDK MCP server 'srv' did not stop within 5 s of being closed; no longer \
+                    waiting for it"),
+            "{logged:?}"
         );
     }
 

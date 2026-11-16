@@ -981,3 +981,40 @@ async fn sixty_four_concurrent_sessions_keep_their_control_channels_apart() {
     });
     futures_util::future::join_all(sessions).await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn hooks_under_notification_subagent_start_and_permission_request_are_registered() {
+    let events = ["Notification", "SubagentStart", "PermissionRequest"];
+    let mut builder = ClaudeAgentOptions::builder();
+    for event in events {
+        builder = builder.hook(event, HookMatcher::new().hook(passive_hook()));
+    }
+    let options = builder.build().unwrap();
+    let registered: Vec<String> = options
+        .hooks
+        .as_ref()
+        .unwrap()
+        .keys()
+        .map(|event| event.as_str().to_owned())
+        .collect();
+    assert_eq!(registered, events);
+
+    let transport = cli();
+    let client = connected(&transport, options).await;
+    let hooks = initialize_request(&transport)["hooks"].clone();
+    let sent: Vec<&str> = hooks
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(sent.len(), 3, "{hooks}");
+    for event in events {
+        assert!(sent.contains(&event), "{event}: {hooks}");
+        assert_eq!(
+            hooks[event][0]["hookCallbackIds"].as_array().unwrap().len(),
+            1
+        );
+    }
+    client.disconnect().await.unwrap();
+}
