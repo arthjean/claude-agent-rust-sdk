@@ -58,17 +58,24 @@ async fn partial_messages_arrive_as_stream_events() {
         );
     }
 
-    let blocks = suite::blocks(&messages);
+    let blocks: Vec<&ContentBlock> = messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::Assistant(assistant) => Some(assistant.content.iter()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
     assert!(
         blocks
             .iter()
-            .any(|(_, block)| matches!(block, ContentBlock::Thinking(_))),
+            .any(|block| matches!(block, ContentBlock::Thinking(_))),
         "no thinking block in the assistant messages"
     );
     assert!(
         blocks
             .iter()
-            .any(|(_, block)| matches!(block, ContentBlock::Text(_))),
+            .any(|block| matches!(block, ContentBlock::Text(_))),
         "no text block in the assistant messages"
     );
     match messages.last() {

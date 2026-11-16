@@ -34,10 +34,19 @@ fn missing_credentials_are_reported_by_naming_the_variable() {
     assert_eq!(credentials_error(login), None);
 }
 
+const STORE_RESUME_TEST: &str =
+    "store_resume::a_session_held_only_in_a_store_is_resumed_by_the_cli";
+
 #[test]
 fn without_credentials_a_real_cli_test_fails_instead_of_being_skipped() {
+    for test in [REAL_CLI_TEST, STORE_RESUME_TEST] {
+        fails_without_credentials(test);
+    }
+}
+
+fn fails_without_credentials(test: &str) {
     let output = Command::new(std::env::current_exe().unwrap())
-        .args(["--ignored", "--exact", REAL_CLI_TEST])
+        .args(["--ignored", "--exact", test])
         .env_remove(CREDENTIALS_VARIABLE)
         .env_remove(LOGIN_VARIABLE)
         .output()

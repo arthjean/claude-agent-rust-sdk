@@ -66,8 +66,10 @@ async fn subagent_messages_carry_the_id_of_the_tool_call_that_spawned_them() {
     let messages = suite::run(PROMPT, options).await;
 
     let results = suite::results(&messages);
+    for result in &results {
+        assert!(!result.is_error, "the run failed: {result:#?}");
+    }
     let result = results.last().expect("the run reports no result");
-    assert!(!result.is_error, "the run failed: {result:#?}");
     let session_id = result.session_id.as_str();
     let agent_tool_use_ids: BTreeSet<String> = suite::blocks(&messages)
         .into_iter()

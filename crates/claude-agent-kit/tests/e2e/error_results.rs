@@ -21,6 +21,10 @@ async fn an_api_failure_ends_the_query_with_a_result_error_carrying_the_payload(
     assert!(result.is_error, "{result:#?}");
     let error = error.expect("the error result should end the stream with an error");
     let text = error.to_string();
+    assert!(
+        error.is_process(),
+        "except ProcessError catches it: {error:?}"
+    );
     let Error::ResultError {
         data, exit_code, ..
     } = &error
@@ -37,7 +41,13 @@ async fn an_api_failure_ends_the_query_with_a_result_error_carrying_the_payload(
 
     assert_eq!(data.subtype(), Some(result.subtype.as_str()));
     assert_eq!(data.result(), result.result.as_deref());
+    assert_eq!(data.session_id(), Some(result.session_id.as_str()));
+    assert_eq!(data.terminal_reason(), result.terminal_reason.as_deref());
     assert_eq!(data.api_error_status(), result.api_error_status);
+    assert_eq!(
+        data.get("uuid").and_then(|uuid| uuid.as_str()),
+        result.uuid.as_deref()
+    );
     assert_eq!(data.subtype(), Some("success"));
-    assert_eq!(result.terminal_reason.as_deref(), Some("api_error"));
+    assert_eq!(data.terminal_reason(), Some("api_error"));
 }

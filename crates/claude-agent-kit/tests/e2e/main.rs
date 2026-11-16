@@ -17,6 +17,7 @@
 //! runs the CLI under an empty configuration directory, so it needs
 //! credentials from the environment (`ANTHROPIC_API_KEY` or
 //! `CLAUDE_CODE_OAUTH_TOKEN`) and fails, saying so, without them.
+//! `store_resume` resumes a session held only in a session store.
 //!
 //! The suite needs credentials. It reads `ANTHROPIC_API_KEY`, and fails,
 //! naming that variable, when it is missing. A developer whose installed
@@ -54,6 +55,7 @@ mod run_end;
 mod sdk_mcp_tools;
 mod session_store_resume_settings;
 mod stderr_callback;
+mod store_resume;
 mod structured_output;
 mod subagent_session_reads;
 mod suite;
