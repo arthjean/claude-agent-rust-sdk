@@ -9,10 +9,10 @@
     {
       "id": "EP-007",
       "title": "Close the risky behavioral gaps",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 6,
-      "stories_done": 0
+      "stories_done": 6
     },
     {
       "id": "EP-008",
@@ -44,73 +44,73 @@
       "id": "US-036",
       "title": "Validate raw-schema tool arguments by default",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-037",
       "title": "Error predicates that mirror the Python hierarchy",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-038",
       "title": "Fail a resume when the credentials cannot be written",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-039",
       "title": "Keep every key Python passes through",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-040",
       "title": "Restore the unit assertions lost in folded tests",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-041",
       "title": "Restore the end-to-end assertions and route `store_resume_e2e` through the suite",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-16",
+      "reviewed_at": "2026-11-16"
     },
     {
       "id": "US-042",
