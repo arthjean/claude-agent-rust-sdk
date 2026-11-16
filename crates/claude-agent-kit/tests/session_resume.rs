@@ -872,9 +872,19 @@ async fn directories_in_place_of_the_seed_files_are_skipped_and_the_transcript_i
     for name in seeds {
         std::fs::create_dir(setup.caller.path().join(name)).unwrap();
     }
+    let (warnings, _guard) = common::capture::Warnings::install();
     let (messages, config, id) = setup.resumed().await;
     for name in seeds {
         assert!(!config.join(name).exists(), "{name}");
+    }
+    let skipped = warnings.all();
+    for name in ["settings.json", ".claude.json"] {
+        assert!(
+            skipped.iter().any(|warning| warning.contains("skipping")
+                && warning.contains(name)
+                && warning.contains("not a regular file")),
+            "{name}: {skipped:?}"
+        );
     }
     assert!(transcript_file(&setup, &config, &id).is_file());
     let rest: Vec<_> = messages.collect().await;

@@ -8,6 +8,12 @@
 //! OAuth refresh token: a child refreshing it would revoke the tokens of
 //! the parent. The directory is removed after the child exits, and on any
 //! failure or cancellation.
+//!
+//! As upstream, credentials that exist but cannot be written to the
+//! temporary directory fail the resume before the child starts, since a
+//! child without them would only fail later on authentication. The other
+//! seed files (`.claude.json` and the settings) are best effort: one that
+//! cannot be read or written is skipped with a warning.
 
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -270,7 +276,7 @@ pub(crate) async fn materialize_resume_session(
     let project_dir = directory.path().join("projects").join(&project_key);
     let filled = async {
         write_jsonl(&project_dir.join(format!("{session_id}.jsonl")), &entries)?;
-        copy_auth_files(directory.path(), options);
+        copy_auth_files(directory.path(), options)?;
         if store.capabilities().list_subkeys {
             materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await?;
         }
@@ -417,7 +423,13 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
 /// and `cowork_settings.json` in the config directory, `.claude.json` in
 /// the config directory when one is set and in the home directory
 /// otherwise.
-fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) {
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] naming the credentials file when credentials were
+/// found but cannot be written. A seed file that cannot be copied is only
+/// logged.
+fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) -> Result<()> {
     let caller_config_dir = env_value(options, CONFIG_DIR_VARIABLE).map(PathBuf::from);
     let home = std::env::home_dir().unwrap_or_default();
     let source = caller_config_dir
@@ -436,9 +448,17 @@ fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) {
     }
     if let Some(credentials) = credentials {
         let target = target.join(".credentials.json");
-        if let Err(error) = write_private(&target, redact_credentials(&credentials).as_bytes()) {
-            tracing::warn!("[SessionStore] resume: cannot write the credentials ({error})");
-        }
+        write_credentials(&target, redact_credentials(&credentials).as_bytes()).map_err(
+            |error| {
+                Error::io(
+                    format!(
+                        "Cannot write the credentials file {} for the resumed session",
+                        target.display()
+                    ),
+                    error,
+                )
+            },
+        )?;
     }
 
     let claude_json = match &caller_config_dir {
@@ -455,6 +475,17 @@ fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) {
             strip_settings_for_resume,
         );
     }
+    Ok(())
+}
+
+/// Writes the redacted credentials. Unit tests can make the write fail, as
+/// a full disk or a denied permission would.
+fn write_credentials(path: &Path, content: &[u8]) -> std::io::Result<()> {
+    #[cfg(test)]
+    if let Some(error) = tests::credentials_write_fault(path) {
+        return Err(error);
+    }
+    write_private(path, content)
 }
 
 /// The OAuth credentials the CLI keeps in the macOS Keychain by default.
@@ -562,9 +593,135 @@ async fn materialize_subkeys(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
+    use futures_util::StreamExt;
     use serde_json::json;
 
     use super::*;
+    use crate::session_store::{InMemorySessionStore, SessionStore};
+    use crate::types::ClaudeAgentOptionsBuilder;
+
+    thread_local! {
+        static CREDENTIALS_FAULT: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
+    }
+
+    /// The error a credentials write on this thread fails with while a test
+    /// holds an [`Arm`]; the path of each attempt is recorded for the test.
+    pub(super) fn credentials_write_fault(path: &Path) -> Option<std::io::Error> {
+        CREDENTIALS_FAULT.with(|fault| {
+            fault.borrow_mut().as_mut().map(|attempts| {
+                attempts.push(path.to_path_buf());
+                std::io::Error::new(ErrorKind::PermissionDenied, "injected: disk refused")
+            })
+        })
+    }
+
+    /// Makes every credentials write on this thread fail until dropped.
+    struct Arm;
+
+    impl Arm {
+        fn new() -> Self {
+            CREDENTIALS_FAULT.with(|fault| *fault.borrow_mut() = Some(Vec::new()));
+            Self
+        }
+
+        fn attempts(&self) -> Vec<PathBuf> {
+            CREDENTIALS_FAULT.with(|fault| fault.borrow().clone().unwrap_or_default())
+        }
+    }
+
+    impl Drop for Arm {
+        fn drop(&mut self) {
+            CREDENTIALS_FAULT.with(|fault| *fault.borrow_mut() = None);
+        }
+    }
+
+    /// Options resuming a session the store holds, with the caller config
+    /// directory `config` and a CLI path that does not exist: a run that
+    /// gets past the resume fails with [`Error::CliNotFound`].
+    async fn resumable(config: &Path, cwd: &Path) -> ClaudeAgentOptionsBuilder {
+        let id = uuid::Uuid::new_v4().to_string();
+        let store = InMemorySessionStore::new();
+        let key = SessionKey::new(project_key_for_directory(Some(cwd)), id.as_str());
+        let entry = json!({"type": "user", "uuid": uuid::Uuid::new_v4().to_string(), "sessionId": id, "message": {"role": "user", "content": "hi"}});
+        let Value::Object(entry) = entry else {
+            unreachable!()
+        };
+        store.append(&key, &[entry]).await.unwrap();
+        ClaudeAgentOptions::builder()
+            .cwd(cwd)
+            .session_store(store)
+            .resume(id.as_str())
+            .env_var(CONFIG_DIR_VARIABLE, config.to_string_lossy())
+            .cli_path(cwd.join("no-such-claude"))
+    }
+
+    #[tokio::test]
+    async fn a_credentials_write_failure_fails_the_query_before_any_spawn_and_removes_the_directory()
+     {
+        let config = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        std::fs::write(
+            config.path().join(".credentials.json"),
+            br#"{"claudeAiOauth":{"accessToken":"a","refreshToken":"r"}}"#,
+        )
+        .unwrap();
+        let options = resumable(config.path(), cwd.path()).await.build().unwrap();
+        let arm = Arm::new();
+        let mut messages = crate::query("hi", options);
+        let first = messages.next().await;
+        let Some(Err(Error::Io { message, source })) = &first else {
+            panic!("expected the credentials error, got {first:?}");
+        };
+        assert!(message.contains(".credentials.json"), "{message}");
+        assert_eq!(source.kind(), ErrorKind::PermissionDenied);
+        assert!(source.to_string().contains("injected: disk refused"));
+        assert!(
+            first
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap_err()
+                .to_string()
+                .contains("injected: disk refused")
+        );
+        assert!(messages.next().await.is_none());
+        let attempts = arm.attempts();
+        assert_eq!(attempts.len(), 1, "{attempts:?}");
+        let directory = attempts[0].parent().unwrap();
+        assert!(
+            directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(TEMPORARY_PREFIX)
+        );
+        assert!(
+            !directory.exists(),
+            "{} is left behind",
+            directory.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn without_credentials_to_copy_the_resume_reaches_the_cli_lookup() {
+        let config = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let options = resumable(config.path(), cwd.path())
+            .await
+            .env_var("ANTHROPIC_API_KEY", "sk-test")
+            .build()
+            .unwrap();
+        let arm = Arm::new();
+        let mut messages = crate::query("hi", options);
+        let first = messages.next().await;
+        assert!(
+            matches!(first, Some(Err(Error::CliNotFound { .. }))),
+            "the resume was materialized and the CLI looked up: {first:?}"
+        );
+        assert!(arm.attempts().is_empty());
+    }
 
     #[test]
     fn unsafe_subpaths_are_rejected() {
