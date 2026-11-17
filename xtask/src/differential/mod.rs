@@ -17,10 +17,10 @@
 //! `--upstream <path>`, `--parity <path>`, and case names to run only those
 //! cases (the stale-entry check is then skipped).
 
-mod case;
+pub(crate) mod case;
 mod compare;
-mod coverage;
-mod ledger;
+pub(crate) mod coverage;
+pub(crate) mod ledger;
 mod requirements;
 mod runner;
 

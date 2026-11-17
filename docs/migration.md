@@ -3,7 +3,8 @@
 `claude-agent-kit` is at parity with version 0.2.182 of the Python Claude Agent
 SDK. Every name the Python package exports has a Rust counterpart, listed in the
 table at the end of this page. This guide covers what changes in shape when you
-move a program from Python to Rust.
+move a program from Python to Rust. [`parity.md`](parity.md) lists every
+known difference in behavior, with its reason and the test that shows it.
 
 ## The two entry points
 

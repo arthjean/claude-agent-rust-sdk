@@ -164,4 +164,12 @@ mod tests {
             assert!(validate_uuid(invalid).is_none(), "{invalid}");
         }
     }
+
+    /// Python matches with `re.match` and a `$` anchor, which also matches
+    /// before a final newline; the CLI never writes such an identifier.
+    #[test]
+    fn a_session_id_followed_by_a_newline_is_refused() {
+        assert!(validate_uuid("550e8400-e29b-41d4-a716-446655440000\n").is_none());
+        assert!(validate_uuid("550e8400-e29b-41d4-a716-446655440000\r\n").is_none());
+    }
 }

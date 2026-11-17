@@ -123,8 +123,20 @@ pub fn check(
     report
 }
 
-/// Runs the coverage check over the cases of `parity`.
-pub fn run(upstream: &Path, parity: &Path) -> Result<bool, String> {
+/// The coverage of the cases of `parity`, measured against the upstream
+/// checkout.
+#[derive(Debug)]
+pub struct Measure {
+    /// The fields of `ClaudeAgentOptions` upstream.
+    pub fields: BTreeSet<String>,
+    /// Number of cases.
+    pub cases: usize,
+    /// The check of the cases against the exclusions.
+    pub report: Report,
+}
+
+/// Measures which fields the cases of `parity` set.
+pub fn measure(upstream: &Path, parity: &Path) -> Result<Measure, String> {
     let fields = upstream_fields(upstream)?;
     let cases = case::load_all(
         &parity.join("cases"),
@@ -141,6 +153,20 @@ pub fn run(upstream: &Path, parity: &Path) -> Result<bool, String> {
         .map(|case| (case.name.clone(), case.option_names()))
         .collect();
     let report = check(&fields, &options, &exclusions.excluded);
+    Ok(Measure {
+        fields,
+        cases: cases.len(),
+        report,
+    })
+}
+
+/// Runs the coverage check over the cases of `parity`.
+pub fn run(upstream: &Path, parity: &Path) -> Result<bool, String> {
+    let Measure {
+        fields,
+        cases,
+        report,
+    } = measure(upstream, parity)?;
     for line in &report.lines {
         println!("{line}");
     }
@@ -152,7 +178,7 @@ pub fn run(upstream: &Path, parity: &Path) -> Result<bool, String> {
         fields.len(),
         report.covered,
         report.excluded,
-        cases.len()
+        cases
     );
     Ok(report.problems.is_empty())
 }

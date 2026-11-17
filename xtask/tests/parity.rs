@@ -1,5 +1,6 @@
 //! The parity commands, run as the `xtask` binary against a small upstream
-//! checkout and ledgers written by each test.
+//! checkout (a git repository with one commit), ledgers, cases, and pages
+//! written by each test.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -31,18 +32,45 @@ impl Fixture {
             &root.join("upstream/tests/test_sample.py"),
             "def test_one():\n    assert True\n",
         );
+        write(
+            &root.join("upstream/pyproject.toml"),
+            "[project]\nname = \"claude-agent-sdk\"\nversion = \"9.8.7\"\n",
+        );
+        write(
+            &root.join("upstream/src/claude_agent_sdk/types.py"),
+            "class ClaudeAgentOptions:\n    model: str | None = None\n    cli_path: str | None = None\n",
+        );
+        commit(&root.join("upstream"));
         write(&root.join("parity/surface.toml"), surface);
         write(&root.join("parity/tests.toml"), tests);
+        write(&root.join("parity/differences.toml"), "");
+        write(
+            &root.join("parity/cases/default.json"),
+            r#"{"name": "default", "scenario": {}, "prompt": "hi", "options": {"model": "m"}}"#,
+        );
+        write(
+            &root.join("parity/cases/coverage.toml"),
+            "[excluded]\ncli_path = \"Set by the drivers.\"\n",
+        );
+        std::fs::create_dir_all(root.join("parity/scenarios")).unwrap();
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../parity/case.schema.json"),
+            root.join("parity/case.schema.json"),
+        )
+        .unwrap();
         write(
             &root.join("migration.md"),
             "# Guide\n\n<!-- parity:table:begin -->\n<!-- parity:table:end -->\n",
         );
+        write(&root.join("parity.md"), PAGE);
         let fixture = Self {
             _directory: directory,
             root,
         };
-        let table = fixture.run("migration-table", &[]);
-        assert!(table.status.success(), "{table:?}");
+        for command in ["migration-table", "parity-page"] {
+            let output = fixture.run(command, &[]);
+            assert!(output.status.success(), "{command}: {}", stderr(&output));
+        }
         fixture
     }
 
@@ -55,10 +83,38 @@ impl Fixture {
             .arg(self.root.join("parity"))
             .arg("--migration")
             .arg(self.root.join("migration.md"))
+            .arg("--page")
+            .arg(self.root.join("parity.md"))
             .args(extra)
             .output()
             .unwrap()
     }
+}
+
+const PAGE: &str = "# Parity\n\nWritten by hand.\n\n<!-- parity:page:begin -->\n<!-- parity:page:end -->\n\n## What Rust adds\n";
+
+/// Makes `directory` a git repository holding one commit of its files.
+fn commit(directory: &Path) {
+    let git = |arguments: &[&str]| {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args([
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {arguments:?}: {output:?}");
+    };
+    git(&["init", "--quiet"]);
+    git(&["add", "--all"]);
+    git(&["commit", "--quiet", "--message", "Upstream"]);
 }
 
 fn write(path: &Path, content: &str) {
@@ -369,6 +425,150 @@ fn an_adapted_entry_without_a_note_fails_the_check_by_name() {
         stderr(&check).contains(
             "parity/surface.toml: `query` is adapted but has no `note` saying how the Rust item differs"
         ),
+        "{}",
+        stderr(&check)
+    );
+}
+
+fn page(fixture: &Fixture) -> String {
+    std::fs::read_to_string(fixture.root.join("parity.md"))
+        .unwrap()
+        .replace("\r\n", "\n")
+}
+
+fn consistent() -> Fixture {
+    Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(EXISTING_PATH))]),
+        &tests_ledger(&rust(EXISTING_TEST)),
+    )
+}
+
+#[test]
+fn the_page_states_the_upstream_version_commit_counts_and_coverage() {
+    let fixture = consistent();
+    let commit = Command::new("git")
+        .arg("-C")
+        .arg(fixture.root.join("upstream"))
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let commit = String::from_utf8_lossy(&commit.stdout).trim().to_owned();
+
+    let text = page(&fixture);
+    for expected in [
+        "# Parity\n\nWritten by hand.\n\n<!-- parity:page:begin -->\n## What was compared",
+        &format!("Python Claude Agent SDK 9.8.7, at upstream commit `{commit}`, committed on "),
+        "| Implemented | 1 (100.0%) | 1 (100.0%) |",
+        "| Adapted | 0 (0.0%) | 0 (0.0%) |",
+        "| Total | 1 | 1 |",
+        "plays 1 cases",
+        "The cases set 1 of the 2 fields of `ClaudeAgentOptions`; 1 are excluded",
+        "0 differences are reviewed and accepted",
+        "## Not yet classified (0)",
+        "<!-- parity:page:end -->\n\n## What Rust adds\n",
+    ] {
+        assert!(text.contains(expected), "no `{expected}` in:\n{text}");
+    }
+    let check = fixture.run("parity-check", &["--deny-pending"]);
+    assert!(check.status.success(), "{}", stderr(&check));
+}
+
+#[test]
+fn a_stale_page_fails_the_check_and_page_check_only_compares() {
+    let fixture = consistent();
+    write(
+        &fixture.root.join("parity/differences.toml"),
+        "[unclassified.later]\nsource = \"4.4 item 10\"\nsummary = \"Budget spelling.\"\n",
+    );
+    let before = page(&fixture);
+
+    let check = fixture.run("parity-page", &["--check"]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("is out of date with the ledgers; run `cargo xtask parity-page`"),
+        "{}",
+        stderr(&check)
+    );
+    assert_eq!(page(&fixture), before);
+    let check = fixture.run("parity-check", &[]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("run `cargo xtask parity-page`"),
+        "{}",
+        stderr(&check)
+    );
+
+    let write_page = fixture.run("parity-page", &[]);
+    assert!(write_page.status.success(), "{}", stderr(&write_page));
+    let text = page(&fixture);
+    assert!(text.contains("## Not yet classified (1)"), "{text}");
+    assert!(
+        text.contains("| 4.4 item 10 | Budget spelling. |"),
+        "{text}"
+    );
+    let check = fixture.run("parity-check", &[]);
+    assert!(check.status.success(), "{}", stderr(&check));
+}
+
+#[test]
+fn a_behavior_entry_naming_a_missing_rust_test_fails_the_check_by_name() {
+    let fixture = consistent();
+    let entry = |test: &str| {
+        format!(
+            "[behavior.kept]\nsummary = \"An unknown message\"\npython = \"Skipped.\"\nrust = \"Kept.\"\n\
+             ref = \"tests/test_sample.py:1-2\"\ncategory = \"rust-more-robust\"\nreason = \"No loss.\"\n\
+             test = \"{test}\"\n"
+        )
+    };
+    write(
+        &fixture.root.join("parity/differences.toml"),
+        &entry("xtask/tests/parity.rs::no_such_behavior_test"),
+    );
+
+    let check = fixture.run("parity-check", &[]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains(
+            "parity/differences.toml: `behavior.kept` names Rust test \
+             `xtask/tests/parity.rs::no_such_behavior_test`, which does not exist"
+        ),
+        "{}",
+        stderr(&check)
+    );
+
+    write(
+        &fixture.root.join("parity/differences.toml"),
+        &entry(EXISTING_TEST),
+    );
+    let write_page = fixture.run("parity-page", &[]);
+    assert!(write_page.status.success(), "{}", stderr(&write_page));
+    let text = page(&fixture);
+    assert!(
+        text.contains("### Rust handles what stops Python (1)"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "| An unknown message | Skipped. (upstream `tests/test_sample.py:1-2`) | Kept. | No loss. | `{EXISTING_TEST}` |"
+        )),
+        "{text}"
+    );
+    let check = fixture.run("parity-check", &[]);
+    assert!(check.status.success(), "{}", stderr(&check));
+}
+
+#[test]
+fn a_hand_written_claim_of_full_parity_fails_the_check() {
+    let fixture = consistent();
+    let boastful = page(&fixture).replace("Written by hand.", "Full parity with upstream.");
+    write(&fixture.root.join("parity.md"), &boastful);
+
+    let check = fixture.run("parity-check", &[]);
+
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("the hand-written text claims `full parity`"),
         "{}",
         stderr(&check)
     );

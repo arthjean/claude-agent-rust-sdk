@@ -1,9 +1,18 @@
-# Reviewed differences between what the Python SDK and claude-agent-kit send
-# the CLI, found by `cargo xtask parity-diff`. Format and rules:
-# parity/README.md. Each entry covers one location; `python` and `rust` are
-# JSON text, and a missing key means that side sent nothing there. An entry
-# that matches no difference fails the run, so remove it when the
-# difference goes away.
+# Reviewed differences between the Python SDK and claude-agent-kit, rendered
+# into docs/parity.md by `cargo xtask parity-page`. Format and rules:
+# parity/README.md.
+#
+# [wire]: what the two SDKs send the CLI, found by `cargo xtask parity-diff`.
+# Each entry covers one location; `python` and `rust` are JSON text, and a
+# missing key means that side sent nothing there. An entry that matches no
+# difference fails the run, so remove it when the difference goes away.
+#
+# [behavior]: divergences the harness cannot see. Each entry cites the
+# upstream lines (`ref`) and the Rust test that shows the Rust side (`test`),
+# which `cargo xtask parity-check` requires to exist.
+#
+# [unclassified]: divergences of docs/research/python-sdk-parity.md not yet
+# reviewed into one of the tables above.
 
 [wire.entrypoint-label]
 case = "*"
@@ -43,3 +52,257 @@ python = '''"Input validation error: 'b' is a required property"'''
 rust = '''"Input validation error: \"b\" is a required property"'''
 category = "deliberate"
 reason = "Both SDKs return the validator's message after the same prefix (__init__.py:630-632); Python's jsonschema quotes the property name with Python repr, the Rust jsonschema crate with JSON quotes. Message wording is not matched (a non-goal of tasks/prd-parity-hardening.md)."
+
+[behavior.flat-error-enum]
+summary = "An error caught by its parent class"
+python = "`ResultError` subclasses `ProcessError` and `CLINotFoundError` subclasses `CLIConnectionError`, so `except ProcessError` also catches a result error."
+rust = "One flat `Error` enum: a `match` arm on `Error::Process` misses `Error::ResultError`. `Error::is_process()` and `Error::is_cli_connection()` answer what the two `except` clauses catch."
+ref = "src/claude_agent_sdk/_errors.py:10-56"
+category = "deliberate"
+reason = "A Rust enum has no subclasses; the predicates keep the Python meaning without nesting variants."
+test = "crates/claude-agent-kit/tests/errors.rs::result_error_is_a_process_failure_and_cli_not_found_a_connection_failure"
+
+[behavior.separate-process-group]
+summary = "Where the CLI process is placed"
+python = "The CLI is spawned in the process group of the program, so a Ctrl+C in the terminal reaches it directly."
+rust = "On Unix the CLI leads its own process group, so a terminal Ctrl+C does not reach it; the session ends through the transport instead."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:828-836"
+category = "deliberate"
+reason = "A group of its own lets the SDK end the CLI and every process it started in one signal."
+test = "crates/claude-agent-kit/tests/shutdown.rs::the_process_leads_its_own_process_group @unix"
+
+[behavior.process-tree-ended]
+summary = "Processes the CLI started"
+python = "Only the direct child is signaled, and an atexit hook cleans up at interpreter exit."
+rust = "The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:72-82"
+category = "rust-more-robust"
+reason = "A tool process the CLI started must not outlive the session."
+test = "crates/claude-agent-kit/tests/shutdown.rs::descendants_end_with_the_session"
+
+[behavior.shadow-warning-per-session]
+summary = "The warning that `can_use_tool` is shadowed"
+python = "Emitted once per process with `warnings.warn`, under the filterable category `CanUseToolShadowedWarning`."
+rust = "Logged through `tracing` at each connect, with no category; `ClaudeAgentOptions::can_use_tool_shadowed_warning` returns the text."
+ref = "src/claude_agent_sdk/types.py:2336-2342"
+category = "deliberate"
+reason = "Rust has no warning categories, and a log line per session names the session that is affected."
+test = "crates/claude-agent-kit/tests/transport.rs::the_shadow_warning_is_logged_again_on_every_session"
+
+[behavior.can-use-tool-with-stdio]
+summary = "`can_use_tool` with `permission_prompt_tool_name` set to `stdio`"
+python = "Any value of `permission_prompt_tool_name` next to `can_use_tool` raises."
+rust = "Options whose fields are set directly may hold `can_use_tool` together with the value `stdio`, which the callback needs anyway; any other value is a `Config` error."
+ref = "src/claude_agent_sdk/types.py:2362-2366"
+category = "deliberate"
+reason = "`stdio` is the value the SDK itself sets for the callback, so refusing it would reject options the SDK produced."
+test = "crates/claude-agent-kit/src/lib.rs::types::options::tests::session_options_force_the_stdio_prompt_tool_for_a_callback_set_after_the_build"
+
+[behavior.unknown-messages-kept]
+summary = "An unknown message type"
+python = "The parser returns `None` and the message is skipped."
+rust = "Kept as `Message::Unknown` with its raw JSON, as is an unknown content block (`ContentBlock::Unknown`)."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
+category = "rust-more-robust"
+reason = "A newer CLI must not make an older program lose data."
+test = "crates/claude-agent-kit/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
+
+[behavior.malformed-control-frames]
+summary = "A control request without `request_id`"
+python = "A `KeyError` ends the reader task, and the session with it."
+rust = "The frame is logged and ignored; the session goes on."
+ref = "src/claude_agent_sdk/_internal/query.py:408"
+category = "rust-more-robust"
+reason = "One malformed frame from the CLI must not end the session."
+test = "crates/claude-agent-kit/src/lib.rs::control::tests::each_control_request_runs_one_handler_tracked_until_it_answers"
+
+[behavior.malformed-mirror-frames]
+summary = "A transcript mirror frame without a valid `filePath`"
+python = "A `KeyError` ends the reader task, and the session with it."
+rust = "The frame is logged and ignored; the next frames are still mirrored and the result is delivered."
+ref = "src/claude_agent_sdk/_internal/query.py:460-463"
+category = "rust-more-robust"
+reason = "One malformed frame from the CLI must not end the session."
+test = "crates/claude-agent-kit/src/lib.rs::control::tests::mirror_frames_go_to_the_attached_mirror_and_results_wait_for_its_flush"
+
+[behavior.pending-requests-fail-at-end]
+summary = "Control requests pending when the CLI output ends"
+python = "They wait for their 60-second timeout."
+rust = "They fail at once with `Error::CliConnection`."
+ref = "src/claude_agent_sdk/_internal/query.py:765-767"
+category = "rust-more-robust"
+reason = "No answer can come once the output has ended."
+test = "crates/claude-agent-kit/tests/control_protocol.rs::clean_end_of_output_fails_pending_requests_at_once"
+
+[behavior.reconnect-closes-previous]
+summary = "`connect` on a connected client"
+python = "The new session replaces the old one, which is never closed."
+rust = "The previous session is closed before the new one starts."
+ref = "src/claude_agent_sdk/client.py:208"
+category = "rust-more-robust"
+reason = "An unclosed session leaks a CLI process."
+test = "crates/claude-agent-kit/tests/client.rs::connect_on_a_connected_client_closes_the_previous_session_first"
+
+[behavior.duplicate-tool-names]
+summary = "Two in-process tools with the same name"
+python = "Both are listed and only the last is called."
+rust = "`create_sdk_mcp_server` returns `Error::Config` naming the tool and the server."
+ref = "src/claude_agent_sdk/__init__.py:605-618"
+category = "rust-stricter"
+reason = "The model would see a tool it can never reach."
+test = "crates/claude-agent-kit/tests/sdk_mcp.rs::two_tools_with_the_same_name_are_a_config_error"
+
+[behavior.panicking-tool]
+summary = "An in-process tool whose handler panics"
+python = "An exception in a handler becomes an error result."
+rust = "A panic becomes the error result `Tool '<name>' panicked`, and the server keeps serving."
+ref = "src/claude_agent_sdk/__init__.py:640"
+category = "rust-more-robust"
+reason = "A panic is the Rust counterpart of the exception Python turns into an error result."
+test = "crates/claude-agent-kit/tests/sdk_mcp.rs::handler_panic_is_an_error_result_and_the_server_carries_on"
+
+[behavior.mcp-unknown-method]
+summary = "An MCP method the in-process server does not implement"
+python = "The `mcp` package answers `-32602 Invalid request parameters`."
+rust = "The answer is `-32601 Method not found: <method>`."
+ref = "src/claude_agent_sdk/_internal/sdk_mcp_bridge.py:185-190"
+category = "deliberate"
+reason = "`-32601` is the code JSON-RPC 2.0 defines for an unknown method; the CLI treats both as an error."
+test = "crates/claude-agent-kit/tests/sdk_mcp.rs::unsupported_method_is_a_jsonrpc_method_not_found"
+
+[behavior.mcp-before-initialize]
+summary = "An MCP request before `initialize`"
+python = "The `mcp` package refuses it."
+rust = "The in-process server answers it."
+ref = "src/claude_agent_sdk/_internal/sdk_mcp_bridge.py:185-190"
+category = "deliberate"
+reason = "The CLI always initializes first, so the check would only reject a well-formed request."
+test = "crates/claude-agent-kit/tests/sdk_mcp.rs::messages_are_routed_to_the_server_registered_under_the_options_key"
+
+[behavior.full-schema-detection]
+summary = "A raw tool schema without `properties`"
+python = "A schema counts as complete only with both `type` and `properties`; `{\"type\": \"object\"}` is read as a table of argument names and sent rewritten."
+rust = "Any object is sent as the schema, unchanged."
+ref = "src/claude_agent_sdk/__init__.py:439-444"
+category = "python-defect"
+reason = "`{\"type\": \"object\"}` is a valid JSON Schema; rewriting it changes the tool the model sees."
+test = "crates/claude-agent-kit/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields"
+
+[behavior.project-directory-utf16]
+summary = "The project directory name of a path outside ASCII"
+python = "Characters are counted as code points, so an emoji is one character."
+rust = "Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 in `docs/validation/project-dir-naming.md`."
+ref = "src/claude_agent_sdk/_internal/sessions.py:81-114"
+category = "rust-follows-cli"
+reason = "Python computes a name the CLI never creates, and finds no session there."
+test = "crates/claude-agent-kit/src/lib.rs::sessions::paths::tests::sanitize_replaces_every_unit_outside_ascii_alphanumerics"
+
+[behavior.millisecond-timestamps]
+summary = "Timestamps written into a transcript"
+python = "Microseconds."
+rust = "Milliseconds, as `Date.toISOString` in the CLI writes them."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:402"
+category = "rust-follows-cli"
+reason = "The transcript is the CLI's file; Rust writes what the CLI writes."
+test = "crates/claude-agent-kit/src/lib.rs::sessions::timestamp::tests::formats_like_javascript"
+
+[behavior.strict-required-fields]
+summary = "A required message field of the wrong JSON type"
+python = "Any value is accepted and handed over."
+rust = "Parsing fails with `Invalid field in <kind> message: '<field>' (expected <type>, got <type>)`."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:315-318"
+category = "rust-stricter"
+reason = "A typed field cannot hold a value of another type; the error names the field instead of failing later."
+test = "crates/claude-agent-kit/tests/message_parser.rs::required_field_of_the_wrong_type_is_an_error"
+
+[behavior.user-content-type]
+summary = "User message content that is neither text nor a list"
+python = "Any value is accepted as the content."
+rust = "Parsing fails with `Invalid user content (expected str or list, got <type>)`."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:139-145"
+category = "rust-stricter"
+reason = "`UserContent` is either text or blocks."
+test = "crates/claude-agent-kit/tests/message_parser.rs::user_content_that_is_neither_text_nor_a_list_is_an_error"
+
+[behavior.session-id-trailing-newline]
+summary = "A session identifier followed by a newline"
+python = "Accepted: `re.match` with a `$` anchor also matches before a final newline."
+rust = "Refused, as any string that is not exactly a UUID."
+ref = "src/claude_agent_sdk/_internal/sessions.py:45-48"
+category = "rust-stricter"
+reason = "The identifier becomes a file name; a newline in it names a file the CLI never wrote."
+test = "crates/claude-agent-kit/src/lib.rs::sessions::tests::a_session_id_followed_by_a_newline_is_refused"
+
+[behavior.transport-single-use]
+summary = "A transport after `close`"
+python = "`connect` starts a new process on the same transport."
+rust = "`connect` fails with `Transport is closed`, and `read_messages` can be called once."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:746-749"
+category = "rust-stricter"
+reason = "A transport owns one process; `ClaudeSdkClient` creates a new transport for each connect."
+test = "crates/claude-agent-kit/tests/transport.rs::connect_read_and_close"
+
+[behavior.message-limit-in-bytes]
+summary = "The size limit of one message from the CLI"
+python = "Counted in characters."
+rust = "Counted in bytes."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1065-1083"
+category = "deliberate"
+reason = "The limit bounds the memory a line takes, which bytes measure."
+test = "crates/claude-agent-kit/src/lib.rs::transport::subprocess::tests::the_limit_counts_bytes_not_characters"
+
+[behavior.integer-fields-coerced]
+summary = "A fractional or negative number in an integer field"
+python = "Kept as sent."
+rust = "Truncated toward zero, and a negative count becomes 0."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:315-318"
+category = "deliberate"
+reason = "The fields are typed as unsigned integers; any JSON number still parses."
+test = "crates/claude-agent-kit/tests/message_parser.rs::integer_fields_accept_any_json_number"
+
+[behavior.windows-environment-case]
+summary = "Environment variables that differ only in case, on Windows"
+python = "Merged as distinct keys of a dictionary."
+rust = "Matched without regard to case, as Windows does, so an option replaces the inherited variable."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:764-770"
+category = "deliberate"
+reason = "Windows keeps one variable per case-insensitive name; two keys would leave which one wins undefined."
+test = "crates/claude-agent-kit/src/lib.rs::transport::environment::tests::windows_names_are_matched_without_regard_to_case"
+
+[behavior.timestamp-without-zone]
+summary = "A transcript timestamp without a time zone"
+python = "Read in local time."
+rust = "Read as UTC."
+ref = "src/claude_agent_sdk/_internal/session_summary.py:45-46"
+category = "deliberate"
+reason = "The result does not depend on the zone of the machine that reads the file."
+test = "crates/claude-agent-kit/src/lib.rs::sessions::timestamp::tests::parses_the_formats_the_cli_writes"
+
+[behavior.user-option-group]
+summary = "The `user` option"
+python = "Only the user changes."
+rust = "The primary group of that user is set too, and supplementary groups are cleared when running as root."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:835"
+category = "deliberate"
+reason = "A process running as another user with the caller's groups keeps access the user does not have."
+test = "crates/claude-agent-kit/tests/transport.rs::the_process_runs_as_the_requested_user @unix"
+
+[unclassified.conformance-duplicate-summaries]
+source = "4.1, stricter conformance check"
+summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."
+
+[unclassified.raw-utf8-in-transcripts]
+source = "4.2, bytes written by rename, tag, and fork"
+summary = "Rust writes non-ASCII text as raw UTF-8, Python escapes it. That the CLI writes raw UTF-8 is inferred, not checked, and no test shows the Rust side yet."
+
+[unclassified.store-key-paths]
+source = "4.3, path to store key"
+summary = "Converting a path to a store key refuses `..` segments Python normalizes away and compares case-sensitively on Windows. The existing test covers a case both SDKs refuse."
+
+[unclassified.budget-integer-spelling]
+source = "4.4 item 10, `--max-budget-usd`"
+summary = "Python writes an integer budget as `5`, Rust as `5.0`. Rust types the budget as `f64`, so the integer case cannot be expressed in a differential case."
+
+[unclassified.path-unset]
+source = "4.4 item 10, `PATH` unset on Unix"
+summary = "Rust skips the search in `PATH` when it is not set; Python falls back to the default search path. No test shows it yet."

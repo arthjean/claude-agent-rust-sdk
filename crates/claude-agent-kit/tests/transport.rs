@@ -829,6 +829,25 @@ async fn connect_warns_once_when_the_permission_callback_is_shadowed() {
 }
 
 #[tokio::test]
+async fn the_shadow_warning_is_logged_again_on_every_session() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let options = with_permission_callback(fake.options())
+        .allowed_tools(["Read"])
+        .build()
+        .unwrap();
+    for _ in 0..2 {
+        let client = ClaudeSdkClient::new(options.clone());
+        client.connect().await.unwrap();
+        client.disconnect().await.unwrap();
+    }
+
+    let messages = shadowed_warnings(&warnings);
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert_eq!(messages[0], messages[1]);
+}
+
+#[tokio::test]
 async fn connect_is_silent_when_only_specifier_entries_are_allowed() {
     let (warnings, _guard) = Warnings::install();
     let fake = Fake::new(json!({"auto_reply": true, "steps": []}));

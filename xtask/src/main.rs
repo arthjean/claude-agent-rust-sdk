@@ -19,6 +19,9 @@ usage: cargo xtask <command>
   parity-tests          print the Rust test paths parity/tests.toml may name
   migration-table       regenerate the table of docs/migration.md from
                         parity/surface.toml (--check only compares)
+  parity-page           regenerate the measured region of docs/parity.md
+                        from the ledgers and the cases (--check only
+                        compares)
   upstream-diff <tag>   list what upstream changed between the pinned commit
                         and <tag>
   parity-diff [cases]   play every case of parity/cases through both SDKs
@@ -37,6 +40,7 @@ fn main() -> ExitCode {
         Some("parity-report") => parity::run_report(rest),
         Some("parity-tests") => parity::run_tests(rest),
         Some("migration-table") => parity::run_migration(rest),
+        Some("parity-page") => parity::run_page(rest),
         Some("upstream-diff") => parity::run_diff(rest),
         Some("parity-diff") => differential::run(rest),
         Some("e2e") => gates::run_e2e(rest),

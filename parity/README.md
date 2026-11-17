@@ -10,7 +10,7 @@ This directory records how `claude-agent-kit` matches the Python SDK it ports, `
 | `cases/coverage.toml` | Option fields no case can set, with the reason | `cargo xtask parity-diff --coverage` |
 | `scenarios/*.json` | `fake-claude` scenarios shared by several cases | `cargo xtask parity-diff` |
 | `case.schema.json` | JSON Schema of a case | `cargo xtask parity-diff` |
-| `differences.toml` | Reviewed differences on the wire | `cargo xtask parity-diff` |
+| `differences.toml` | Reviewed differences on the wire (`[wire]`) and in behavior (`[behavior]`), and the audit's divergences not yet reviewed (`[unclassified]`) | `cargo xtask parity-diff` (wire), `cargo xtask parity-check` (behavior tests, and the page they render into) |
 | `drivers/python_driver.py` | The Python driver | `cargo xtask parity-diff` |
 | `requirements.txt` | The Python driver's dependencies, pinned with hashes | `cargo xtask parity-diff --check-requirements` |
 
@@ -112,10 +112,35 @@ reason = "Each SDK names itself to the CLI."
 
 - `case` is a case name, or `*` for every case.
 - `python` and `rust` are JSON text; a missing key means that side sent nothing there.
-- `category` is `deliberate` (the port chose to differ), `rust-follows-cli` (Rust matches what the CLI does where Python does not), or `python-defect` (Python is wrong; Rust matches the CLI). A `python-defect` entry must cite the upstream line at fault as `ref = "path:line"`, relative to the submodule, and loading fails when that line does not exist. Nothing is reported upstream.
+- `category` is `deliberate` (the port chose to differ), `rust-follows-cli` (Rust matches what the CLI does where Python does not), `rust-more-robust` (Rust keeps going, or keeps the data, where Python fails or drops it), `rust-stricter` (Rust refuses input Python accepts), or `python-defect` (Python is wrong; Rust matches the CLI). A `python-defect` entry must cite the upstream line at fault as `ref = "path:line"` or `ref = "path:first-last"`, relative to the submodule, and loading fails when those lines do not exist. Nothing is reported upstream.
 - `reason` explains why the difference is accepted.
 
 An entry matches a difference when its case, location, and both values agree. A difference no entry matches fails the run; so does an entry that matched nothing in a full run, which keeps the ledger honest when the crate or upstream changes. A new entry needs the same review as a code change: fix the crate first when the difference is a bug.
+
+### Differences in behavior
+
+The `[behavior]` table holds the divergences the harness cannot see because they are not on the wire, such as how an inbound message is parsed or where the child process is placed:
+
+```toml
+[behavior.unknown-messages-kept]
+summary = "An unknown message type"
+python = "The parser returns `None` and the message is skipped."
+rust = "Kept as `Message::Unknown` with its raw JSON."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
+category = "rust-more-robust"
+reason = "A newer CLI must not make an older program lose data."
+test = "crates/claude-agent-kit/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
+```
+
+- `python` and `rust` are prose here: what each SDK does.
+- `ref` is required and checked like the one of a `python-defect` entry.
+- `test` is a Rust test as `cargo xtask parity-tests` prints it, with the platform suffix of `tests.toml` (` @unix`, for example) when it is compiled on one platform only. `cargo xtask parity-check` fails when it does not exist.
+
+The `[unclassified]` table names, with `source` (the section of `docs/research/python-sdk-parity.md`) and `summary`, the divergences of the audit that are not reviewed into `[wire]` or `[behavior]` yet. Move an entry out of it once a test or a case shows it.
+
+## The parity page
+
+`cargo xtask parity-page` writes the region between `<!-- parity:page:begin -->` and `<!-- parity:page:end -->` of `docs/parity.md`: the upstream version, commit, and commit date (read from the submodule with `git`), the counts of both ledgers, the number of cases and of option fields they cover, one table per category of `differences.toml`, the exclusions of both ledgers, and the `[unclassified]` list with its count. `--check` only compares, and `cargo xtask parity-check` runs that comparison, so CI fails on a stale page. The text outside the region is written by hand; the check also fails when it claims "100%" or "full parity", which only the generated counts may state.
 
 ## Coverage of the options
 

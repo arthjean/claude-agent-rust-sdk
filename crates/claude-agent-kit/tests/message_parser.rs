@@ -1486,6 +1486,20 @@ fn required_field_of_the_wrong_type_is_an_error() {
 }
 
 #[test]
+fn user_content_that_is_neither_text_nor_a_list_is_an_error() {
+    for (content, kind) in [(json!(7), "int"), (json!({"text": "hi"}), "dict")] {
+        let (message, _) = parse_error(json!({
+            "type": "user",
+            "message": {"role": "user", "content": content},
+        }));
+        assert_eq!(
+            message,
+            format!("Invalid user content (expected str or list, got {kind})")
+        );
+    }
+}
+
+#[test]
 fn integer_fields_accept_any_json_number() {
     let message = result(with(
         base_result(),

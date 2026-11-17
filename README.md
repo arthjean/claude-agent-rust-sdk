@@ -9,7 +9,8 @@ management, all on tokio.
 
 It is a port of the Python Claude Agent SDK, at parity with version 0.2.182.
 [`docs/migration.md`](docs/migration.md) maps every Python name to its Rust
-name.
+name, and [`docs/parity.md`](docs/parity.md) lists what was compared, the
+measured counts, and every known difference with its reason and its test.
 
 > **This is not an Anthropic product.** `claude-agent-kit` is an independent,
 > community project. It is not affiliated with, endorsed by, or supported by
@@ -186,6 +187,7 @@ call the real API with your credentials.
 cargo xtask gates                  format, lint, examples, test, and doc checks
 cargo xtask parity-check           check the parity ledgers against upstream
 cargo xtask parity-report          print how much of upstream is implemented
+cargo xtask parity-page            regenerate the measured region of docs/parity.md
 cargo xtask upstream-diff <tag>    list what upstream changed up to a tag
 cargo xtask parity-diff            compare what both SDKs send the CLI, case by case
 cargo xtask e2e                    run the end-to-end suite against the real CLI

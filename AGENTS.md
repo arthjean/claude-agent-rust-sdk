@@ -20,6 +20,7 @@ The owner is the only visible contributor: commits carry no AI attribution and n
 | `.github/workflows/actions.lock` | `gh actions-lock` (see GitHub Actions below) |
 | `Cargo.lock` | cargo |
 | The table between the `parity:table` markers in `docs/migration.md` | `cargo xtask migration-table` |
+| The region between the `parity:page` markers in `docs/parity.md` | `cargo xtask parity-page` (rerun after editing `parity/*.toml`, `parity/cases`, or moving the submodule pin) |
 | `docs/research/*.md`, `docs/validation/project-dir-naming.md` | Dated records: write new findings to a new file. |
 | `tasks/prd-claude-agent-rust-sdk.md` and its status file | Certified and closed: leave as is. |
 
@@ -62,6 +63,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 - A Rust test's name is its ledger key. Before renaming or moving a test, search `parity/tests.toml` for it and update the entry. `cargo xtask parity-tests` prints the exact paths the ledger accepts.
 - A test compiled on one platform only takes a ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix in the ledger.
 - After editing `parity/surface.toml`, run `cargo xtask migration-table`.
+- `parity/differences.toml` also holds `[behavior]` (divergences off the wire, each naming the Rust test that shows it) and `[unclassified]` (audit divergences not yet reviewed). After editing any ledger or case, run `cargo xtask parity-page`; `parity-check` fails on a stale `docs/parity.md`, and on hand-written text there that claims "100%" or "full parity".
 - To move to a newer upstream: `cargo xtask upstream-diff <tag>` lists what changed, then move the pin, port the changes, and add or remove ledger entries until `parity-check --deny-pending` passes.
 
 ## Design invariants
