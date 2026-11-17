@@ -17,10 +17,10 @@
     {
       "id": "EP-009",
       "title": "Differential parity harness",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "stories_total": 7,
-      "stories_done": 0
+      "stories_done": 6
     },
     {
       "id": "EP-010",
@@ -28,6 +28,14 @@
       "status": "TODO",
       "priority": "P1",
       "stories_total": 3,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-011",
+      "title": "Windows parity proof",
+      "status": "TODO",
+      "priority": "P2",
+      "stories_total": 2,
       "stories_done": 0
     }
   ],
@@ -108,97 +116,97 @@
       "id": "US-046",
       "title": "Fake CLI recording",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-047",
       "title": "Validate assumption: the Python SDK runs against the fake CLI",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [
         "US-046"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-048",
       "title": "Case format and the two drivers for one-shot queries",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "L",
       "blocked_by": [
         "US-047"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-049",
       "title": "Comparison, normalization, and the ledger of differences",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-048"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-050",
       "title": "Client sessions, callbacks, and in-process tools in the drivers",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "L",
       "blocked_by": [
         "US-049"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-051",
       "title": "Case corpus and coverage of the options",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-050"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-16",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-052",
       "title": "Differential job in CI",
       "epic": "EP-009",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "size": "S",
       "blocked_by": [
         "US-049"
       ],
-      "started_at": null,
+      "started_at": "2026-11-16",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-053",
@@ -235,6 +243,32 @@
       "priority": "P2",
       "size": "M",
       "blocked_by": [],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-056",
+      "title": "Validate assumption: the Python SDK runs against the fake CLI on Windows",
+      "epic": "EP-011",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "S",
+      "blocked_by": [],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-057",
+      "title": "Differential job on Windows",
+      "epic": "EP-011",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "S",
+      "blocked_by": [
+        "US-056"
+      ],
       "started_at": null,
       "completed_at": null,
       "reviewed_at": null

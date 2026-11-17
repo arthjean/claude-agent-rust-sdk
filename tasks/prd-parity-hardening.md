@@ -8,6 +8,7 @@
 | 1.0 | 2026-11-16 | Arthur Jean | Initial draft, from `docs/research/python-sdk-parity.md` |
 | 1.1 | 2026-11-16 | Arthur Jean | Add the Fedora path of the Python SDK checkout next to the Windows one |
 | 1.2 | 2026-11-16 | Arthur Jean | Drop EP-008 (upstream contributions to the Python SDK): the PRD covers the Rust crate only. Its identifiers (EP-008, US-042 to US-045) are retired, not reused |
+| 1.3 | 2026-11-17 | Arthur Jean | Move every Windows proof out of EP-009 into a new EP-011, so EP-009 is certified on Linux: the Windows criterion of US-047 becomes US-056, and the differential job on Windows becomes US-057 |
 
 ## Problem Statement
 
@@ -25,7 +26,7 @@ This PRD turns the audit into three deliverables. First, close the five risky di
 
 Key decisions. Stories continue the numbering of the first PRD (`tasks/prd-claude-agent-rust-sdk.md` ends at EP-006 and US-035), so an identifier stays unique in the repository. Work on the Python SDK itself is out of scope: a Python defect the port finds is recorded as a `python-defect` entry of the differences ledger, and nothing is filed upstream. The differential harness follows the model of the Model Context Protocol conformance suite: a narrow list of expected differences, where an entry that is no longer needed fails the run. Comparison is done on parsed JSON values with a small normalizer written for this harness; the `insta` crate was considered and not chosen, because it compares a value to a stored snapshot and not two live recordings. Raw-schema validation becomes a default cargo feature; `jsonschema` 0.61.2 with its own default features off carries no network code.
 
-The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python` (Windows) or `/home/arthur/dev/claude-agent-sdk-python` (Fedora). Every epic and story carries a `Python reference` block. Delivery is phased in three releases, one per epic, in the order EP-007, EP-009, EP-010.
+The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python` (Windows) or `/home/arthur/dev/claude-agent-sdk-python` (Fedora). Every epic and story carries a `Python reference` block. Delivery is phased in four releases, one per epic, in the order EP-007, EP-009, EP-010, EP-011.
 
 ## Goals
 
@@ -74,7 +75,7 @@ Key findings that informed this PRD:
 ## Assumptions & Constraints
 
 ### Assumptions (to validate)
-- The Python SDK completes a session against `fake-claude` when `cli_path` points at the binary, on Windows and Linux, with no change to either. Based on `ref: src/claude_agent_sdk/_internal/transport/subprocess_cli.py:251-252` (the option is used as given), `:394-423` (only `.bat` and `.cmd` are refused), and `:1153-1167` (the version is read from the init frame, which `fake-claude` fills with `2.1.325`). Validated by US-047.
+- The Python SDK completes a session against `fake-claude` when `cli_path` points at the binary, on Windows and Linux, with no change to either. Based on `ref: src/claude_agent_sdk/_internal/transport/subprocess_cli.py:251-252` (the option is used as given), `:394-423` (only `.bat` and `.cmd` are refused), and `:1153-1167` (the version is read from the init frame, which `fake-claude` fills with `2.1.325`). Validated on Linux by US-047 and on Windows by US-056.
 - The CLI writes non-ASCII text raw in transcripts, as JavaScript's `JSON.stringify` does. Inferred, not checked; it matters only for the wording of one divergence in `docs/parity.md`.
 - Frame order on the fake CLI's stdin is deterministic when the scenario serializes the exchange with `expect` steps. Checked by the 20-run criterion of US-049.
 - `mcp` 1.x is the version line the differential job installs. Upstream also accepts 2.x (`ref: pyproject.toml:31`); that line is not covered.
@@ -301,7 +302,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 
 **Acceptance Criteria:**
 - [ ] A Python script outside the submodule calls `query()` with `cli_path` set to the `fake-claude` binary and `FAKE_CLAUDE_SCENARIO` set to a scenario that answers the initialize request and emits one result
-- [ ] The run ends with a result message and exit status 0, on Windows and on Linux
+- [ ] The run ends with a result message and exit status 0 on Linux (the Windows run is US-056 of EP-011)
 - [ ] The recording holds a `spawn` record, an `initialize` control request, and a user message frame
 - [ ] The Python SDK is imported from `upstream/claude-agent-sdk-python/src` through `PYTHONPATH`; its dependencies are installed in a virtual environment outside both repositories' tracked files
 - [ ] The result is written to `docs/validation/python-sdk-against-fake-claude.md`: Python version, dependency versions, the command, and what was observed
@@ -499,6 +500,54 @@ Make the parity claim exact and public, and learn about upstream releases within
 - [ ] The script behind it has an offline test in the style of `.github/scripts/actions-freshness.test.sh`, run by the `scripts` job, covering: no new tag, new tag, existing issue, lookup failure
 - [ ] Every action it uses is referenced by tag and present in `.github/workflows/actions.lock`
 
+---
+
+### EP-011: Windows parity proof
+
+Prove on Windows what EP-009 proves on Linux: the unmodified Python SDK runs against `fake-claude`, and the differential harness passes. Release D.
+
+**Definition of Done:** the validation of US-047 is recorded for Windows, and the `differential` CI job runs `cargo xtask parity-diff` on `windows-latest` on every pull request and passes with no unexplained difference.
+
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
+- `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 272-328 (`_find_cli`, Windows branches at 280 and 307), 346-423 (batch file detection and refusal), 429-449 (`cmd.exe` metacharacter check, Windows only), 917-1000 (`close`: terminate on timeout)
+- `.github/workflows/test.yml`: 10-14 (upstream unit tests run on `windows-latest`)
+- `pyproject.toml`: 10 (`requires-python`), 27-33 (dependencies)
+
+#### US-056: Validate assumption: the Python SDK runs against the fake CLI on Windows
+**Description:** As an SDK maintainer, I want to know by a run that the unmodified Python SDK completes a session against `fake-claude.exe` so that the harness can be trusted on Windows.
+
+**Priority:** P2
+**Size:** S (2 pts)
+**Dependencies:** None (US-047 is done on Linux)
+
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
+- `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 251-252, 346-423, 1153-1167
+
+**Acceptance Criteria:**
+- [ ] `docs/validation/python-sdk-against-fake-claude.py`, unchanged, runs on Windows with `fake-claude.exe` as its argument and the SDK imported from the submodule through `PYTHONPATH`, and ends with exit status 0 and its four checks passing
+- [ ] No file is written under `upstream/claude-agent-sdk-python` (`PYTHONDONTWRITEBYTECODE=1`)
+- [ ] The Windows row of the Platforms table of `docs/validation/python-sdk-against-fake-claude.md` records the Python version, the command, and what was observed
+- [ ] Given the run fails, when the validation is recorded, then the cause is written down and US-057 is cancelled or rescoped, with the gap listed in Open Questions
+
+#### US-057: Differential job on Windows
+**Description:** As an SDK maintainer, I want the differential harness to run on Windows in CI so that its Windows code paths (process tree kill, `\\?\` prefixes, path separators) are exercised and a Windows-only divergence between the SDKs is caught.
+
+**Priority:** P2
+**Size:** S (2 pts)
+**Dependencies:** Blocked by US-056
+
+**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
+- `src/claude_agent_sdk/_internal/transport/subprocess_cli.py`: 429-449, 759-836
+- `.github/workflows/test.yml`: 10-14
+
+**Acceptance Criteria:**
+- [ ] The `differential` job of `ci.yml` runs on `ubuntu-latest` and `windows-latest`, with the steps of US-052 on each; the Windows venv interpreter is `Scripts\python.exe`
+- [ ] The job keeps `contents: read` as its only permission, reads no secret, and the `lockfile` job passes
+- [ ] The policy test `ci_runs_the_differential_harness_on_every_pull_request_without_secrets` checks both operating systems
+- [ ] `cargo xtask parity-diff` passes on `windows-latest`; every difference only Windows shows is fixed in the crate or entered in `parity/differences.toml`, with a case restricted to that platform when the entry does not apply on Linux
+- [ ] A driver timeout on Windows kills the driver and every `fake-claude` process it started, shown by a run that leaves none
+- [ ] The Linux leg still finishes in under 5 minutes
+
 ## Functional Requirements
 
 - FR-01: The crate must validate the arguments of a raw-schema tool against its JSON Schema before calling the handler, in a build with default features.
@@ -553,7 +602,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 | 5 | A Python toolchain in CI widens the supply chain | Low | High | Hash-locked requirements, the SDK read from the pinned submodule, no secret in the job, one read-only permission |
 | 6 | The hash-locked dependency versions drift from what upstream tests | Med | Low | The job checks the locked versions against the ranges in the submodule's `pyproject.toml`; `mcp` 2.x is declared out of scope |
 | 7 | The scheduled workflow is abused or misfires | Low | Med | No fork-triggered event, one job with `issues: write`, idempotent title check, fail-closed lookup, offline script test |
-| 8 | The Python SDK cannot drive `fake-claude` on Windows | Low | Med | US-047 validates before the drivers are built; the CI job runs on Linux |
+| 8 | The Python SDK cannot drive `fake-claude` on Windows | Low | Med | US-047 validates on Linux before the drivers are built and the CI job of EP-009 runs on Linux; US-056 validates Windows, and US-057 runs the harness there |
 | 9 | Line references go stale when upstream moves | High | Low | Every reference is tied to commit `4720d36`; the upstream watch flags new releases |
 
 ## Non-Goals
@@ -591,7 +640,7 @@ Frame as questions for engineering input, not mandates:
 - **Dependencies:** `jsonschema` 0.61 is already an optional workspace dependency with its default features off. Does making it a default feature change the minimal-versions or license jobs? No new Rust dependency is planned for the harness: `insta` was considered for redactions and set aside because it compares against a stored snapshot. Python side: `anyio`, `sniffio`, `mcp` 1.x, `jsonschema`, locked with hashes. Which exact `mcp` 1.x version: the floor upstream tests (`1.23.0`) or the newest 1.x?
 - **Recording channel:** an environment variable (`FAKE_CLAUDE_RECORD`) or a key of the scenario file? Recommended: the variable, because both drivers already set `FAKE_CLAUDE_SCENARIO` and the scenario file stays identical for both sides.
 - **Frame ordering:** is a declared `unordered` group enough, or do some cases need a per-channel order (control responses apart from user messages)? Engineering to decide from the first racing case found in US-050.
-- **Platforms:** should the differential job also run on Windows and macOS? Recommended: Linux only at first; path normalization is designed for all three.
+- **Platforms:** should the differential job also run on Windows and macOS? Decided: Linux in EP-009, Windows in EP-011 (US-057); macOS is not planned. Path normalization is designed for all three.
 - **Migration:** validation by default is a behavior change for raw-schema tools. No release has been published, so no deprecation path is needed; the change is recorded in `docs/migration.md`. Rollback: remove `jsonschema` from `default`.
 
 ## Success Metrics
@@ -614,5 +663,5 @@ Frame as questions for engineering input, not mandates:
 - Which `mcp` 1.x version does the differential job lock? Engineering to answer during US-052.
 - Should the differential harness be offered to Anthropic as a shared conformance suite once it holds a TypeScript driver? Owner to decide after EP-009; nothing in this PRD depends on it.
 - A real-CLI run of `cargo xtask e2e` is needed to confirm US-041 against the API. Owner to schedule it; the story does not block on it.
-- US-047 was validated on Linux only (`docs/validation/python-sdk-against-fake-claude.md`). A run of `docs/validation/python-sdk-against-fake-claude.py` on the Windows checkout is still to be made by the owner; the differential CI job runs on Linux, so nothing depends on it.
+- US-047 was validated on Linux only (`docs/validation/python-sdk-against-fake-claude.md`). The Windows run moved to US-056 of EP-011; nothing in EP-009 or EP-010 depends on it.
 [/PRD]
