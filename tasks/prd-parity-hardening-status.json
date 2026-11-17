@@ -1,7 +1,7 @@
 {
   "prd": {
     "file": "tasks/prd-parity-hardening.md",
-    "title": "Parity hardening, differential proof, and upstream contributions (claude-agent-kit)",
+    "title": "Parity hardening and differential proof (claude-agent-kit)",
     "created_at": "2026-11-16",
     "status": "READY"
   },
@@ -13,14 +13,6 @@
       "priority": "P0",
       "stories_total": 6,
       "stories_done": 6
-    },
-    {
-      "id": "EP-008",
-      "title": "Upstream contributions to the Python SDK",
-      "status": "TODO",
-      "priority": "P1",
-      "stories_total": 4,
-      "stories_done": 0
     },
     {
       "id": "EP-009",
@@ -111,54 +103,6 @@
       "started_at": "2026-11-16",
       "completed_at": "2026-11-16",
       "reviewed_at": "2026-11-16"
-    },
-    {
-      "id": "US-042",
-      "title": "Dossier: project directory name for characters outside the Basic Multilingual Plane",
-      "epic": "EP-008",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "S",
-      "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
-      "id": "US-043",
-      "title": "Dossier: example and end-to-end test defects",
-      "epic": "EP-008",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "S",
-      "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
-      "id": "US-044",
-      "title": "Dossier: malformed control frames stop the reader",
-      "epic": "EP-008",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "S",
-      "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
-      "id": "US-045",
-      "title": "Validate assumption: pending control requests wait for the timeout after a clean end of output",
-      "epic": "EP-008",
-      "status": "TODO",
-      "priority": "P1",
-      "size": "M",
-      "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
     },
     {
       "id": "US-046",

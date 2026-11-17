@@ -1,5 +1,5 @@
 [PRD]
-# PRD: Parity hardening, differential proof, and upstream contributions (`claude-agent-kit`)
+# PRD: Parity hardening and differential proof (`claude-agent-kit`)
 
 ## Changelog
 
@@ -7,32 +7,31 @@
 |---------|------|--------|---------|
 | 1.0 | 2026-11-16 | Arthur Jean | Initial draft, from `docs/research/python-sdk-parity.md` |
 | 1.1 | 2026-11-16 | Arthur Jean | Add the Fedora path of the Python SDK checkout next to the Windows one |
+| 1.2 | 2026-11-16 | Arthur Jean | Drop EP-008 (upstream contributions to the Python SDK): the PRD covers the Rust crate only. Its identifiers (EP-008, US-042 to US-045) are retired, not reused |
 
 ## Problem Statement
 
-The parity audit of 2026-11-16 (`docs/research/python-sdk-parity.md`) compared this crate to `claude-agent-sdk` (Python) v0.2.182, commit `4720d36`, subsystem by subsystem. It found the port functionally complete (159 of 159 exports, about 99.5% of capabilities) and listed four problems that remain.
+The parity audit of 2026-11-16 (`docs/research/python-sdk-parity.md`) compared this crate to `claude-agent-sdk` (Python) v0.2.182, commit `4720d36`, subsystem by subsystem. It found the port functionally complete (159 of 159 exports, about 99.5% of capabilities) and listed three problems that remain for this crate.
 
 1. **Five divergences can hurt a user who migrates from Python.** Tool arguments are not validated against a raw JSON Schema unless an optional cargo feature is on, while Python always validates. A `match` on `Error::Process` misses `Error::ResultError`, while Python's `except ProcessError` catches `ResultError`. A resume from a session store continues after the credentials file could not be written, while Python aborts. Unknown keys of `modelUsage`, of the MCP status response, and of the context usage response are dropped, while Python passes those dictionaries through untouched. Seven test assertions are weaker than the Python tests they stand for.
 2. **Parity is declared, not proven.** The test ledger maps 933 Python tests to 566 Rust tests by hand. 194 Rust tests stand for several Python tests each, up to 19. The audit sampled 52 pairs and found 4 weaker ones. Nothing checks mechanically that both SDKs send the CLI the same command line, environment, and JSON frames.
-3. **The port found defects in the Python SDK that upstream does not know about.** Python computes a project directory name the CLI never creates when the path holds a character outside the Basic Multilingual Plane, so it cannot find those sessions. A control request without `request_id` kills its reader. An example registers one hook event and answers with another. Three end-to-end tests assert nothing. A search of the upstream tracker on 2026-11-16 found no report for any of these.
-4. **The published parity claim is more generous than the facts.** `parity/surface.toml` reports 100% implemented although one entry (`CanUseToolShadowedWarning`) points to a method, not to a type. About 87 behavioral divergences are documented only in a French research note. Upstream drift is detected only when someone runs `cargo xtask upstream-diff` by hand.
+3. **The published parity claim is more generous than the facts.** `parity/surface.toml` reports 100% implemented although one entry (`CanUseToolShadowedWarning`) points to a method, not to a type. About 87 behavioral divergences are documented only in a French research note. Upstream drift is detected only when someone runs `cargo xtask upstream-diff` by hand.
 
-**Why now:** the repository became public on 2026-11-16, so every claim is now read by outsiders. Upstream `main` is still at the pinned commit `4720d36` (checked with `git ls-remote` on 2026-11-16), so reproductions written today apply to upstream as it stands. The audit is fresh, and its line references are valid for that commit only.
+**Why now:** the repository became public on 2026-11-16, so every claim is now read by outsiders. Upstream `main` is still at the pinned commit `4720d36` (checked with `git ls-remote` on 2026-11-16), so the differential harness compares against upstream as it stands. The audit is fresh, and its line references are valid for that commit only.
 
 ## Overview
 
-This PRD turns the audit into four deliverables. First, close the five risky divergences so the crate behaves like Python where a user would be surprised otherwise. Second, prepare upstream reports for four defects in the Python SDK, each with a runnable reproduction, a root cause, a patch, and a test, stored in this repository and filed by the owner. Third, build a differential harness: one language-neutral case file drives both SDKs against the scripted fake CLI, the fake CLI records what it received, and a comparison fails on any difference that is not in a reviewed ledger. Fourth, publish the divergences in an English page generated from that ledger, make the surface ledger distinguish "implemented" from "adapted", and watch upstream releases with a scheduled job.
+This PRD turns the audit into three deliverables. First, close the five risky divergences so the crate behaves like Python where a user would be surprised otherwise. Second, build a differential harness: one language-neutral case file drives both SDKs against the scripted fake CLI, the fake CLI records what it received, and a comparison fails on any difference that is not in a reviewed ledger. Third, publish the divergences in an English page generated from that ledger, make the surface ledger distinguish "implemented" from "adapted", and watch upstream releases with a scheduled job.
 
-Key decisions. Stories continue the numbering of the first PRD (`tasks/prd-claude-agent-rust-sdk.md` ends at EP-006 and US-035), so an identifier stays unique in the repository. Upstream work produces ready-to-file dossiers; filing is a manual step of the owner, because nothing is posted in his name without his explicit go and because upstream merges few external pull requests (about 50 of the last 54 merged pull requests came from Anthropic accounts). The differential harness follows the model of the Model Context Protocol conformance suite: a narrow list of expected differences, where an entry that is no longer needed fails the run. Comparison is done on parsed JSON values with a small normalizer written for this harness; the `insta` crate was considered and not chosen, because it compares a value to a stored snapshot and not two live recordings. Raw-schema validation becomes a default cargo feature; `jsonschema` 0.61.2 with its own default features off carries no network code.
+Key decisions. Stories continue the numbering of the first PRD (`tasks/prd-claude-agent-rust-sdk.md` ends at EP-006 and US-035), so an identifier stays unique in the repository. Work on the Python SDK itself is out of scope: a Python defect the port finds is recorded as a `python-defect` entry of the differences ledger, and nothing is filed upstream. The differential harness follows the model of the Model Context Protocol conformance suite: a narrow list of expected differences, where an entry that is no longer needed fails the run. Comparison is done on parsed JSON values with a small normalizer written for this harness; the `insta` crate was considered and not chosen, because it compares a value to a stored snapshot and not two live recordings. Raw-schema validation becomes a default cargo feature; `jsonschema` 0.61.2 with its own default features off carries no network code.
 
-The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python` (Windows) or `/home/arthur/dev/claude-agent-sdk-python` (Fedora). Every epic and story carries a `Python reference` block. Delivery is phased in four releases, one per epic, in the order EP-007, EP-008, EP-009, EP-010.
+The Python source stays the behavioral reference, read from the submodule `upstream/claude-agent-sdk-python` and from the identical checkout at `C:/dev/claude-agent-sdk-python` (Windows) or `/home/arthur/dev/claude-agent-sdk-python` (Fedora). Every epic and story carries a `Python reference` block. Delivery is phased in three releases, one per epic, in the order EP-007, EP-009, EP-010.
 
 ## Goals
 
 | Goal | Month-1 Target | Month-6 Target |
 |------|---------------|----------------|
 | Risky divergences from the audit still open (of 5) | 0 | 0 |
-| Upstream dossiers validated by a runnable reproduction (of 4) | 4 | 4, with at least 3 filed by the owner |
 | Option fields of `ClaudeAgentOptions` that reach the CLI and are exercised by a differential case | 20 of the fields that reach the command line | 100% of the fields that reach the command line, the environment, or the initialize request |
 | Divergences listed in `docs/parity.md` that link to a test | 100% of the listed ones | 100%, with every divergence of the audit either listed or closed |
 | Delay between an upstream release and an open tracking issue | 7 days or less | 7 days or less |
@@ -52,13 +51,6 @@ The Python source stays the behavioral reference, read from the submodule `upstr
 - **Pain points:** a hand-kept ledger can claim coverage a folded test does not deliver; drift is noticed late.
 - **Current workaround:** manual audits such as `docs/research/python-sdk-parity.md`, which took nine sub-agents and a full verification pass.
 - **Success looks like:** one command proves both SDKs send the same bytes, and an issue appears within a week of each upstream release.
-
-### Upstream maintainer at Anthropic
-- **Role:** triages issues on `anthropics/claude-agent-sdk-python` (256 open issues and 404 open pull requests on 2026-11-16).
-- **Behaviors:** merges mostly internal pull requests; an automated triage workflow labels incoming issues.
-- **Pain points:** reports without a reproduction, and large external pull requests that are costly to review.
-- **Current workaround:** closes or leaves open what cannot be reproduced in a few minutes.
-- **Success looks like:** an issue with a 20-line reproduction, the exact line at fault, and a patch small enough to review in five minutes.
 
 ## Research Findings
 
@@ -83,9 +75,7 @@ Key findings that informed this PRD:
 
 ### Assumptions (to validate)
 - The Python SDK completes a session against `fake-claude` when `cli_path` points at the binary, on Windows and Linux, with no change to either. Based on `ref: src/claude_agent_sdk/_internal/transport/subprocess_cli.py:251-252` (the option is used as given), `:394-423` (only `.bat` and `.cmd` are refused), and `:1153-1167` (the version is read from the init frame, which `fake-claude` fills with `2.1.325`). Validated by US-047.
-- A Python control request still waits its full timeout after the CLI output ends cleanly. Based on a reading of `ref: src/claude_agent_sdk/_internal/query.py:584-604` and `:735-780`, not on a run. Validated by US-045.
 - The CLI writes non-ASCII text raw in transcripts, as JavaScript's `JSON.stringify` does. Inferred, not checked; it matters only for the wording of one divergence in `docs/parity.md`.
-- The owner files the upstream dossiers himself. The Month-6 goal "3 filed" depends on him.
 - Frame order on the fake CLI's stdin is deterministic when the scenario serializes the exchange with `expect` steps. Checked by the 20-run criterion of US-049.
 - `mcp` 1.x is the version line the differential job installs. Upstream also accepts 2.x (`ref: pyproject.toml:31`); that line is not covered.
 
@@ -97,7 +87,7 @@ Key findings that informed this PRD:
 - The repository is public: no secret is read in a job triggered by `pull_request`.
 - The owner is the only visible contributor: no AI attribution, no `Co-authored-by` line, and no bot-authored commit. A bot-authored issue is acceptable; a bot-authored commit is not.
 - GitHub Actions are referenced by tag and locked through `gh actions-lock` in `.github/workflows/actions.lock`.
-- Every artifact is written in English, including `docs/parity.md` and the upstream dossiers.
+- Every artifact is written in English, including `docs/parity.md`.
 - `cargo xtask parity-check --deny-pending` stays green, and line coverage stays at or above 91.5%.
 
 ## Quality Gates
@@ -263,110 +253,9 @@ Make the crate behave like Python in the five places where the audit found a dif
 
 ---
 
-### EP-008: Upstream contributions to the Python SDK
-
-Prepare, for four defects of `claude-agent-sdk` (Python), a dossier the owner can file as it stands. Release B.
-
-**Definition of Done:** `docs/upstream/` holds one validated dossier per defect and an index; each reproduction runs against the pinned commit with one command; nothing has been posted by an agent.
-
-Every dossier is one English Markdown file with these parts, in this order: a title of 80 characters or fewer; the upstream version and commit; a minimal reproduction with its captured output; expected versus actual behavior; the root cause with a permalink to the line at the pinned commit; a proposed patch as a unified diff against that commit; a test that fails before the patch and passes after it. Reproductions live in `docs/upstream/repro/`, patches in `docs/upstream/patches/`. The Python SDK is imported from the submodule through `PYTHONPATH`, never installed into it.
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
-- `src/claude_agent_sdk/_internal/sessions.py`: 43-48 and 81-114 (directory naming), 145, 172, 613, 1751, 1951 (callers of `_sanitize_path`)
-- `src/claude_agent_sdk/_internal/query.py`: 406-415, 417-464, 541-604, 606-733, 735-780
-- `examples/hooks.py`: 73-82, 196-206
-- `e2e-tests/test_dynamic_control.py`: 13-98
-- `e2e-tests/test_agents_and_settings.py`: 42-72, 213-381
-- `tests/test_sessions.py`: 143-160; `tests/test_query.py`: tests
-- `.github/workflows/test.yml`: 20-61 (Python 3.13, `pip install -e ".[dev]"`, `mcp==1.23.0` in one job)
-- `CLAUDE.md`, `README.md`: contributor instructions (there is no `CONTRIBUTING` file and no issue template)
-
-#### US-042: Dossier: project directory name for characters outside the Basic Multilingual Plane
-**Description:** As an upstream maintainer, I want a reproducible report that the SDK computes a project directory name the CLI does not create, so that `list_sessions` can be fixed for paths that hold such characters.
-
-**Priority:** P1
-**Size:** S (2 pts)
-**Dependencies:** None
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
-- `src/claude_agent_sdk/_internal/sessions.py`: 81-101 (`_simple_hash` iterates code points), 104-114 (`_sanitize_path` substitutes per code point and measures length in code points)
-- `tests/test_sessions.py`: 143-160 (existing tests of both functions)
-- Evidence already gathered against CLI 2.1.325: `docs/validation/project-dir-naming.md` in this repository
-
-**Acceptance Criteria:**
-- [ ] `docs/upstream/project-dir-naming.md` exists with every part listed in the epic description
-- [ ] The reproduction script prints the name `_sanitize_path` returns for a path holding U+1F600 and the name recorded for the CLI in `docs/validation/project-dir-naming.md`, and exits non-zero while they differ
-- [ ] The dossier states the user-visible effect: `list_sessions(directory=...)` returns no session for such a directory
-- [ ] The patch makes both functions count UTF-16 code units and changes no result for paths made of Basic Multilingual Plane characters only, shown by the existing tests passing unchanged
-- [ ] The patch adds a test for a non-BMP path under 200 units and one for a path over 200 units, where the hash suffix matters
-- [ ] Given the upstream tracker already holds a report of this defect, when the dossier is finalized, then it links that report and is marked "duplicate, not to file" in the index
-- [ ] The dossier is not posted; the index row reads "ready to file"
-
-#### US-043: Dossier: example and end-to-end test defects
-**Description:** As an upstream maintainer, I want a small, low-risk report on an example that answers the wrong hook event and on end-to-end tests that cannot fail, so that the examples teach the right shape and the suite tests what it names.
-
-**Priority:** P1
-**Size:** S (2 pts)
-**Dependencies:** None
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
-- `examples/hooks.py`: 73-82 (returns `hookEventName: "SessionStart"`), 196-206 (registers the callback under `UserPromptSubmit`)
-- `e2e-tests/test_dynamic_control.py`: 13-41, 44-76 (no assertion), 79-98 (the interrupt error is caught and printed)
-- `e2e-tests/test_agents_and_settings.py`: 42-72 (the assertions sit inside `if ... subtype == "init"`, so no init message means a pass); the same shape at 213-247, 249-289, 291-325, 327-381
-- `src/claude_agent_sdk/types.py`: 286-870 (hook output types, to cite the documented `hookEventName` of each event)
-
-**Acceptance Criteria:**
-- [ ] `docs/upstream/examples-and-e2e-tests.md` exists with every part listed in the epic description, as two independent sections so the owner can file them separately
-- [ ] The hooks section quotes both lines and proposes the one-line fix to `UserPromptSubmit`
-- [ ] The hooks section states what was verified about the effect of the mismatch and what was not: it claims a behavioral effect only if a source (upstream documentation or a real-CLI run approved by the owner) shows one, and otherwise reports an inconsistency
-- [ ] The tests section lists each affected test with its line and the reason it cannot fail, and proposes for each the smallest assertion that makes it able to fail
-- [ ] The patch for the tests asserts that an init message was seen, and asserts a non-error result after `set_permission_mode`, `set_model`, and `interrupt`
-- [ ] Given a proposed assertion cannot be checked without a paid real-CLI run, when the dossier is finalized, then that assertion is marked "not run" in the dossier
-- [ ] The dossier is not posted; the index row reads "ready to file"
-
-#### US-044: Dossier: malformed control frames stop the reader
-**Description:** As an upstream maintainer, I want a reproducible report that one malformed frame from the CLI ends the whole session, so that the reader can skip the frame instead.
-
-**Priority:** P1
-**Size:** S (2 pts)
-**Dependencies:** None
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
-- `src/claude_agent_sdk/_internal/query.py`: 406-410 (`request["request_id"]` raises `KeyError` inside the reader), 441-447 (the call site), 457-464 (`message["filePath"]`, `message["entries"]`), 541-583 (any exception is fatal to the stream), 606-612 (`request_data["subtype"]` is read before the `try`, so no response is written)
-- `tests/test_query.py`: existing reader tests, as the model for the new tests
-
-**Acceptance Criteria:**
-- [ ] `docs/upstream/malformed-control-frames.md` exists with every part listed in the epic description
-- [ ] The reproduction feeds a mock transport three frames in turn (a `control_request` without `request_id`, a `transcript_mirror` without `filePath`, a `control_request` without `subtype`) and prints, for each, whether a later valid message still reaches the consumer
-- [ ] The reproduction runs with `PYTHONPATH` set to the submodule's `src` and no network access, in under 10 seconds
-- [ ] The patch logs and skips the first two frames, and answers the third with an error response, and adds one test per frame
-- [ ] Given a frame for which the reproduction shows no failure, when the dossier is finalized, then that frame is removed from the report and the removal is noted
-- [ ] The dossier is not posted; the index row reads "ready to file"
-
-#### US-045: Validate assumption: pending control requests wait for the timeout after a clean end of output
-**Description:** As an SDK maintainer, I want to know by a run whether a Python control request waits its full 60 seconds when the CLI output ends cleanly, so that the report is filed only if the behavior is real.
-
-**Priority:** P1
-**Size:** M (3 pts)
-**Dependencies:** None
-
-**Python reference** (root `C:/dev/claude-agent-sdk-python` on Windows, `/home/arthur/dev/claude-agent-sdk-python` on Fedora, commit `4720d36`):
-- `src/claude_agent_sdk/_internal/query.py`: 735-780 (`_send_control_request`, timeout default 60 s at 736, wait at 765-766), 572-575 (pending requests are failed only inside `except Exception`), 584-604 (the `finally` block ends the stream and fails nothing), 1178-1236 (`close`)
-- `src/claude_agent_sdk/client.py`: 308-312 (`interrupt`), 341-362 (`set_model`): the public calls that would wait
-
-**Acceptance Criteria:**
-- [ ] A reproduction sends a control request through a mock transport, ends the transport's message stream with no error, and measures how long the request takes to return, using a timeout shortened through the function's `timeout` parameter
-- [ ] The result is written to `docs/validation/python-pending-control-requests.md`: the measured wait, the Python version, and whether the request returned at the end of the stream or at the timeout
-- [ ] Given the request returns only at the timeout, when the validation is recorded, then `docs/upstream/pending-control-requests.md` is written with every part listed in the epic description, with a patch that fails pending requests in the `finally` block and a test
-- [ ] Given the request returns at the end of the stream, when the validation is recorded, then no dossier is written, the index marks the item "not reproduced", and the corresponding divergence in `docs/research/python-sdk-parity.md` is flagged as disproven in `docs/parity.md` once that page exists
-- [ ] The reproduction covers the public path as well: `ClaudeSDKClient.interrupt()` awaited while the transport ends
-- [ ] `docs/upstream/README.md` lists the four items of this epic with their state (ready to file, duplicate, not reproduced), and has an empty column for the link once the owner files one
-
----
-
 ### EP-009: Differential parity harness
 
-Prove with one command that the Rust SDK and the Python SDK send the CLI the same command line, environment, and frames for the same case. Release C.
+Prove with one command that the Rust SDK and the Python SDK send the CLI the same command line, environment, and frames for the same case. Release B.
 
 **Definition of Done:** `cargo xtask parity-diff` runs every case of `parity/cases/` through both SDKs against `fake-claude`, passes with no unexplained difference, fails on a stale entry of `parity/differences.toml`, and runs in CI on every pull request.
 
@@ -458,7 +347,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 - [ ] `parity/differences.toml` holds a `[wire]` table; each entry names a case or `*`, one location (an argument, a variable, or a JSON pointer into a frame), the value on each side, a category among `deliberate`, `rust-follows-cli`, and `python-defect`, and a reason
 - [ ] Given a difference that no entry covers, when `parity-diff` runs, then it exits non-zero and prints the case, the location, and both values
 - [ ] Given an entry that matched no difference in the run, when `parity-diff` runs, then it exits non-zero and names the stale entry
-- [ ] Given an entry with category `python-defect`, when the ledger is loaded, then it must link a dossier under `docs/upstream/`, or loading fails
+- [ ] Given an entry with category `python-defect`, when the ledger is loaded, then it must cite the upstream line at fault as a `ref:` path and line at the pinned commit, or loading fails
 - [ ] The ledger starts with the entries for `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_AGENT_SDK_VERSION`, and the `--max-budget-usd` format, and with no entry wider than one location
 - [ ] The three cases of US-048 run 20 times in a row with identical results
 - [ ] Given Python or a driver dependency is missing, when `parity-diff` runs, then it exits non-zero with a message that names what is missing, and never reports a match
@@ -530,7 +419,7 @@ Prove with one command that the Rust SDK and the Python SDK send the CLI the sam
 
 ### EP-010: Publish the divergences and track upstream
 
-Make the parity claim exact and public, and learn about upstream releases within a week. Release D.
+Make the parity claim exact and public, and learn about upstream releases within a week. Release C.
 
 **Definition of Done:** `docs/parity.md` is generated from the ledgers and checked by `parity-check`; the surface ledger reports adapted entries separately; a scheduled workflow has opened a tracking issue in a dry run.
 
@@ -632,7 +521,7 @@ Make the parity claim exact and public, and learn about upstream releases within
 - **Security:** the differential job has 1 permission (`contents: read`) and reads 0 secrets. The upstream watch grants `issues: write` to 1 job. 100% of Python packages installed in CI carry a hash. The default feature set adds 0 crates with network capability (`reqwest`, `rustls` absent from the dependency tree).
 - **Reliability:** 20 consecutive runs of the differential corpus give identical results. The upstream watch opens at most 1 open issue per upstream tag. A missing Python interpreter produces exit status non-zero in 100% of runs.
 - **Scalability:** the case format and both drivers handle at least 100 cases without a change of design; adding a case is 1 new file and 0 code changes when it uses supported options.
-- **Maintainability:** line coverage stays at or above 91.5%. Each normalization rule and each ledger entry covers 1 location. Each upstream reproduction runs in under 10 seconds with no network access.
+- **Maintainability:** line coverage stays at or above 91.5%. Each normalization rule and each ledger entry covers 1 location.
 - **Accessibility:** 100% of the tables of `docs/parity.md` are plain Markdown with a header row, and the page uses 0 images and 0 HTML, so it reads without rendering.
 
 ## Edge Cases & Error States
@@ -651,44 +540,38 @@ Make the parity claim exact and public, and learn about upstream releases within
 | 10 | Submodule not checked out | `parity-diff` run without `git submodule update` | Exit non-zero before any case runs | "upstream submodule is empty: run git submodule update --init" |
 | 11 | Upstream tag lookup fails | Network error in the scheduled workflow | The run fails; no "up to date" result | The failing command in the job log |
 | 12 | Issue already open | The watch runs twice for one tag | No second issue | None |
-| 13 | Defect already reported upstream | A tracker search finds a matching issue | The dossier links it and is marked "duplicate, not to file" | None |
-| 14 | Assumption disproven | The pending-requests wait is not reproduced | No dossier; the divergence is flagged disproven | Recorded in `docs/validation/` |
-| 15 | Upstream fixes a reported defect | A submodule bump removes a difference | The `python-defect` entry becomes stale and fails until removed | The stale entry |
+| 13 | Upstream fixes a reported defect | A submodule bump removes a difference | The `python-defect` entry becomes stale and fails until removed | The stale entry |
 
 ## Risks & Mitigations
 
 | # | Risk | Probability | Impact | Mitigation |
 |---|------|------------|--------|------------|
-| 1 | Upstream ignores or closes the reports (about 50 of the last 54 merged pull requests are internal; 404 pull requests are open) | High | Med | Dossiers are small and reproducible; the two lowest-risk items (example, tests) come first; each dossier also documents a divergence on `docs/parity.md`, so the work has value without a merge |
-| 2 | A report posted in the owner's name is wrong and costs credibility | Med | High | Every dossier requires a reproduction that runs; one assumption is a validation story (US-045); claims without a source are labeled "not run"; filing is the owner's manual step |
-| 3 | The differential suite becomes flaky and gets ignored | Med | High | Scenarios serialize exchanges with `expect`; nondeterminism is pinned or narrowly normalized; the 20-run criterion; unordered comparison only for declared groups |
-| 4 | The ledger of differences grows into a rubber stamp | Med | Med | One location per entry, a category and a reason required, stale entries fail, `python-defect` entries must link a dossier |
-| 5 | Two drivers double the maintenance at each upstream change | Med | Med | The Python driver uses only the public API; the case format reuses Python field names; coverage reports new fields automatically |
-| 6 | Validation by default breaks a user whose tool relied on unchecked arguments | Low | Med | Documented opt-out; the change is stated in `docs/migration.md` and the rustdoc; the error text matches Python's prefix |
-| 7 | A Python toolchain in CI widens the supply chain | Low | High | Hash-locked requirements, the SDK read from the pinned submodule, no secret in the job, one read-only permission |
-| 8 | The hash-locked dependency versions drift from what upstream tests | Med | Low | The job checks the locked versions against the ranges in the submodule's `pyproject.toml`; `mcp` 2.x is declared out of scope |
-| 9 | The scheduled workflow is abused or misfires | Low | Med | No fork-triggered event, one job with `issues: write`, idempotent title check, fail-closed lookup, offline script test |
-| 10 | The Python SDK cannot drive `fake-claude` on Windows | Low | Med | US-047 validates before the drivers are built; the CI job runs on Linux |
-| 11 | Line references go stale when upstream moves | High | Low | Every reference is tied to commit `4720d36`; dossiers use permalinks; the upstream watch flags new releases |
+| 1 | The differential suite becomes flaky and gets ignored | Med | High | Scenarios serialize exchanges with `expect`; nondeterminism is pinned or narrowly normalized; the 20-run criterion; unordered comparison only for declared groups |
+| 2 | The ledger of differences grows into a rubber stamp | Med | Med | One location per entry, a category and a reason required, stale entries fail, `python-defect` entries must cite the upstream line at fault |
+| 3 | Two drivers double the maintenance at each upstream change | Med | Med | The Python driver uses only the public API; the case format reuses Python field names; coverage reports new fields automatically |
+| 4 | Validation by default breaks a user whose tool relied on unchecked arguments | Low | Med | Documented opt-out; the change is stated in `docs/migration.md` and the rustdoc; the error text matches Python's prefix |
+| 5 | A Python toolchain in CI widens the supply chain | Low | High | Hash-locked requirements, the SDK read from the pinned submodule, no secret in the job, one read-only permission |
+| 6 | The hash-locked dependency versions drift from what upstream tests | Med | Low | The job checks the locked versions against the ranges in the submodule's `pyproject.toml`; `mcp` 2.x is declared out of scope |
+| 7 | The scheduled workflow is abused or misfires | Low | Med | No fork-triggered event, one job with `issues: write`, idempotent title check, fail-closed lookup, offline script test |
+| 8 | The Python SDK cannot drive `fake-claude` on Windows | Low | Med | US-047 validates before the drivers are built; the CI job runs on Linux |
+| 9 | Line references go stale when upstream moves | High | Low | Every reference is tied to commit `4720d36`; the upstream watch flags new releases |
 
 ## Non-Goals
 
 What this version explicitly does NOT include:
 
 - Matching the wording of Python's error and warning messages. About 25 divergences are text only; they are documented on `docs/parity.md`, not changed.
-- Posting issues or pull requests automatically. Filing is a manual step of the owner.
+- Any contribution to the Python SDK: no report, patch, or pull request is prepared or filed upstream. A Python defect the port finds is recorded as a `python-defect` entry of `parity/differences.toml`, and the crate matches the CLI there.
 - A TypeScript driver. The case format is language-neutral so that one can be added, but it is not part of this PRD.
 - Re-auditing the 933 test mappings by hand. The differential harness is the mechanical answer; only the assertions the audit found weaker are restored.
 - Running the real-CLI suite in CI on pull requests, or any paid run without the owner's go.
 - Coverage of `mcp` 2.x in the differential job.
-- Dossiers for two smaller Python defects found by the audit (a schema with `type` but no `properties` read as a type map at `src/claude_agent_sdk/__init__.py:436-456`; `connect()` on a connected client leaving the previous query open at `src/claude_agent_sdk/client.py:205-210`). To revisit after the first four are filed.
-- A report on duplicate in-process tool names: upstream issue #1523 already covers it.
 - The derived client-application label, the Postgres, Redis, and S3 store adapters, and publishing to crates.io: non-goals of the first PRD, unchanged.
 - Asking Anthropic about the billing of the `sdk-rs` entrypoint label. The owner deferred it on 2026-11-15; it stays in the Open Questions of `tasks/prd-claude-agent-rust-sdk.md`.
 
 ## Files NOT to Modify
 
-- `upstream/claude-agent-sdk-python/**`: read-only behavioral reference, changed only by moving the submodule pin. Patches for upstream are stored under `docs/upstream/patches/`, never applied here.
+- `upstream/claude-agent-sdk-python/**`: read-only behavioral reference, changed only by moving the submodule pin.
 - `C:/dev/claude-agent-sdk-python/**` (Windows) and `/home/arthur/dev/claude-agent-sdk-python/**` (Fedora): the original checkout stays untouched; nothing is installed into it and no file is written under it.
 - `.github/workflows/actions.lock`: changed only through `gh actions-lock`.
 - `Cargo.lock`: changed only by cargo.
@@ -716,8 +599,6 @@ Frame as questions for engineering input, not mandates:
 | Metric | Baseline (current) | Target | Timeframe | How Measured |
 |--------|-------------------|--------|-----------|-------------|
 | Risky divergences open (of 5) | 5 | 0 | Month-1 | The tests of EP-007 pass; audit sections 4.4 and 6 rechecked |
-| Upstream dossiers with a passing reproduction | 0 | 4 | Month-1 | `docs/upstream/README.md` index |
-| Upstream dossiers filed by the owner | 0 | 3 or more | Month-6 | Links in the index |
 | Differential cases passing | 0 | 11 or more | Month-1 | `cargo xtask parity-diff` |
 | Option fields covered or excluded with a reason (of 50) | 0 | 50 | Month-6 | `cargo xtask parity-diff --coverage` |
 | Stale entries in the differences ledger | N/A (new) | 0 | Month-1 | `cargo xtask parity-diff` exit status |
@@ -727,11 +608,11 @@ Frame as questions for engineering input, not mandates:
 
 ## Open Questions
 
-- Does the owner file the dossiers as issues, as pull requests, or both? Owner to decide when the first dossier is ready (US-043); the dossier format supports both.
 - Does the owner accept a `github-actions[bot]` issue from the upstream watch, given the rule that he is the only visible contributor? This PRD assumes yes, because an issue adds no commit author. Owner to confirm before US-055.
 - Predicate names (`is_process` or `is_process_error`): owner to confirm before US-037 ships, since renaming later breaks users.
 - Should raw-schema validation also be on for the `rmcp` bridge, where the external server owns its tools? Engineering to answer during US-036.
 - Which `mcp` 1.x version does the differential job lock? Engineering to answer during US-052.
 - Should the differential harness be offered to Anthropic as a shared conformance suite once it holds a TypeScript driver? Owner to decide after EP-009; nothing in this PRD depends on it.
 - A real-CLI run of `cargo xtask e2e` is needed to confirm US-041 against the API. Owner to schedule it; the story does not block on it.
+- US-047 was validated on Linux only (`docs/validation/python-sdk-against-fake-claude.md`). A run of `docs/validation/python-sdk-against-fake-claude.py` on the Windows checkout is still to be made by the owner; the differential CI job runs on Linux, so nothing depends on it.
 [/PRD]
