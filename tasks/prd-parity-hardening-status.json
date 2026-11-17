@@ -17,10 +17,10 @@
     {
       "id": "EP-009",
       "title": "Differential parity harness",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 7,
-      "stories_done": 6
+      "stories_done": 7
     },
     {
       "id": "EP-010",
@@ -198,14 +198,14 @@
       "id": "US-052",
       "title": "Differential job in CI",
       "epic": "EP-009",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [
         "US-049"
       ],
       "started_at": "2026-11-16",
-      "completed_at": null,
+      "completed_at": "2026-11-17",
       "reviewed_at": "2026-11-17"
     },
     {
