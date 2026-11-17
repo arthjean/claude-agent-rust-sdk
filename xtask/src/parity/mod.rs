@@ -3,7 +3,7 @@
 
 mod diff;
 mod ledger;
-mod python;
+pub(crate) mod python;
 mod rust;
 
 use std::collections::BTreeSet;

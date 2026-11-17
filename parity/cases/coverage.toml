@@ -1,0 +1,9 @@
+# Option fields of ClaudeAgentOptions that no differential case can set,
+# with the reason. `cargo xtask parity-diff --coverage` fails on a field
+# that no case sets and that is not listed here, and on a listed field that
+# a case sets. See parity/README.md.
+
+[excluded]
+cli_path = "Each driver sets it to the fake-claude binary on both sides, so every case uses it and none can choose it."
+debug_stderr = "Deprecated in Python and no longer read (types.py:2572-2573), and absent from the Rust options: it never reaches the CLI, and the Rust driver has nothing to set."
+user = "Switching the operating-system user needs a privilege the harness does not have; the field changes which user runs the CLI, not what it receives."

@@ -1,0 +1,12 @@
+{
+  "name": "thinking-adaptive",
+  "description": "Adaptive thinking with a display mode.",
+  "scenario": "one-shot",
+  "options": {
+    "thinking": {
+      "type": "adaptive",
+      "display": "summarized"
+    }
+  },
+  "prompt": "Say hello"
+}

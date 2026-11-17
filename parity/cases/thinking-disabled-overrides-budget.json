@@ -1,0 +1,12 @@
+{
+  "name": "thinking-disabled-overrides-budget",
+  "description": "Thinking disabled, which takes precedence over the deprecated max_thinking_tokens.",
+  "scenario": "one-shot",
+  "options": {
+    "thinking": {
+      "type": "disabled"
+    },
+    "max_thinking_tokens": 1000
+  },
+  "prompt": "Say hello"
+}

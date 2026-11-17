@@ -28,12 +28,13 @@ fn compact(text: &str) -> String {
 }
 
 #[test]
-fn workspace_has_the_four_members() {
+fn workspace_has_its_five_members() {
     let manifest = read("Cargo.toml");
     for member in [
         "crates/claude-agent-kit",
         "crates/claude-agent-kit-macros",
         "crates/fake-claude",
+        "crates/parity-driver",
         "xtask",
     ] {
         assert!(manifest.contains(&format!("\"{member}\"")), "{member}");
@@ -50,6 +51,7 @@ fn workspace_has_the_four_members() {
 
     for (path, name) in [
         ("crates/fake-claude/Cargo.toml", "fake-claude"),
+        ("crates/parity-driver/Cargo.toml", "parity-driver"),
         ("xtask/Cargo.toml", "xtask"),
     ] {
         let manifest = read(path);
@@ -82,6 +84,7 @@ fn root_manifest_sets_toolchain_license_and_lint_policy() {
         "crates/claude-agent-kit",
         "crates/claude-agent-kit-macros",
         "crates/fake-claude",
+        "crates/parity-driver",
         "xtask",
     ] {
         let manifest = compact(&read(&format!("{member}/Cargo.toml")));
@@ -156,6 +159,10 @@ fn library_sources_carry_no_implementation_comments() {
     );
     rust_sources(
         &workspace_root().join("crates/fake-claude/src"),
+        &mut sources,
+    );
+    rust_sources(
+        &workspace_root().join("crates/parity-driver/src"),
         &mut sources,
     );
     for source in sources {

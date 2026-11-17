@@ -1,0 +1,9 @@
+{
+  "name": "system-prompt-preset",
+  "description": "The preset system prompt with an addition, dynamic sections excluded, and a snapshot.",
+  "scenario": "one-shot",
+  "options": {
+    "system_prompt": {"type": "preset", "preset": "claude_code", "append": "Answer in French.", "exclude_dynamic_sections": true, "snapshot": true}
+  },
+  "prompt": "Say hello"
+}

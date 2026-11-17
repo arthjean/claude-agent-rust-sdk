@@ -1,0 +1,8 @@
+# Runtime dependencies of the Python SDK at the pinned commit
+# (upstream/claude-agent-sdk-python/pyproject.toml), with mcp held to the
+# 1.x line the differential job covers. Compile with:
+#   uv pip compile parity/requirements.in --generate-hashes --python-version 3.13 -o parity/requirements.txt
+anyio>=4.0.0
+sniffio>=1.0.0
+mcp>=1.23.0,<2
+jsonschema>=4.20.0

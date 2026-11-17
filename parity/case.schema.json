@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Differential parity case",
+  "description": "One case of parity/cases, played by both drivers against fake-claude. See parity/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "scenario"],
+  "properties": {
+    "name": {
+      "description": "Name of the case; equals the file name without .json.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "description": {
+      "description": "What the case exercises.",
+      "type": "string"
+    },
+    "scenario": {
+      "description": "The fake-claude scenario, inline, or the name of a file of parity/scenarios without .json.",
+      "oneOf": [
+        {"type": "object"},
+        {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+      ]
+    },
+    "options": {
+      "description": "Options, keyed by the field names of the Python ClaudeAgentOptions, in their Python shapes.",
+      "type": "object"
+    },
+    "prompt": {
+      "description": "Prompt of the one-shot query: a string, or a list of user messages sent as a stream.",
+      "$ref": "#/$defs/prompt"
+    },
+    "steps": {
+      "description": "Steps that drive the interactive client, in order. A case with steps runs the client instead of the one-shot query.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "process_env": {
+      "description": "Variables of the driver process itself, which the SDK inherits.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "unordered": {
+      "description": "Groups of frame labels whose order is not compared.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "items": {"type": "string"}
+      }
+    }
+  },
+  "oneOf": [
+    {"required": ["prompt"], "not": {"required": ["steps"]}},
+    {"required": ["steps"], "not": {"required": ["prompt"]}}
+  ],
+  "$defs": {
+    "prompt": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["type", "message"],
+            "properties": {"type": {"const": "user"}}
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "connect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"prompt": {"$ref": "#/$defs/prompt"}}
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prompt"],
+          "properties": {
+            "prompt": {"$ref": "#/$defs/prompt"},
+            "session_id": {"type": "string"}
+          }
+        },
+        "receive_response": {"const": true},
+        "interrupt": {"const": true},
+        "set_permission_mode": {"type": "string"},
+        "set_model": {"type": ["string", "null"]},
+        "rewind_files": {"type": "string"},
+        "reconnect_mcp_server": {"type": "string"},
+        "toggle_mcp_server": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "enabled"],
+          "properties": {
+            "name": {"type": "string"},
+            "enabled": {"type": "boolean"}
+          }
+        },
+        "stop_task": {"type": "string"},
+        "get_mcp_status": {"const": true},
+        "get_context_usage": {"const": true},
+        "disconnect": {"const": true}
+      },
+      "additionalProperties": false
+    }
+  }
+}

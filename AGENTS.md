@@ -34,6 +34,7 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 | Change | Check |
 |---|---|
 | Renamed, moved, or removed a public item or a test; edited `parity/`; moved the submodule pin | `cargo xtask parity-check --deny-pending` (needs `git submodule update --init`; builds every test, so it is slow) |
+| Changed what reaches the CLI (command line, environment, control frames, MCP answers), `crates/fake-claude`, `crates/parity-driver`, or `parity/cases`; moved the submodule pin | `cargo xtask parity-diff` and `cargo xtask parity-diff --coverage` (needs Python 3.10+ with `parity/requirements.txt`, pointed to by `PARITY_PYTHON`; see `parity/README.md`) |
 | New or bumped dependency | `cargo deny check licenses`. The version declared in `Cargo.toml` must be a true minimum: CI resolves direct dependencies to their declared minimums and runs the tests. |
 | Dependency change, or a language or std feature that may be newer than Rust 1.88 | `cargo +1.88.0 check --workspace --all-features --locked` |
 | `.github/workflows/*.yml` | `gh actions-lock --verify` (extension: `gh extension install github/gh-actions-lock --pin v0.4.1`) |

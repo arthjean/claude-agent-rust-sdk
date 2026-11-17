@@ -1,0 +1,9 @@
+{
+  "name": "tools-empty",
+  "description": "An empty tool list, which disables every built-in tool.",
+  "scenario": "one-shot",
+  "options": {
+    "tools": []
+  },
+  "prompt": "Say hello"
+}

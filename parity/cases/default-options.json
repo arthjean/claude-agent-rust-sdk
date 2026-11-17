@@ -1,0 +1,6 @@
+{
+  "name": "default-options",
+  "description": "A one-shot query with every option at its default.",
+  "scenario": "one-shot",
+  "prompt": "Say hello"
+}

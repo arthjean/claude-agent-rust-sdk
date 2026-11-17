@@ -1,0 +1,33 @@
+{
+  "name": "sandbox-merged-into-settings",
+  "description": "Sandbox settings, merged into inline JSON settings.",
+  "scenario": "one-shot",
+  "options": {
+    "settings": "{\"permissions\": {\"allow\": [\"Read\"]}}",
+    "sandbox": {
+      "enabled": true,
+      "autoAllowBashIfSandboxed": true,
+      "excludedCommands": [
+        "docker"
+      ],
+      "allowUnsandboxedCommands": false,
+      "network": {
+        "allowedDomains": [
+          "example.com"
+        ],
+        "allowUnixSockets": [
+          "/var/run/docker.sock"
+        ],
+        "allowLocalBinding": true,
+        "httpProxyPort": 8080
+      },
+      "ignoreViolations": {
+        "file": [
+          "/tmp"
+        ]
+      },
+      "enableWeakerNestedSandbox": true
+    }
+  },
+  "prompt": "Say hello"
+}

@@ -1,5 +1,6 @@
 //! Maintenance tasks for the workspace, run as `cargo xtask <command>`.
 
+mod differential;
 mod gates;
 mod parity;
 
@@ -20,6 +21,11 @@ usage: cargo xtask <command>
                         parity/surface.toml (--check only compares)
   upstream-diff <tag>   list what upstream changed between the pinned commit
                         and <tag>
+  parity-diff [cases]   play every case of parity/cases through both SDKs
+                        against fake-claude and fail on any difference not
+                        in parity/differences.toml (--coverage lists the
+                        option fields the cases set; --check-requirements
+                        checks parity/requirements.txt against upstream)
   e2e [test arguments]  run the end-to-end suite against the real CLI";
 
 fn main() -> ExitCode {
@@ -32,6 +38,7 @@ fn main() -> ExitCode {
         Some("parity-tests") => parity::run_tests(rest),
         Some("migration-table") => parity::run_migration(rest),
         Some("upstream-diff") => parity::run_diff(rest),
+        Some("parity-diff") => differential::run(rest),
         Some("e2e") => gates::run_e2e(rest),
         _ => {
             eprintln!("{USAGE}");

@@ -1,0 +1,60 @@
+{
+  "name": "initialize-fields",
+  "description": "Options that reach the initialize request: agents, a skill list, forwarded subagent text, and verbatim prompts, which also mark each user message.",
+  "scenario": "one-shot",
+  "options": {
+    "agents": {
+      "reviewer": {
+        "description": "Reviews code",
+        "prompt": "You review code.",
+        "tools": [
+          "Read",
+          "Grep"
+        ],
+        "disallowedTools": [
+          "Write"
+        ],
+        "model": "sonnet",
+        "skills": [
+          "lint"
+        ],
+        "memory": "project",
+        "mcpServers": [
+          "github",
+          {
+            "local": {
+              "command": "node"
+            }
+          }
+        ],
+        "initialPrompt": "Start",
+        "maxTurns": 4,
+        "background": true,
+        "effort": "high",
+        "permissionMode": "plan"
+      },
+      "helper": {
+        "description": "Helps",
+        "prompt": "You help.",
+        "effort": 2048
+      }
+    },
+    "skills": [
+      "pdf",
+      "docx"
+    ],
+    "forward_subagent_text": true,
+    "verbatim_prompts": true
+  },
+  "prompt": [
+    {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": "Use /review on @file.txt"
+      },
+      "parent_tool_use_id": null,
+      "session_id": ""
+    }
+  ]
+}

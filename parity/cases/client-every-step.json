@@ -1,0 +1,189 @@
+{
+  "name": "client-every-step",
+  "description": "The interactive client through every step of the format, each control request answered by the scenario.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "interrupt"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "set_permission_mode"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "set_model"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "rewind_files"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "mcp_reconnect"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "mcp_toggle"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "stop_task"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "mcp_status"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "mcpServers": []
+        }
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "get_context_usage"
+          }
+        }
+      },
+      {
+        "control_response": {}
+      }
+    ]
+  },
+  "options": {
+    "enable_file_checkpointing": true
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "First turn",
+        "session_id": "session-a"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "interrupt": true
+    },
+    {
+      "set_permission_mode": "plan"
+    },
+    {
+      "set_model": "claude-opus-5-5"
+    },
+    {
+      "rewind_files": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "reconnect_mcp_server": "remote"
+    },
+    {
+      "toggle_mcp_server": {
+        "name": "remote",
+        "enabled": false
+      }
+    },
+    {
+      "stop_task": "task-1"
+    },
+    {
+      "get_mcp_status": true
+    },
+    {
+      "get_context_usage": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

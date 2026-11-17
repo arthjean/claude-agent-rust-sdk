@@ -1,0 +1,9 @@
+{
+  "name": "mcp-servers-as-json-text",
+  "description": "MCP servers given as a JSON string instead of a map.",
+  "scenario": "one-shot",
+  "options": {
+    "mcp_servers": "{\"mcpServers\": {\"x\": {\"command\": \"run-x\"}}}"
+  },
+  "prompt": "Say hello"
+}

@@ -1,0 +1,72 @@
+{
+  "name": "unknown-control-subtype",
+  "description": "The CLI sends a control request with a subtype neither SDK knows; both answer with an error.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "odd-1",
+          "request": {
+            "subtype": "frobnicate",
+            "level": 3
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "odd-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "sandbox-alone",
+  "description": "Sandbox settings with no other settings.",
+  "scenario": "one-shot",
+  "options": {
+    "sandbox": {
+      "enabled": true
+    }
+  },
+  "prompt": "Say hello"
+}

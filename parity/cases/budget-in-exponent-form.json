@@ -1,0 +1,7 @@
+{
+  "name": "budget-in-exponent-form",
+  "description": "A budget small enough that both SDKs write it in exponent form, each in its own spelling.",
+  "scenario": "one-shot",
+  "options": {"max_budget_usd": 0.00001},
+  "prompt": "Say hello"
+}

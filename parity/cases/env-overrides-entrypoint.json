@@ -1,0 +1,12 @@
+{
+  "name": "env-overrides-entrypoint",
+  "description": "An entrypoint given in the env option overrides the SDK's own.",
+  "scenario": "one-shot",
+  "options": {
+    "env": {
+      "CLAUDE_CODE_ENTRYPOINT": "my-app",
+      "CLAUDE_CODE_SDK_READS_SESSION_STATE": "1"
+    }
+  },
+  "prompt": "Say hello"
+}

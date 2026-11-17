@@ -1,0 +1,9 @@
+{
+  "name": "list-prompt",
+  "description": "A one-shot query whose prompt is a stream of two user messages.",
+  "scenario": "one-shot",
+  "prompt": [
+    {"type": "user", "message": {"role": "user", "content": "First message"}, "parent_tool_use_id": null, "session_id": ""},
+    {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "Second message"}]}, "parent_tool_use_id": null, "session_id": ""}
+  ]
+}

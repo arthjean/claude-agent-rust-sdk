@@ -1,0 +1,167 @@
+{
+  "name": "mcp-tools-list",
+  "description": "The CLI lists the tools of an in-process MCP server.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "mcp-1",
+          "request": {
+            "subtype": "mcp_message",
+            "server_name": "calc",
+            "message": {
+              "jsonrpc": "2.0",
+              "id": 0,
+              "method": "initialize",
+              "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {
+                  "name": "claude-code",
+                  "version": "2.1.325"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "mcp-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "mcp-2",
+          "request": {
+            "subtype": "mcp_message",
+            "server_name": "calc",
+            "message": {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "tools/list"
+            }
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "mcp-2"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "mcp_servers": {
+      "calc": {
+        "type": "sdk",
+        "version": "2.0.0",
+        "tools": [
+          {
+            "name": "add",
+            "description": "Add two numbers",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "number"
+                },
+                "b": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ]
+            },
+            "annotations": {
+              "title": "Adder",
+              "readOnlyHint": true,
+              "idempotentHint": true
+            },
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "3"
+                }
+              ]
+            }
+          },
+          {
+            "name": "fail",
+            "description": "Always fails",
+            "input_schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "it broke"
+                }
+              ],
+              "is_error": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "name": "concurrent-callbacks",
+  "description": "The CLI sends a permission request and a hook callback back to back; each SDK may answer them in either order, so the two answers form an unordered group.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "perm-1",
+          "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Read",
+            "input": {
+              "file_path": "/c/a.txt"
+            },
+            "permission_suggestions": [],
+            "tool_use_id": "toolu_1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "hook-1",
+          "request": {
+            "subtype": "hook_callback",
+            "callback_id": "hook_0",
+            "input": {
+              "hook_event_name": "PreToolUse",
+              "session_id": "s",
+              "transcript_path": "/t/s.jsonl",
+              "cwd": "/c",
+              "tool_name": "Read",
+              "tool_input": {
+                "file_path": "/c/a.txt"
+              },
+              "tool_use_id": "toolu_1"
+            },
+            "tool_use_id": "toolu_1"
+          }
+        }
+      },
+      {
+        "sleep_ms": 1500
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "can_use_tool": {
+      "behavior": "allow"
+    },
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "Read",
+          "hooks": [
+            {
+              "continue": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ],
+  "unordered": [
+    [
+      "control_response:perm-1",
+      "control_response:hook-1"
+    ]
+  ]
+}

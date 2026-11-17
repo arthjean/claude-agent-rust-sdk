@@ -1,0 +1,64 @@
+{
+  "name": "client-connect-with-prompt",
+  "description": "The interactive client connected with an initial prompt stream and verbatim prompts. Both SDKs close stdin once that stream's run ends, so no later query is possible.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "verbatim_prompts": true
+  },
+  "steps": [
+    {
+      "connect": {
+        "prompt": [
+          {
+            "type": "user",
+            "message": {
+              "role": "user",
+              "content": "Initial"
+            },
+            "parent_tool_use_id": null,
+            "session_id": ""
+          }
+        ]
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

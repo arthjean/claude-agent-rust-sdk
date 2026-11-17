@@ -187,12 +187,20 @@ cargo xtask gates                  format, lint, examples, test, and doc checks
 cargo xtask parity-check           check the parity ledgers against upstream
 cargo xtask parity-report          print how much of upstream is implemented
 cargo xtask upstream-diff <tag>    list what upstream changed up to a tag
+cargo xtask parity-diff            compare what both SDKs send the CLI, case by case
 cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
 
 The parity ledgers live in [`parity/`](parity): `surface.toml` lists every name
 the Python SDK exports, and `tests.toml` lists every upstream test, each with the
 Rust item that replaces it or the reason it is not ported.
+
+`cargo xtask parity-diff` measures parity instead of stating it: it plays every
+case of `parity/cases` through both SDKs against the scripted stand-in CLI and
+fails on any difference in the command line, the environment, or the frames
+that `parity/differences.toml` does not list with its reason. It needs Python
+3.10 or later with the pinned dependencies of `parity/requirements.txt`; see
+[`parity/README.md`](parity/README.md).
 
 The end-to-end suite spends API credits: about 0.80 USD for a full run. It
 needs `ANTHROPIC_API_KEY`, or `CLAUDE_AGENT_KIT_E2E_AUTH=cli` to use the login

@@ -1,0 +1,36 @@
+{
+  "name": "every-other-cli-option",
+  "description": "A one-shot query with the remaining options that reach the command line or the environment, and the options that reach neither, to show they change nothing on the wire.",
+  "scenario": "one-shot",
+  "options": {
+    "strict_mcp_config": true,
+    "betas": [
+      "context-1m-2025-08-07"
+    ],
+    "permission_prompt_tool_name": "mcp__auth__approve",
+    "include_hook_events": true,
+    "fork_session": true,
+    "resume": "11111111-2222-4333-8444-555555555555",
+    "resume_session_at": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    "resume_drops_turn": "ffffffff-0000-4111-8222-333333333333",
+    "max_thinking_tokens": 4096,
+    "task_budget": {
+      "total": 50000
+    },
+    "client_app": "parity-harness/1.0.0",
+    "plugins": [
+      {
+        "type": "local",
+        "path": "${WORK}/plugins/one"
+      },
+      {
+        "type": "local",
+        "path": "${WORK}/plugins/two"
+      }
+    ],
+    "max_buffer_size": 2097152,
+    "load_timeout_ms": 30000,
+    "stderr": true
+  },
+  "prompt": "Say hello"
+}

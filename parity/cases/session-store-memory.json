@@ -1,0 +1,10 @@
+{
+  "name": "session-store-memory",
+  "description": "A session store, which asks the CLI to mirror the transcript, flushed eagerly.",
+  "scenario": "one-shot",
+  "options": {
+    "session_store": "memory",
+    "session_store_flush": "eager"
+  },
+  "prompt": "Say hello"
+}

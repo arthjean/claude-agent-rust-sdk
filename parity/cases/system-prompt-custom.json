@@ -1,0 +1,9 @@
+{
+  "name": "system-prompt-custom",
+  "description": "A custom system prompt given as an object, with a snapshot.",
+  "scenario": "one-shot",
+  "options": {
+    "system_prompt": {"type": "custom", "prompt": "You are a calculator.", "snapshot": true}
+  },
+  "prompt": "Say hello"
+}

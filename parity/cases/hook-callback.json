@@ -1,0 +1,251 @@
+{
+  "name": "hook-callback",
+  "description": "Hooks on six events, with a matcher, a timeout, and on_failure. The CLI calls the first four callbacks by id, so both SDKs must number them alike; each answers with a canned output, one of them async.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "hook-1",
+          "request": {
+            "subtype": "hook_callback",
+            "callback_id": "hook_0",
+            "input": {
+              "hook_event_name": "PreToolUse",
+              "session_id": "s",
+              "transcript_path": "/t/s.jsonl",
+              "cwd": "/c",
+              "permission_mode": "default",
+              "tool_name": "Bash",
+              "tool_input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_2"
+            },
+            "tool_use_id": "toolu_2"
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "hook-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "hook-2",
+          "request": {
+            "subtype": "hook_callback",
+            "callback_id": "hook_1",
+            "input": {
+              "hook_event_name": "PostToolUse",
+              "session_id": "s",
+              "transcript_path": "/t/s.jsonl",
+              "cwd": "/c",
+              "permission_mode": "default",
+              "tool_name": "Bash",
+              "tool_input": {
+                "command": "ls"
+              },
+              "tool_response": {
+                "stdout": "a"
+              },
+              "tool_use_id": "toolu_3"
+            },
+            "tool_use_id": "toolu_3"
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "hook-2"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "hook-3",
+          "request": {
+            "subtype": "hook_callback",
+            "callback_id": "hook_2",
+            "input": {
+              "hook_event_name": "PostToolUse",
+              "session_id": "s",
+              "transcript_path": "/t/s.jsonl",
+              "cwd": "/c",
+              "permission_mode": "default",
+              "tool_name": "Bash",
+              "tool_input": {
+                "command": "ls"
+              },
+              "tool_response": {
+                "stdout": "a"
+              },
+              "tool_use_id": "toolu_3"
+            },
+            "tool_use_id": "toolu_3"
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "hook-3"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "hook-4",
+          "request": {
+            "subtype": "hook_callback",
+            "callback_id": "hook_3",
+            "input": {
+              "hook_event_name": "UserPromptSubmit",
+              "session_id": "s",
+              "transcript_path": "/t/s.jsonl",
+              "cwd": "/c",
+              "permission_mode": "default",
+              "prompt": "Go"
+            }
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "hook-4"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "Bash",
+          "timeout": 5,
+          "hooks": [
+            {
+              "decision": "block",
+              "reason": "No deletions.",
+              "systemMessage": "Blocked rm",
+              "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "rm is not allowed"
+              }
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": null,
+          "hooks": [
+            {
+              "continue": false,
+              "stopReason": "Done",
+              "suppressOutput": true
+            },
+            {
+              "async": true,
+              "asyncTimeout": 1000
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": "Be brief."
+              }
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {}
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {}
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "on_failure": "continue",
+          "hooks": [
+            {}
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

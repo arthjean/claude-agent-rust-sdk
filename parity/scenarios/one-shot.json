@@ -1,0 +1,9 @@
+{
+  "steps": [
+    {"expect": {"type": "control_request", "request": {"subtype": "initialize"}}},
+    {"control_response": {"commands": []}},
+    {"expect": {"type": "user"}},
+    {"emit": {"type": "assistant", "message": {"role": "assistant", "model": "m", "content": [{"type": "text", "text": "hello"}]}, "session_id": "s"}},
+    {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1, "is_error": false, "num_turns": 1, "session_id": "s", "result": "hello"}}
+  ]
+}

@@ -1,0 +1,45 @@
+# Reviewed differences between what the Python SDK and claude-agent-kit send
+# the CLI, found by `cargo xtask parity-diff`. Format and rules:
+# parity/README.md. Each entry covers one location; `python` and `rust` are
+# JSON text, and a missing key means that side sent nothing there. An entry
+# that matches no difference fails the run, so remove it when the
+# difference goes away.
+
+[wire.entrypoint-label]
+case = "*"
+location = "env CLAUDE_CODE_ENTRYPOINT"
+python = '"sdk-py"'
+rust = '"sdk-rs"'
+category = "deliberate"
+reason = "Each SDK names itself to the CLI, which reports the entrypoint in its telemetry (subprocess_cli.py:767 sets sdk-py)."
+
+[wire.sdk-version]
+case = "*"
+location = "env CLAUDE_AGENT_SDK_VERSION"
+python = '"0.2.182"'
+rust = '"0.1.0"'
+category = "deliberate"
+reason = "Each SDK sends its own package version (subprocess_cli.py:769 sends __version__)."
+
+[wire.budget-exponent-spelling]
+case = "budget-in-exponent-form"
+location = "arg --max-budget-usd"
+python = '"1e-05"'
+rust = '"1e-5"'
+category = "deliberate"
+reason = "Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for ordinary amounts and differ only in exponent form, which the CLI parses to the same number."
+
+[wire.stdio-server-type-key]
+case = "every-cli-option"
+location = "arg --mcp-config /mcpServers/local/type"
+python = '"stdio"'
+category = "deliberate"
+reason = "Python passes the server dictionary as the caller wrote it; the typed Rust config never writes the type of a stdio server, which the CLI reads as stdio when missing. Documented in the module docs of src/types/config.rs."
+
+[wire.validation-message-quotes]
+case = "mcp-tools-call"
+location = "frame control_response:mcp-4 /response/response/mcp_response/result/content/0/text"
+python = '''"Input validation error: 'b' is a required property"'''
+rust = '''"Input validation error: \"b\" is a required property"'''
+category = "deliberate"
+reason = "Both SDKs return the validator's message after the same prefix (__init__.py:630-632); Python's jsonschema quotes the property name with Python repr, the Rust jsonschema crate with JSON quotes. Message wording is not matched (a non-goal of tasks/prd-parity-hardening.md)."

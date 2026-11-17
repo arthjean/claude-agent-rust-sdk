@@ -1,0 +1,96 @@
+{
+  "name": "permission-deny",
+  "description": "A permission request answered by a callback that denies the call and interrupts.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "perm-1",
+          "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "input": {
+              "command": "ls -la"
+            },
+            "permission_suggestions": [
+              {
+                "type": "addRules",
+                "rules": [
+                  {
+                    "toolName": "Bash",
+                    "ruleContent": "ls:*"
+                  }
+                ],
+                "behavior": "allow",
+                "destination": "session"
+              }
+            ],
+            "tool_use_id": "toolu_1"
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "perm-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "can_use_tool": {
+      "behavior": "deny",
+      "message": "Not in this directory.",
+      "interrupt": true
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

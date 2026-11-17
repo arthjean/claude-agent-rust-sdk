@@ -1,0 +1,14 @@
+{
+  "name": "tools-preset-and-empty-lists",
+  "description": "The claude_code tools preset, with empty setting sources and an empty disallowed list.",
+  "scenario": "one-shot",
+  "options": {
+    "tools": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "setting_sources": [],
+    "disallowed_tools": []
+  },
+  "prompt": "Say hello"
+}

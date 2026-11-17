@@ -1,0 +1,9 @@
+{
+  "name": "system-prompt-file",
+  "description": "A system prompt read from a file.",
+  "scenario": "one-shot",
+  "options": {
+    "system_prompt": {"type": "file", "path": "${WORK}/prompt.md"}
+  },
+  "prompt": "Say hello"
+}

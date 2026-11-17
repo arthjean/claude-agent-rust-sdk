@@ -4,6 +4,7 @@ members = [
     "crates/claude-agent-kit",
     "crates/claude-agent-kit-macros",
     "crates/fake-claude",
+    "crates/parity-driver",
     "xtask",
 ]
 

@@ -1,0 +1,12 @@
+{
+  "name": "skills-all",
+  "description": "Every skill enabled, which adds the Skill tool to the allowed tools and changes the default setting sources.",
+  "scenario": "one-shot",
+  "options": {
+    "skills": "all",
+    "allowed_tools": [
+      "Read"
+    ]
+  },
+  "prompt": "Say hello"
+}

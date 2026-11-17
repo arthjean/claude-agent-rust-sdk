@@ -1,0 +1,9 @@
+{
+  "name": "mcp-servers-as-path",
+  "description": "MCP servers given as the path of a configuration file.",
+  "scenario": "one-shot",
+  "options": {
+    "mcp_servers": "${WORK}/mcp.json"
+  },
+  "prompt": "Say hello"
+}
