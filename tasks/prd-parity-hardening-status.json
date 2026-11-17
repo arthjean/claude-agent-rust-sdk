@@ -25,10 +25,10 @@
     {
       "id": "EP-010",
       "title": "Publish the divergences and track upstream",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 3,
-      "stories_done": 0
+      "stories_done": 3
     },
     {
       "id": "EP-011",
@@ -212,40 +212,40 @@
       "id": "US-053",
       "title": "An `adapted` status in the ledgers",
       "epic": "EP-010",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-17",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-054",
       "title": "`docs/parity.md`, generated and checked",
       "epic": "EP-010",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-049",
         "US-053"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-17",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-055",
       "title": "Scheduled upstream watch",
       "epic": "EP-010",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "M",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-17",
+      "completed_at": "2026-11-17",
+      "reviewed_at": "2026-11-17"
     },
     {
       "id": "US-056",
