@@ -1,4 +1,11 @@
 //! Configuration values accepted by the options.
+//!
+//! These types differ from upstream in one deliberate way:
+//!
+//! - A stdio MCP server is written to `--mcp-config` without a `type` key.
+//!   The Python SDK passes the dictionary as the caller wrote it, so it
+//!   writes `"type": "stdio"` only when the caller did; the CLI reads a
+//!   missing type as stdio, so both forms start the same server.
 
 use std::any::Any;
 use std::fmt;
@@ -430,6 +437,9 @@ impl AgentDefinition {
 }
 
 /// MCP server launched as a child process speaking over stdio.
+///
+/// It is written to the CLI without a `type` key, which the CLI reads as
+/// stdio.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct McpStdioServerConfig {
