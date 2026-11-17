@@ -49,13 +49,17 @@ pub fn compiled_here(platform: &str) -> Option<bool> {
     }
 }
 
-/// Disposition of one upstream item. Exactly one of `rust`, `excluded`, and
-/// `pending` is set.
+/// Disposition of one upstream item. Exactly one of `rust`, `adapted`,
+/// `excluded`, and `pending` is set.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     /// Rust paths that implement or test the upstream item.
     pub rust: Option<Paths>,
+    /// Rust paths of a different kind of item that takes the place of the
+    /// upstream one (an enum variant for a class, a method for a warning
+    /// class). An adapted entry must carry a `note` that says how.
+    pub adapted: Option<Paths>,
     /// Key of the `[exclusions]` table giving why the item is not ported.
     pub excluded: Option<String>,
     /// Why the item has no disposition yet.
@@ -67,8 +71,10 @@ pub struct Entry {
 /// State of a ledger entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// The entry names Rust paths.
+    /// The entry names Rust paths of the same kind of item.
     Implemented,
+    /// The entry names Rust paths of a different kind of item.
+    Adapted,
     /// The entry names an exclusion reason.
     Excluded,
     /// The entry is waiting for a disposition.
@@ -77,14 +83,43 @@ pub enum State {
 
 impl Entry {
     /// State of the entry, or `None` when it does not set exactly one of
-    /// `rust`, `excluded`, and `pending`.
+    /// `rust`, `adapted`, `excluded`, and `pending`.
     pub fn state(&self) -> Option<State> {
-        match (&self.rust, &self.excluded, &self.pending) {
-            (Some(paths), None, None) if !paths.as_slice().is_empty() => Some(State::Implemented),
-            (None, Some(_), None) => Some(State::Excluded),
-            (None, None, Some(_)) => Some(State::Pending),
+        match (&self.rust, &self.adapted, &self.excluded, &self.pending) {
+            (Some(paths), None, None, None) if !paths.as_slice().is_empty() => {
+                Some(State::Implemented)
+            }
+            (None, Some(paths), None, None) if !paths.as_slice().is_empty() => Some(State::Adapted),
+            (None, None, Some(_), None) => Some(State::Excluded),
+            (None, None, None, Some(_)) => Some(State::Pending),
             _ => None,
         }
+    }
+
+    /// The Rust paths of an implemented or adapted entry, in ledger order.
+    pub fn paths(&self) -> impl Iterator<Item = &String> {
+        self.rust
+            .iter()
+            .chain(self.adapted.iter())
+            .flat_map(Paths::as_slice)
+    }
+}
+
+/// Fails on the first adapted entry without a `note`, naming it.
+fn require_adapted_notes(ledger: Ledger) -> Result<Ledger, String> {
+    let unexplained = ledger.entries.iter().find(|(_, entry)| {
+        entry.adapted.is_some()
+            && entry
+                .note
+                .as_deref()
+                .is_none_or(|note| note.trim().is_empty())
+    });
+    match unexplained {
+        Some((item, _)) => Err(format!(
+            "{}: `{item}` is adapted but has no `note` saying how the Rust item differs",
+            ledger.file
+        )),
+        None => Ok(ledger),
     }
 }
 
@@ -131,7 +166,7 @@ fn label(path: &Path) -> String {
 pub fn load_surface(path: &Path) -> Result<Ledger, String> {
     let file: SurfaceFile =
         toml::from_str(&read(path)?).map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(Ledger {
+    require_adapted_notes(Ledger {
         file: label(path),
         kind: "export",
         exclusions: file.exclusions,
@@ -149,7 +184,7 @@ pub fn load_tests(path: &Path) -> Result<Ledger, String> {
             entries.insert(format!("{module}::{test}"), entry);
         }
     }
-    Ok(Ledger {
+    require_adapted_notes(Ledger {
         file: label(path),
         kind: "test",
         exclusions: file.exclusions,
@@ -160,8 +195,10 @@ pub fn load_tests(path: &Path) -> Result<Ledger, String> {
 /// Counts of a ledger by state.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Counts {
-    /// Entries naming Rust paths.
+    /// Entries naming Rust paths of the same kind of item.
     pub implemented: usize,
+    /// Entries naming Rust paths of a different kind of item.
+    pub adapted: usize,
     /// Entries naming an exclusion reason.
     pub excluded: usize,
     /// Entries waiting for a disposition.
@@ -195,11 +232,11 @@ impl Ledger {
             }
             if entry.state().is_none() {
                 problems.push(format!(
-                    "{}: `{item}` must set exactly one of `rust`, `excluded`, `pending`",
+                    "{}: `{item}` must set exactly one of `rust`, `adapted`, `excluded`, `pending`",
                     self.file
                 ));
             }
-            for path in entry.rust.iter().flat_map(Paths::as_slice) {
+            for path in entry.paths() {
                 if let (_, Some(platform)) = split_platform(path)
                     && compiled_here(platform).is_none()
                 {
@@ -236,9 +273,7 @@ impl Ledger {
             .iter()
             .flat_map(|(item, entry)| {
                 entry
-                    .rust
-                    .iter()
-                    .flat_map(Paths::as_slice)
+                    .paths()
                     .map(move |path| (item.as_str(), path.as_str()))
             })
             .collect()
@@ -258,6 +293,7 @@ impl Ledger {
         for entry in self.entries.values() {
             match entry.state() {
                 Some(State::Implemented) => counts.implemented += 1,
+                Some(State::Adapted) => counts.adapted += 1,
                 Some(State::Excluded) => {
                     counts.excluded += 1;
                     if let Some(reason) = &entry.excluded {
@@ -298,20 +334,36 @@ query = { rust = "claude_agent_kit::query" }
 Message = { rust = ["claude_agent_kit::Message", "claude_agent_kit::parse_message"] }
 CanUseToolShadowedWarning = { excluded = "python-only" }
 tool = { pending = "waiting" }
+PermissionResultAllow = { adapted = "claude_agent_kit::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
 "#;
 
     #[test]
     fn a_complete_ledger_has_no_structural_problem() {
         let ledger = surface(LEDGER);
-        let names = upstream(&["query", "Message", "CanUseToolShadowedWarning", "tool"]);
+        let names = upstream(&[
+            "query",
+            "Message",
+            "CanUseToolShadowedWarning",
+            "tool",
+            "PermissionResultAllow",
+        ]);
         assert_eq!(ledger.structural_problems(&names), Vec::<String>::new());
         let counts = ledger.counts();
         assert_eq!(
-            (counts.implemented, counts.excluded, counts.pending),
-            (2, 1, 1)
+            (
+                counts.implemented,
+                counts.adapted,
+                counts.excluded,
+                counts.pending
+            ),
+            (2, 1, 1, 1)
         );
         assert_eq!(counts.by_reason["python-only"], 1);
-        assert_eq!(ledger.rust_paths().len(), 3);
+        assert_eq!(ledger.rust_paths().len(), 4);
+        assert!(ledger.rust_paths().contains(&(
+            "PermissionResultAllow",
+            "claude_agent_kit::PermissionResult::Allow"
+        )));
         assert_eq!(ledger.pending(), [("tool", "waiting")]);
     }
 
@@ -323,6 +375,7 @@ tool = { pending = "waiting" }
             "Message",
             "CanUseToolShadowedWarning",
             "tool",
+            "PermissionResultAllow",
             "BrandNewExport",
         ]);
         let problems = ledger.structural_problems(&names);
@@ -342,15 +395,21 @@ unused = "Nothing uses this."
 [names]
 gone = { rust = "claude_agent_kit::gone" }
 both = { rust = "claude_agent_kit::both", excluded = "unused" }
+twice = { rust = "claude_agent_kit::Twice", adapted = "claude_agent_kit::Twice", note = "x" }
 empty = {}
 unknown = { excluded = "missing-reason" }
 "#,
         );
         let problems = ledger
-            .structural_problems(&upstream(&["both", "empty", "unknown"]))
+            .structural_problems(&upstream(&["both", "twice", "empty", "unknown"]))
             .join("\n");
         assert!(problems.contains("`gone` is listed but upstream has no such export"));
-        assert!(problems.contains("`both` must set exactly one of"));
+        assert!(
+            problems.contains(
+                "`both` must set exactly one of `rust`, `adapted`, `excluded`, `pending`"
+            )
+        );
+        assert!(problems.contains("`twice` must set exactly one of"));
         assert!(problems.contains("`empty` must set exactly one of"));
         assert!(problems.contains("`missing-reason`, which `[exclusions]` does not define"));
         assert!(!problems.contains("exclusion `unused` is defined but no entry uses it"));
@@ -387,6 +446,36 @@ unknown = { excluded = "missing-reason" }
         assert_eq!(
             problems,
             ["parity/surface.toml: `query` names the unknown platform `@plan9`"]
+        );
+    }
+
+    #[test]
+    fn an_adapted_entry_without_a_note_fails_loading_naming_it() {
+        let directory = std::env::temp_dir().join(format!("xtask-adapted-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let surface_path = directory.join("surface.toml");
+        std::fs::write(
+            &surface_path,
+            "[names]\nquery = { rust = \"claude_agent_kit::query\" }\nWarning = { adapted = \"claude_agent_kit::Options::warning\" }\n",
+        )
+        .unwrap();
+        let tests_path = directory.join("tests.toml");
+        std::fs::write(
+            &tests_path,
+            "[tests.\"tests/test_a.py\"]\ntest_one = { adapted = \"tests/a.rs::one\", note = \" \" }\n",
+        )
+        .unwrap();
+
+        let surface = load_surface(&surface_path).unwrap_err();
+        let tests = load_tests(&tests_path).unwrap_err();
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(
+            surface,
+            "parity/surface.toml: `Warning` is adapted but has no `note` saying how the Rust item differs"
+        );
+        assert_eq!(
+            tests,
+            "parity/tests.toml: `tests/test_a.py::test_one` is adapted but has no `note` saying how the Rust item differs"
         );
     }
 

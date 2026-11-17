@@ -5,6 +5,20 @@
 # `cargo xtask parity-check` fails when upstream exports a name this file
 # does not list, and when a Rust path listed here does not compile.
 # `cargo xtask migration-table` renders this file into docs/migration.md.
+#
+# Each name sets exactly one of `rust`, `adapted`, `excluded`, `pending`.
+# Decision rule between `rust` and `adapted`:
+#
+# - `rust`: the Rust item is the same kind of item as the Python one, so a
+#   ported line names it where Python named the original. A function
+#   becomes a function, a constant a constant, and a class a type of its
+#   own: a struct, an enum, or a trait. A dictionary type (TypedDict or a
+#   union of them) becomes a struct or an enum, which counts as the same
+#   kind as long as it keeps the keys it does not model.
+# - `adapted`: the Rust item is a different kind of item, so a ported line
+#   has to change shape. A class becomes a variant of an enum, a method, or
+#   a macro; an exception class becomes a variant of `Error`. An adapted
+#   name must carry a `note` that says what takes its place.
 
 [names]
 query = { rust = "claude_agent_kit::query", note = "Returns a `Stream` of `Result<Message, Error>`." }
@@ -57,9 +71,9 @@ TaskBudget = { rust = "claude_agent_kit::TaskBudget" }
 TextBlock = { rust = "claude_agent_kit::TextBlock" }
 ThinkingBlock = { rust = "claude_agent_kit::ThinkingBlock" }
 ThinkingConfig = { rust = "claude_agent_kit::ThinkingConfig" }
-ThinkingConfigAdaptive = { rust = "claude_agent_kit::ThinkingConfig::Adaptive", note = "Variant of `ThinkingConfig`." }
-ThinkingConfigEnabled = { rust = "claude_agent_kit::ThinkingConfig::Enabled", note = "Variant of `ThinkingConfig`." }
-ThinkingConfigDisabled = { rust = "claude_agent_kit::ThinkingConfig::Disabled", note = "Variant of `ThinkingConfig`." }
+ThinkingConfigAdaptive = { adapted = "claude_agent_kit::ThinkingConfig::Adaptive", note = "Variant of `ThinkingConfig`." }
+ThinkingConfigEnabled = { adapted = "claude_agent_kit::ThinkingConfig::Enabled", note = "Variant of `ThinkingConfig`." }
+ThinkingConfigDisabled = { adapted = "claude_agent_kit::ThinkingConfig::Disabled", note = "Variant of `ThinkingConfig`." }
 ToolUseBlock = { rust = "claude_agent_kit::ToolUseBlock" }
 ToolResultBlock = { rust = "claude_agent_kit::ToolResultBlock" }
 ServerToolName = { rust = "claude_agent_kit::ServerToolName" }
@@ -69,11 +83,11 @@ ContentBlock = { rust = "claude_agent_kit::ContentBlock" }
 ContextUsageCategory = { rust = "claude_agent_kit::ContextUsageCategory" }
 ContextUsageResponse = { rust = "claude_agent_kit::ContextUsageResponse", note = "Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`." }
 CanUseTool = { rust = "claude_agent_kit::CanUseTool" }
-CanUseToolShadowedWarning = { rust = "claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning", note = "Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect." }
+CanUseToolShadowedWarning = { adapted = "claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning", note = "Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect." }
 ToolPermissionContext = { rust = "claude_agent_kit::ToolPermissionContext" }
 PermissionResult = { rust = "claude_agent_kit::PermissionResult" }
-PermissionResultAllow = { rust = "claude_agent_kit::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
-PermissionResultDeny = { rust = "claude_agent_kit::PermissionResult::Deny", note = "Variant of `PermissionResult`." }
+PermissionResultAllow = { adapted = "claude_agent_kit::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
+PermissionResultDeny = { adapted = "claude_agent_kit::PermissionResult::Deny", note = "Variant of `PermissionResult`." }
 PermissionUpdate = { rust = "claude_agent_kit::PermissionUpdate" }
 HookCallback = { rust = "claude_agent_kit::HookCallback" }
 HookContext = { rust = "claude_agent_kit::HookContext" }
@@ -157,12 +171,12 @@ SandboxSettings = { rust = "claude_agent_kit::SandboxSettings" }
 SandboxNetworkConfig = { rust = "claude_agent_kit::SandboxNetworkConfig" }
 SandboxIgnoreViolations = { rust = "claude_agent_kit::SandboxIgnoreViolations" }
 create_sdk_mcp_server = { rust = "claude_agent_kit::create_sdk_mcp_server" }
-tool = { rust = "claude_agent_kit::tool", note = "Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature." }
+tool = { adapted = "claude_agent_kit::tool", note = "Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature." }
 SdkMcpTool = { rust = "claude_agent_kit::SdkMcpTool" }
 ToolAnnotations = { rust = "claude_agent_kit::ToolAnnotations" }
 ClaudeSDKError = { rust = "claude_agent_kit::Error", note = "One enum holds every error; match on its variants." }
-CLIConnectionError = { rust = "claude_agent_kit::Error::CliConnection", note = "Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`." }
-CLINotFoundError = { rust = "claude_agent_kit::Error::CliNotFound", note = "Variant of `Error`." }
-ProcessError = { rust = "claude_agent_kit::Error::Process", note = "Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`." }
-ResultError = { rust = "claude_agent_kit::Error::ResultError", note = "Variant of `Error`; its fields are in `ResultErrorData`." }
-CLIJSONDecodeError = { rust = "claude_agent_kit::Error::JsonDecode", note = "Variant of `Error`." }
+CLIConnectionError = { adapted = "claude_agent_kit::Error::CliConnection", note = "Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`." }
+CLINotFoundError = { adapted = "claude_agent_kit::Error::CliNotFound", note = "Variant of `Error`." }
+ProcessError = { adapted = "claude_agent_kit::Error::Process", note = "Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`." }
+ResultError = { adapted = "claude_agent_kit::Error::ResultError", note = "Variant of `Error`; its fields are in `ResultErrorData`." }
+CLIJSONDecodeError = { adapted = "claude_agent_kit::Error::JsonDecode", note = "Variant of `Error`." }

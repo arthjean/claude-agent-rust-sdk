@@ -57,7 +57,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 
 ## Parity ledgers
 
-`parity/surface.toml` (upstream exports) and `parity/tests.toml` (upstream tests) are edited by hand. Keys are upstream names, so a Rust-only item or test needs no entry. Each entry holds exactly one of `rust` (the Rust path or paths), `excluded` (a key of `[exclusions]`), or `pending`.
+`parity/surface.toml` (upstream exports) and `parity/tests.toml` (upstream tests) are edited by hand. Keys are upstream names, so a Rust-only item or test needs no entry. Each entry holds exactly one of `rust` (the Rust path or paths), `adapted` (Rust paths of a different kind of item, such as an enum variant for a class; requires a `note`), `excluded` (a key of `[exclusions]`), or `pending`. The rule between `rust` and `adapted` is written at the top of `parity/surface.toml`.
 
 - A Rust test's name is its ledger key. Before renaming or moving a test, search `parity/tests.toml` for it and update the entry. `cargo xtask parity-tests` prints the exact paths the ledger accepts.
 - A test compiled on one platform only takes a ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix in the ledger.

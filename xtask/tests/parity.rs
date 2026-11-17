@@ -90,7 +90,7 @@ fn stderr(output: &Output) -> String {
 fn this_test_exists_so_a_ledger_can_name_a_real_rust_test() {}
 
 #[test]
-fn consistent_ledgers_pass_and_the_report_gives_the_three_shares() {
+fn consistent_ledgers_pass_and_the_report_gives_the_four_shares() {
     let fixture = Fixture::new(
         &["query"],
         &surface(&[("query", &rust(EXISTING_PATH))]),
@@ -112,6 +112,7 @@ fn consistent_ledgers_pass_and_the_report_gives_the_three_shares() {
         "parity/surface.toml: 1 upstream exports",
         "parity/tests.toml: 1 upstream tests",
         "  implemented      1  100.0%",
+        "  adapted          0    0.0%",
         "  excluded         0    0.0%",
         "  pending          0    0.0%",
     ] {
@@ -281,6 +282,93 @@ fn a_migration_table_out_of_date_with_the_ledger_fails_the_check() {
     assert!(!check.status.success());
     assert!(
         stderr(&check).contains("run `cargo xtask migration-table`"),
+        "{}",
+        stderr(&check)
+    );
+}
+
+#[test]
+fn an_adapted_entry_is_resolved_reported_apart_and_rendered_with_its_note() {
+    let adapted =
+        format!("{{ adapted = \"{EXISTING_PATH}\", note = \"A stream where Python yields.\" }}");
+    let fixture = Fixture::new(
+        &["query", "Gone"],
+        &surface(&[
+            ("query", &adapted),
+            (
+                "Gone",
+                "{ adapted = \"claude_agent_kit::NoSuchAdaptedItem\", note = \"Moved.\" }",
+            ),
+        ]),
+        &tests_ledger(&rust(EXISTING_TEST)),
+    );
+
+    let check = fixture.run("parity-check", &[]);
+    assert!(!check.status.success());
+    let text = stderr(&check);
+    assert!(
+        text.contains(
+            "parity/surface.toml: `Gone` names Rust path `claude_agent_kit::NoSuchAdaptedItem`, which does not exist"
+        ),
+        "{text}"
+    );
+    assert!(!text.contains("`query` names"), "{text}");
+
+    let report = fixture.run("parity-report", &[]);
+    assert!(report.status.success(), "{}", stderr(&report));
+    let text = String::from_utf8_lossy(&report.stdout).replace("\r\n", "\n");
+    for line in [
+        "parity/surface.toml: 2 upstream exports",
+        "  implemented      0    0.0%",
+        "  adapted          2  100.0%",
+    ] {
+        assert!(text.contains(line), "no `{line}` in:\n{text}");
+    }
+
+    let guide = std::fs::read_to_string(fixture.root.join("migration.md")).unwrap();
+    assert!(
+        guide.contains(
+            "| `query` | `claude_agent_kit::query` | Adapted: A stream where Python yields. |"
+        ),
+        "{guide}"
+    );
+}
+
+#[test]
+fn an_adapted_entry_without_a_note_fails_the_check_by_name() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    write(
+        &root.join("upstream/src/claude_agent_sdk/__init__.py"),
+        "__all__ = [\"query\"]\n",
+    );
+    write(
+        &root.join("upstream/tests/test_sample.py"),
+        "def test_one():\n    pass\n",
+    );
+    write(
+        &root.join("parity/surface.toml"),
+        &surface(&[("query", &format!("{{ adapted = \"{EXISTING_PATH}\" }}"))]),
+    );
+    write(
+        &root.join("parity/tests.toml"),
+        &tests_ledger(&rust(EXISTING_TEST)),
+    );
+
+    let check = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg("parity-check")
+        .arg("--upstream")
+        .arg(root.join("upstream"))
+        .arg("--parity")
+        .arg(root.join("parity"))
+        .output()
+        .unwrap();
+
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains(
+            "parity/surface.toml: `query` is adapted but has no `note` saying how the Rust item differs"
+        ),
         "{}",
         stderr(&check)
     );

@@ -15,7 +15,7 @@ usage: cargo xtask <command>
                         or names a Rust path that does not exist
                         (--deny-pending also fails on pending entries)
   parity-report         print the share of upstream exports and tests
-                        implemented, excluded, and pending
+                        implemented, adapted, excluded, and pending
   parity-tests          print the Rust test paths parity/tests.toml may name
   migration-table       regenerate the table of docs/migration.md from
                         parity/surface.toml (--check only compares)

@@ -162,7 +162,10 @@ to the CLI, as the Python `otel` extra does.
 
 This table is generated from [`parity/surface.toml`](../parity/surface.toml) by
 `cargo xtask migration-table`; `cargo xtask parity-check` fails when it is out
-of date. Paths are written from the crate root.
+of date. Paths are written from the crate root. A note that starts with
+"Adapted" marks a name whose Rust counterpart is a different kind of item, such
+as an enum variant where Python has a class: the line that uses it changes
+shape, not only spelling.
 
 <!-- parity:table:begin -->
 | Python | Rust | Notes |
@@ -171,11 +174,11 @@ of date. Paths are written from the crate root.
 | `AssistantMessage` | `claude_agent_kit::AssistantMessage` |  |
 | `BackgroundTaskSummary` | `claude_agent_kit::BackgroundTaskSummary` |  |
 | `BaseHookInput` | `claude_agent_kit::HookInputBase` |  |
-| `CLIConnectionError` | `claude_agent_kit::Error::CliConnection` | Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
-| `CLIJSONDecodeError` | `claude_agent_kit::Error::JsonDecode` | Variant of `Error`. |
-| `CLINotFoundError` | `claude_agent_kit::Error::CliNotFound` | Variant of `Error`. |
+| `CLIConnectionError` | `claude_agent_kit::Error::CliConnection` | Adapted: Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
+| `CLIJSONDecodeError` | `claude_agent_kit::Error::JsonDecode` | Adapted: Variant of `Error`. |
+| `CLINotFoundError` | `claude_agent_kit::Error::CliNotFound` | Adapted: Variant of `Error`. |
 | `CanUseTool` | `claude_agent_kit::CanUseTool` |  |
-| `CanUseToolShadowedWarning` | `claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning` | Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect. |
+| `CanUseToolShadowedWarning` | `claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning` | Adapted: Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect. |
 | `ClaudeAgentOptions` | `claude_agent_kit::ClaudeAgentOptions` |  |
 | `ClaudeSDKClient` | `claude_agent_kit::ClaudeSdkClient` |  |
 | `ClaudeSDKError` | `claude_agent_kit::Error` | One enum holds every error; match on its variants. |
@@ -222,8 +225,8 @@ of date. Paths are written from the crate root.
 | `PermissionRequestHookInput` | `claude_agent_kit::PermissionRequestHookInput` |  |
 | `PermissionRequestHookSpecificOutput` | `claude_agent_kit::PermissionRequestHookSpecificOutput` |  |
 | `PermissionResult` | `claude_agent_kit::PermissionResult` |  |
-| `PermissionResultAllow` | `claude_agent_kit::PermissionResult::Allow` | Variant of `PermissionResult`. |
-| `PermissionResultDeny` | `claude_agent_kit::PermissionResult::Deny` | Variant of `PermissionResult`. |
+| `PermissionResultAllow` | `claude_agent_kit::PermissionResult::Allow` | Adapted: Variant of `PermissionResult`. |
+| `PermissionResultDeny` | `claude_agent_kit::PermissionResult::Deny` | Adapted: Variant of `PermissionResult`. |
 | `PermissionUpdate` | `claude_agent_kit::PermissionUpdate` |  |
 | `PostModelSwitchHookSpecificOutput` | `claude_agent_kit::PostModelSwitchHookSpecificOutput` |  |
 | `PostToolBatchHookSpecificOutput` | `claude_agent_kit::PostToolBatchHookSpecificOutput` |  |
@@ -235,12 +238,12 @@ of date. Paths are written from the crate root.
 | `PreModelSwitchHookSpecificOutput` | `claude_agent_kit::PreModelSwitchHookSpecificOutput` |  |
 | `PreToolUseHookInput` | `claude_agent_kit::PreToolUseHookInput` |  |
 | `PreToolUseHookSpecificOutput` | `claude_agent_kit::PreToolUseHookSpecificOutput` |  |
-| `ProcessError` | `claude_agent_kit::Error::Process` | Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
+| `ProcessError` | `claude_agent_kit::Error::Process` | Adapted: Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
 | `RateLimitEvent` | `claude_agent_kit::RateLimitEvent` |  |
 | `RateLimitInfo` | `claude_agent_kit::RateLimitInfo` |  |
 | `RateLimitStatus` | `claude_agent_kit::RateLimitStatus` |  |
 | `RateLimitType` | `claude_agent_kit::RateLimitType` |  |
-| `ResultError` | `claude_agent_kit::Error::ResultError` | Variant of `Error`; its fields are in `ResultErrorData`. |
+| `ResultError` | `claude_agent_kit::Error::ResultError` | Adapted: Variant of `Error`; its fields are in `ResultErrorData`. |
 | `ResultMessage` | `claude_agent_kit::ResultMessage` |  |
 | `SDKSessionInfo` | `claude_agent_kit::SdkSessionInfo` |  |
 | `SandboxIgnoreViolations` | `claude_agent_kit::SandboxIgnoreViolations` |  |
@@ -288,9 +291,9 @@ of date. Paths are written from the crate root.
 | `TextBlock` | `claude_agent_kit::TextBlock` |  |
 | `ThinkingBlock` | `claude_agent_kit::ThinkingBlock` |  |
 | `ThinkingConfig` | `claude_agent_kit::ThinkingConfig` |  |
-| `ThinkingConfigAdaptive` | `claude_agent_kit::ThinkingConfig::Adaptive` | Variant of `ThinkingConfig`. |
-| `ThinkingConfigDisabled` | `claude_agent_kit::ThinkingConfig::Disabled` | Variant of `ThinkingConfig`. |
-| `ThinkingConfigEnabled` | `claude_agent_kit::ThinkingConfig::Enabled` | Variant of `ThinkingConfig`. |
+| `ThinkingConfigAdaptive` | `claude_agent_kit::ThinkingConfig::Adaptive` | Adapted: Variant of `ThinkingConfig`. |
+| `ThinkingConfigDisabled` | `claude_agent_kit::ThinkingConfig::Disabled` | Adapted: Variant of `ThinkingConfig`. |
+| `ThinkingConfigEnabled` | `claude_agent_kit::ThinkingConfig::Enabled` | Adapted: Variant of `ThinkingConfig`. |
 | `ToolAnnotations` | `claude_agent_kit::ToolAnnotations` |  |
 | `ToolPermissionContext` | `claude_agent_kit::ToolPermissionContext` |  |
 | `ToolResultBlock` | `claude_agent_kit::ToolResultBlock` |  |
@@ -325,5 +328,5 @@ of date. Paths are written from the crate root.
 | `rename_session_via_store` | `claude_agent_kit::rename_session_via_store` |  |
 | `tag_session` | `claude_agent_kit::tag_session` |  |
 | `tag_session_via_store` | `claude_agent_kit::tag_session_via_store` |  |
-| `tool` | `claude_agent_kit::tool` | Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature. |
+| `tool` | `claude_agent_kit::tool` | Adapted: Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature. |
 <!-- parity:table:end -->

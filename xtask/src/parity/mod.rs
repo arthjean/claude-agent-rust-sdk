@@ -162,16 +162,16 @@ fn migration_table(surface: &Ledger) -> String {
     let mut table = String::from("| Python | Rust | Notes |\n|---|---|---|\n");
     for (name, entry) in &surface.entries {
         let note = entry.note.as_deref().unwrap_or_default();
+        let paths = || {
+            entry
+                .paths()
+                .map(|path| format!("`{path}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let (rust, notes) = match entry.state() {
-            Some(State::Implemented) => {
-                let paths: Vec<String> = entry
-                    .rust
-                    .iter()
-                    .flat_map(|paths| paths.as_slice())
-                    .map(|path| format!("`{path}`"))
-                    .collect();
-                (paths.join(", "), note.to_owned())
-            }
+            Some(State::Implemented) => (paths(), note.to_owned()),
+            Some(State::Adapted) => (paths(), format!("Adapted: {note}")),
             Some(State::Excluded) => {
                 let reason = entry
                     .excluded
@@ -329,6 +329,7 @@ fn percentage(count: usize, total: usize) -> f64 {
 fn render_report(ledger: &Ledger, upstream: &[String]) -> String {
     let Counts {
         implemented,
+        adapted,
         excluded,
         pending,
         by_reason,
@@ -338,10 +339,11 @@ fn render_report(ledger: &Ledger, upstream: &[String]) -> String {
         .filter(|item| !ledger.entries.contains_key(*item))
         .count();
     let pending = pending + unlisted;
-    let total = implemented + excluded + pending;
+    let total = implemented + adapted + excluded + pending;
     let mut report = format!("{}: {total} upstream {}s\n", ledger.file, ledger.kind);
     for (label, count) in [
         ("implemented", implemented),
+        ("adapted", adapted),
         ("excluded", excluded),
         ("pending", pending),
     ] {
@@ -450,7 +452,11 @@ mod tests {
     use ledger::Entry;
 
     fn entry(rust: Option<&str>, excluded: Option<&str>, pending: Option<&str>) -> Entry {
-        let table = [("rust", rust), ("excluded", excluded), ("pending", pending)]
+        table(&[("rust", rust), ("excluded", excluded), ("pending", pending)])
+    }
+
+    fn table(keys: &[(&str, Option<&str>)]) -> Entry {
+        let table = keys
             .iter()
             .filter_map(|(key, value)| Some(format!("{key} = \"{}\"", (*value)?)))
             .collect::<Vec<_>>()
@@ -471,6 +477,13 @@ mod tests {
             entry(None, Some("python-only"), None),
         );
         entries.insert("later".to_owned(), entry(None, None, Some("next bump")));
+        entries.insert(
+            "Warning".to_owned(),
+            table(&[
+                ("adapted", Some("claude_agent_kit::Options::warning")),
+                ("note", Some("A method returns the text.")),
+            ]),
+        );
         Ledger {
             file: "parity/surface.toml".to_owned(),
             kind: "export",
@@ -484,15 +497,26 @@ mod tests {
     }
 
     #[test]
-    fn report_prints_the_three_percentages() {
+    fn report_prints_implemented_adapted_excluded_and_pending() {
         let report = render_report(
             &sample(),
-            &names(&["query", "Shadowed", "later", "unlisted"]),
+            &names(&["query", "Shadowed", "later", "Warning", "unlisted"]),
         );
-        assert!(report.starts_with("parity/surface.toml: 4 upstream exports\n"));
-        assert!(report.contains("implemented      1   25.0%"));
-        assert!(report.contains("excluded         1   25.0%"));
-        assert!(report.contains("pending          2   50.0%"));
+        assert!(report.starts_with("parity/surface.toml: 5 upstream exports\n"));
+        let states: Vec<&str> = report
+            .lines()
+            .skip(1)
+            .filter(|line| line.starts_with("  ") && !line.starts_with("    "))
+            .filter_map(|line| line.split_whitespace().next())
+            .collect();
+        assert_eq!(
+            states,
+            ["implemented", "adapted", "excluded", "pending", "(1"]
+        );
+        assert!(report.contains("implemented      1   20.0%"));
+        assert!(report.contains("adapted          1   20.0%"));
+        assert!(report.contains("excluded         1   20.0%"));
+        assert!(report.contains("pending          2   40.0%"));
         assert!(report.contains("python-only"));
         assert!(report.contains("(1 of the pending are not listed at all)"));
     }
@@ -500,7 +524,10 @@ mod tests {
     #[test]
     fn migration_table_has_one_row_per_export() {
         let table = migration_table(&sample());
-        assert_eq!(table.lines().count(), 5);
+        assert_eq!(table.lines().count(), 6);
+        assert!(table.contains(
+            "| `Warning` | `claude_agent_kit::Options::warning` | Adapted: A method returns the text. |"
+        ));
         assert!(table.contains("| `query` | `claude_agent_kit::query` |  |"));
         assert!(table.contains("| `Shadowed` | not ported | Python typing helper. |"));
         assert!(table.contains("| `later` | pending | next bump |"));
@@ -523,7 +550,8 @@ mod tests {
         assert_eq!(
             problems,
             [
-                "parity/surface.toml: `query` names Rust path `claude_agent_kit::query`, which does not exist"
+                "parity/surface.toml: `query` names Rust path `claude_agent_kit::query`, which does not exist",
+                "parity/surface.toml: `Warning` names Rust path `claude_agent_kit::Options::warning`, which does not exist",
             ]
         );
     }
