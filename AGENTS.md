@@ -74,7 +74,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 ## Tests
 
 - **Mock transport** (`tests/common/mock.rs`, feature `testing`): protocol logic with no process. Timing-sensitive tests use `#[tokio::test(start_paused = true)]`.
-- **Fake CLI** (`crates/fake-claude`): a scripted stand-in binary for anything that needs a real child process. Build a scenario inline with `Fake::new(json!({...}))` from `tests/common/mod.rs`; the format is documented at the top of `crates/fake-claude/src/scenario.rs`. Existing tests depend on its exit codes (64, 65, 66) and init-frame keys (`fake_args`, `fake_env`, `fake_pid`): add to them, keep the existing ones.
+- **Fake CLI** (`crates/fake-claude`): a scripted stand-in binary for anything that needs a real child process. Build a scenario inline with `Fake::new(json!({...}))` from `tests/common/mod.rs`; the format is documented at the top of `crates/fake-claude/src/scenario.rs`. Existing tests depend on its exit codes (64, 65, 66, 67) and init-frame keys (`fake_args`, `fake_env`, `fake_pid`): add to them, keep the existing ones. With `FAKE_CLAUDE_RECORD` set it records what it received (`crates/fake-claude/src/record.rs`), which the differential harness compares.
 - **End-to-end** (`tests/e2e/`): `#[ignore]`d, real CLI. Without credentials they fail instead of skipping, by design.
 - Name a test as a sentence stating the behavior, for example `follow_up_turn_is_served_while_stdin_stays_open`.
 

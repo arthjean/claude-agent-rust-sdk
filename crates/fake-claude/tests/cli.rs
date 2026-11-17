@@ -330,3 +330,187 @@ fn the_run_end_scenario_matches_the_upstream_stand_in() {
     drop(stdin);
     assert_eq!(child.wait().unwrap().code(), Some(0));
 }
+
+const RECORD_VARIABLE: &str = "FAKE_CLAUDE_RECORD";
+
+fn records(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect()
+}
+
+fn without_pid(records: &[Value]) -> Vec<Value> {
+    records
+        .iter()
+        .map(|record| {
+            let mut record = record.clone();
+            assert!(record["pid"].as_u64().is_some(), "{record}");
+            record.as_object_mut().unwrap().remove("pid");
+            record
+        })
+        .collect()
+}
+
+fn run_recorded(
+    scenario: Option<&Path>,
+    record: &Path,
+    environment: &[(&str, &str)],
+    arguments: &[&str],
+    input: &str,
+) -> Output {
+    let mut command = Command::new(FAKE_CLAUDE);
+    command
+        .args(arguments)
+        .env_remove(SCENARIO_VARIABLE)
+        .env(RECORD_VARIABLE, record)
+        .envs(environment.iter().copied())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(scenario) = scenario {
+        command.env(SCENARIO_VARIABLE, scenario);
+    }
+    let mut child = command.spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn a_recorded_run_writes_the_spawn_and_every_stdin_line_in_order() {
+    let directory = tempfile::tempdir().unwrap();
+    let record = directory.path().join("record.jsonl");
+    let input = format!(
+        "{}\nnot json\n{}\n",
+        json!({"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}}),
+        json!({"type": "user", "message": {"role": "user", "content": "hi"}}),
+    );
+    let output = run_recorded(
+        None,
+        &record,
+        &[
+            ("CLAUDE_CODE_ENTRYPOINT", "sdk-rs"),
+            ("ANTHROPIC_BASE_URL", "http://localhost"),
+            ("MAX_THINKING_TOKENS", "8"),
+            ("TRACEPARENT", "00-a-b-01"),
+            ("TRACESTATE", "k=v"),
+            ("PWD", "/somewhere"),
+            ("UNRELATED_VARIABLE", "hidden"),
+        ],
+        &["--output-format", "stream-json", "--verbose"],
+        &input,
+    );
+    assert_eq!(output.status.code(), Some(0));
+
+    let records = records(&record);
+    let spawn = &records[0];
+    assert_eq!(spawn["record"], "spawn");
+    assert_eq!(
+        spawn["args"],
+        json!(["--output-format", "stream-json", "--verbose"])
+    );
+    assert_eq!(
+        spawn["cwd"],
+        std::env::current_dir().unwrap().to_string_lossy().as_ref()
+    );
+    assert!(records.iter().all(|record| record["pid"] == spawn["pid"]));
+    let env = spawn["env"].as_object().unwrap();
+    assert_eq!(env["CLAUDE_CODE_ENTRYPOINT"], "sdk-rs");
+    assert_eq!(env["ANTHROPIC_BASE_URL"], "http://localhost");
+    assert_eq!(env["MAX_THINKING_TOKENS"], "8");
+    assert_eq!(env["TRACEPARENT"], "00-a-b-01");
+    assert_eq!(env["TRACESTATE"], "k=v");
+    assert_eq!(env["PWD"], "/somewhere");
+    assert!(!env.contains_key("UNRELATED_VARIABLE"));
+    assert!(!env.contains_key(RECORD_VARIABLE));
+    assert!(env.keys().all(|name| {
+        name.starts_with("CLAUDE_")
+            || name.starts_with("ANTHROPIC_")
+            || ["PWD", "MAX_THINKING_TOKENS", "TRACEPARENT", "TRACESTATE"].contains(&name.as_str())
+    }));
+
+    assert_eq!(
+        without_pid(&records[1..]),
+        [
+            json!({"record": "stdin", "frame": {"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}}}),
+            json!({"record": "stdin_raw", "text": "not json"}),
+            json!({"record": "stdin", "frame": {"type": "user", "message": {"role": "user", "content": "hi"}}}),
+            json!({"record": "stdin_eof"}),
+        ]
+    );
+}
+
+#[test]
+fn records_are_flushed_as_they_are_written() {
+    let directory = tempfile::tempdir().unwrap();
+    let record = directory.path().join("record.jsonl");
+    let scenario = scenario(json!({"steps": [{"expect": {"type": "user"}}, {"sleep_ms": 60_000}]}));
+    let mut child = Command::new(FAKE_CLAUDE)
+        .env(SCENARIO_VARIABLE, &scenario.path)
+        .env(RECORD_VARIABLE, &record)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(stdin, "{}", json!({"type": "user"})).unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut init = String::new();
+    stdout.read_line(&mut init).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while records(&record).len() < 2 {
+        assert!(Instant::now() < deadline, "the stdin record never appeared");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+
+    let records = records(&record);
+    assert_eq!(records[0]["record"], "spawn");
+    assert_eq!(
+        without_pid(&records[1..2]),
+        [json!({"record": "stdin", "frame": {"type": "user"}})]
+    );
+    assert_eq!(records.len(), 2);
+}
+
+#[test]
+fn every_process_started_with_the_variable_appends_its_own_records() {
+    let directory = tempfile::tempdir().unwrap();
+    let record = directory.path().join("record.jsonl");
+    let version = run_recorded(None, &record, &[], &["--version"], "");
+    assert_eq!(version.status.code(), Some(0));
+    let session = run_recorded(None, &record, &[], &["--print"], "");
+    assert_eq!(session.status.code(), Some(0));
+
+    let records = records(&record);
+    assert_eq!(records.len(), 3);
+    assert_eq!(records[0]["args"], json!(["--version"]));
+    assert_eq!(records[1]["args"], json!(["--print"]));
+    assert_eq!(without_pid(&records[2..]), [json!({"record": "stdin_eof"})]);
+    assert_ne!(records[0]["pid"], records[1]["pid"]);
+    assert_eq!(records[1]["pid"], records[2]["pid"]);
+}
+
+#[test]
+fn a_record_file_that_cannot_be_created_exits_with_its_own_code() {
+    let directory = tempfile::tempdir().unwrap();
+    let record = directory.path().join("missing").join("record.jsonl");
+    let output = run_recorded(None, &record, &[], &[], "");
+    assert_eq!(output.status.code(), Some(67));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot create record file"), "{stderr}");
+    assert!(
+        stderr.contains(record.to_string_lossy().as_ref()),
+        "{stderr}"
+    );
+}

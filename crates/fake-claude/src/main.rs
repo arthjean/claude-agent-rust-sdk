@@ -11,11 +11,18 @@
 //! the process) and, on Windows, `fake_console_window` (whether the process
 //! has a console window).
 //!
+//! When `FAKE_CLAUDE_RECORD` names a file, the program also records the
+//! arguments, the working directory, selected environment variables, and
+//! every stdin line it receives; the format and the selection rule are
+//! documented in the `record` module.
+//!
 //! `--version` or `-v` prints the version and exits. A scenario that cannot
 //! be loaded exits with code 64, an expectation that is not met in time
-//! with code 65, and stdin closing during an expectation with code 66; each
-//! prints its reason to stderr.
+//! with code 65, stdin closing during an expectation with code 66, and a
+//! record file that cannot be created with code 67; each prints its reason
+//! to stderr.
 
+mod record;
 mod scenario;
 
 use std::io::{BufRead, Write};
@@ -26,6 +33,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
+use record::{RECORD_VARIABLE, Recorder};
 use scenario::{DEFAULT_VERSION, Scenario, Step, matches};
 
 const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
@@ -37,6 +45,7 @@ const HOOK_CALLBACK_PLACEHOLDER: &str = "$hook_callback_id";
 const EXIT_BAD_SCENARIO: u8 = 64;
 const EXIT_UNMET_EXPECTATION: u8 = 65;
 const EXIT_INPUT_CLOSED: u8 = 66;
+const EXIT_RECORD_UNWRITABLE: u8 = 67;
 
 fn main() -> ExitCode {
     if let Some(sleep) = std::env::var_os(DESCENDANT_SLEEP_VARIABLE) {
@@ -45,6 +54,20 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let recorder = match std::env::var_os(RECORD_VARIABLE) {
+        None => Recorder::default(),
+        Some(path) => match Recorder::open(path.as_ref()) {
+            Ok(recorder) => recorder,
+            Err(error) => {
+                eprintln!(
+                    "fake-claude: cannot create record file {}: {error}",
+                    path.to_string_lossy()
+                );
+                return ExitCode::from(EXIT_RECORD_UNWRITABLE);
+            }
+        },
+    };
+    recorder.spawn(&arguments);
     if arguments
         .iter()
         .any(|argument| argument == "--version" || argument == "-v")
@@ -71,7 +94,7 @@ fn main() -> ExitCode {
             }
         }
     };
-    ExitCode::from(Player::start(&scenario, arguments).play(&scenario.steps))
+    ExitCode::from(Player::start(&scenario, arguments, recorder).play(&scenario.steps))
 }
 
 #[derive(Default)]
@@ -101,7 +124,7 @@ struct Player {
 }
 
 impl Player {
-    fn start(scenario: &Scenario, arguments: Vec<String>) -> Self {
+    fn start(scenario: &Scenario, arguments: Vec<String>, recorder: Recorder) -> Self {
         let output = SharedOutput::default();
         if scenario.init {
             emit(&output, &init_frame(scenario, arguments));
@@ -110,7 +133,7 @@ impl Player {
         if scenario.read_stdin {
             let reader_output = Arc::clone(&output);
             let auto_reply = scenario.auto_reply;
-            std::thread::spawn(move || read_input(&reader_output, &sender, auto_reply));
+            std::thread::spawn(move || read_input(&reader_output, &sender, auto_reply, &recorder));
         }
         Self {
             output,
@@ -309,12 +332,19 @@ fn has_console_window() -> Option<bool> {
     None
 }
 
-fn read_input(output: &SharedOutput, sender: &Sender<Input>, auto_reply: bool) {
+fn read_input(
+    output: &SharedOutput,
+    sender: &Sender<Input>,
+    auto_reply: bool,
+    recorder: &Recorder,
+) {
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else {
             break;
         };
-        let Ok(frame) = serde_json::from_str::<Value>(line.trim()) else {
+        let parsed = serde_json::from_str::<Value>(line.trim()).ok();
+        recorder.stdin_line(&line, parsed.as_ref());
+        let Some(frame) = parsed else {
             continue;
         };
         if frame.get("type").and_then(Value::as_str) == Some("control_request") {
@@ -337,6 +367,7 @@ fn read_input(output: &SharedOutput, sender: &Sender<Input>, auto_reply: bool) {
             return;
         }
     }
+    recorder.stdin_eof();
     let _ = sender.send(Input::Closed);
 }
 
@@ -392,12 +423,19 @@ fn truthy(variable: &str) -> bool {
 mod tests {
     use serde_json::json;
 
-    use super::{EXIT_BAD_SCENARIO, EXIT_INPUT_CLOSED, EXIT_UNMET_EXPECTATION};
+    use super::{
+        EXIT_BAD_SCENARIO, EXIT_INPUT_CLOSED, EXIT_RECORD_UNWRITABLE, EXIT_UNMET_EXPECTATION,
+    };
     use super::{SharedOutput, remember_hook_callback, substitute};
 
     #[test]
     fn exit_codes_are_distinct_and_non_zero() {
-        let codes = [EXIT_BAD_SCENARIO, EXIT_UNMET_EXPECTATION, EXIT_INPUT_CLOSED];
+        let codes = [
+            EXIT_BAD_SCENARIO,
+            EXIT_UNMET_EXPECTATION,
+            EXIT_INPUT_CLOSED,
+            EXIT_RECORD_UNWRITABLE,
+        ];
         for (index, code) in codes.iter().enumerate() {
             assert_ne!(*code, 0);
             assert!(!codes[..index].contains(code));
