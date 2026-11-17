@@ -306,7 +306,10 @@ async fn initialize_reports_server_info_capabilities_and_the_negotiated_version(
     let result = &response["result"];
     assert_eq!(result["serverInfo"]["name"], "srv");
     assert_eq!(result["protocolVersion"], PROTOCOL_VERSION);
-    assert!(result["capabilities"]["tools"].is_object());
+    assert_eq!(
+        result["capabilities"],
+        json!({"experimental": {}, "tools": {"listChanged": false}})
+    );
 
     let mut unknown_version = initialize_params();
     unknown_version["protocolVersion"] = json!("1999-01-01");

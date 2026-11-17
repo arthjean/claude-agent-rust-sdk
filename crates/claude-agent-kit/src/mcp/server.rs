@@ -1,5 +1,10 @@
 //! Native MCP server: the JSON-RPC dispatcher that serves a set of tools
 //! without any MCP library.
+//!
+//! The `initialize` result declares the capabilities the Python SDK's
+//! server declares through the `mcp` 1.x package: `experimental` empty and
+//! `tools` with `listChanged` false, so the CLI receives the same handshake
+//! from both SDKs.
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -134,7 +139,7 @@ impl SdkMcpServer {
             .unwrap_or(LATEST_PROTOCOL_VERSION);
         json!({
             "protocolVersion": negotiated,
-            "capabilities": {"tools": {}},
+            "capabilities": {"experimental": {}, "tools": {"listChanged": false}},
             "serverInfo": {"name": self.name, "version": self.version},
         })
     }
