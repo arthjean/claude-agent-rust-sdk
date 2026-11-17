@@ -40,6 +40,7 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 | Dependency change, or a language or std feature that may be newer than Rust 1.88 | `cargo +1.88.0 check --workspace --all-features --locked` |
 | `.github/workflows/*.yml` | `gh actions-lock --verify` (extension: `gh extension install github/gh-actions-lock --pin v0.4.1`) |
 | `.github/scripts/actions-freshness.sh` | `bash .github/scripts/actions-freshness.test.sh` (offline, needs `jq`) |
+| `.github/scripts/upstream-watch.sh` | `bash .github/scripts/upstream-watch.test.sh` (offline, needs `git`) |
 | New code paths | Cover them with offline tests: CI fails under 91.5% line coverage, measured on Linux with `fake-claude` and `xtask` left out. |
 
 CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and tests with `cfg`, and keep both the Unix and the Windows branch compiling.
@@ -64,6 +65,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 - A test compiled on one platform only takes a ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix in the ledger.
 - After editing `parity/surface.toml`, run `cargo xtask migration-table`.
 - `parity/differences.toml` also holds `[behavior]` (divergences off the wire, each naming the Rust test that shows it) and `[unclassified]` (audit divergences not yet reviewed). After editing any ledger or case, run `cargo xtask parity-page`; `parity-check` fails on a stale `docs/parity.md`, and on hand-written text there that claims "100%" or "full parity".
+- The `Upstream watch` workflow opens one issue per upstream release newer than the pin, titled `Port upstream release <tag>`. Run it by hand with `dry-run` to print the issue instead.
 - To move to a newer upstream: `cargo xtask upstream-diff <tag>` lists what changed, then move the pin, port the changes, and add or remove ledger entries until `parity-check --deny-pending` passes.
 
 ## Design invariants

@@ -1,0 +1,76 @@
+name: Upstream watch
+
+# Opens one issue when the upstream Python SDK publishes a release newer than
+# the submodule pin, with what `cargo xtask upstream-diff` lists and the
+# changelog section of the release. Makes no commit and opens no pull
+# request. The logic is in .github/scripts/upstream-watch.sh, tested offline
+# by the `scripts` job of ci.yml.
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print the issue instead of opening it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Newest upstream release
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.detect.outputs.tag }}
+      body: ${{ steps.detect.outputs.body }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2.9.3
+
+      - name: Compare the newest release with the pin
+        id: detect
+        run: bash .github/scripts/upstream-watch.sh detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The only job that can write: it runs no build, only the issue search and
+  # the creation.
+  report:
+    name: Tracking issue
+    needs: detect
+    if: ${{ needs.detect.outputs.tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Open the issue unless one tracks the release
+        run: |
+          printf '%s\n' "$BODY" > "$RUNNER_TEMP/upstream-watch.md"
+          if [ "$DRY_RUN" = true ]; then
+            bash .github/scripts/upstream-watch.sh report "$TAG" "$RUNNER_TEMP/upstream-watch.md" --dry-run
+          else
+            bash .github/scripts/upstream-watch.sh report "$TAG" "$RUNNER_TEMP/upstream-watch.md"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          BODY: ${{ needs.detect.outputs.body }}
+          DRY_RUN: ${{ inputs.dry-run }}

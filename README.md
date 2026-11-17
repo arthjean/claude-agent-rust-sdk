@@ -204,6 +204,10 @@ that `parity/differences.toml` does not list with its reason. It needs Python
 3.10 or later with the pinned dependencies of `parity/requirements.txt`; see
 [`parity/README.md`](parity/README.md).
 
+Once a week, the `Upstream watch` workflow compares the newest release of the
+Python SDK with the submodule pin and, when the release is newer, opens one
+issue with what `cargo xtask upstream-diff` lists and the release's changelog.
+
 The end-to-end suite spends API credits: about 0.80 USD for a full run. It
 needs `ANTHROPIC_API_KEY`, or `CLAUDE_AGENT_KIT_E2E_AUTH=cli` to use the login
 of your installed CLI. In CI it never starts on its own: run the `End-to-end`

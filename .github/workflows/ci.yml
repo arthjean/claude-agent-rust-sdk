@@ -244,6 +244,9 @@ jobs:
       - name: Test the action freshness script
         run: bash .github/scripts/actions-freshness.test.sh
 
+      - name: Test the upstream watch script
+        run: bash .github/scripts/upstream-watch.test.sh
+
   lockfile:
     name: Workflow lockfile
     runs-on: ubuntu-latest

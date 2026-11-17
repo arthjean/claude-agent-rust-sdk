@@ -399,6 +399,65 @@ fn ci_runs_the_differential_harness_on_every_pull_request_without_secrets() {
 }
 
 #[test]
+fn the_upstream_watch_runs_weekly_and_only_its_issue_job_can_write() {
+    let workflow = read(".github/workflows/upstream-watch.yml");
+    let compacted = compact(&workflow);
+    assert!(
+        compacted.contains("on: schedule: - cron: \"41 6 * * 1\" workflow_dispatch:"),
+        "{compacted}"
+    );
+    for forbidden in [
+        "pull_request",
+        "push:",
+        "workflow_run:",
+        "secrets.",
+        "git commit",
+        "git push",
+        "gh pr ",
+        "pull-requests:",
+        "contents: write",
+    ] {
+        assert!(!workflow.contains(forbidden), "{forbidden}");
+    }
+    let header = workflow.split("\njobs:").next().unwrap();
+    assert!(
+        compact(header).ends_with("permissions: contents: read"),
+        "{header}"
+    );
+    assert_eq!(workflow.matches("issues: write").count(), 1);
+
+    let detect = ci_job(&workflow, "detect");
+    assert!(
+        detect.contains("if: ${{ !github.event.repository.fork }}"),
+        "{detect}"
+    );
+    assert!(detect.contains("submodules: true"), "{detect}");
+    assert!(
+        detect.contains("run: bash .github/scripts/upstream-watch.sh detect"),
+        "{detect}"
+    );
+    assert!(!detect.contains("permissions:"), "{detect}");
+
+    let report = ci_job(&workflow, "report");
+    assert!(report.contains("needs: detect"), "{report}");
+    assert!(
+        report.contains("permissions: contents: read issues: write"),
+        "{report}"
+    );
+    assert!(
+        report.contains("bash .github/scripts/upstream-watch.sh report"),
+        "{report}"
+    );
+    assert!(!report.contains("cargo"), "{report}");
+
+    let scripts = ci_job(&read(".github/workflows/ci.yml"), "scripts");
+    assert!(
+        scripts.contains("run: bash .github/scripts/upstream-watch.test.sh"),
+        "{scripts}"
+    );
+}
+
+#[test]
 fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_on_forks() {
     let ci = read(".github/workflows/ci.yml");
     assert!(!ci.contains("secrets.ANTHROPIC_API_KEY"));
