@@ -116,6 +116,49 @@ jobs:
       - name: Parity check
         run: cargo xtask parity-check --deny-pending
 
+  # Plays every case of parity/cases through both SDKs against fake-claude
+  # and fails on any difference parity/differences.toml does not list. The
+  # Python SDK is not installed: the harness imports it from the submodule
+  # by setting PYTHONPATH to upstream/claude-agent-sdk-python/src for the
+  # Python driver. Only its dependencies are installed, from hashed pins.
+  differential:
+    name: Differential parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2.9.3
+
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Python pins agree with upstream
+        run: cargo xtask parity-diff --check-requirements
+
+      - name: Install the Python dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/parity-venv"
+          "$RUNNER_TEMP/parity-venv/bin/python" -m pip install --require-hashes --no-deps -r parity/requirements.txt
+
+      - name: Differential cases
+        run: cargo xtask parity-diff
+        env:
+          PARITY_PYTHON: ${{ runner.temp }}/parity-venv/bin/python
+
+      - name: Option coverage
+        run: cargo xtask parity-diff --coverage
+
   minimal-versions:
     name: Minimum dependency versions
     runs-on: ubuntu-latest
@@ -146,8 +189,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # The test stand-in and the maintenance tasks are not part of the SDK.
-      COVERAGE_IGNORE: (crates/fake-claude|xtask)/
+      # The test stand-in, the parity driver, and the maintenance tasks are
+      # not part of the SDK.
+      COVERAGE_IGNORE: (crates/fake-claude|crates/parity-driver|xtask)/
     steps:
       - uses: actions/checkout@v7.0.1
 

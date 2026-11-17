@@ -368,6 +368,37 @@ fn ci_checks_the_parity_ledgers_on_every_pull_request() {
 }
 
 #[test]
+fn ci_runs_the_differential_harness_on_every_pull_request_without_secrets() {
+    let workflow = read(".github/workflows/ci.yml");
+    let job = ci_job(&workflow, "differential");
+    for step in [
+        "submodules: true",
+        "persist-credentials: false",
+        "permissions: contents: read",
+        "uses: actions/setup-python@",
+        "python-version: \"3.13\"",
+        "run: cargo xtask parity-diff --check-requirements",
+        "pip install --require-hashes --no-deps -r parity/requirements.txt",
+        "run: cargo xtask parity-diff env: PARITY_PYTHON:",
+        "run: cargo xtask parity-diff --coverage",
+    ] {
+        assert!(job.contains(step), "{step}: {job}");
+    }
+    assert!(!job.contains("if:"), "{job}");
+    assert!(!job.contains("secrets."), "{job}");
+    assert!(!job.contains("write"), "{job}");
+    assert!(
+        !job.contains("pip install claude-agent-sdk") && !job.contains("pip install -e"),
+        "{job}"
+    );
+    let coverage = ci_job(&workflow, "coverage");
+    assert!(
+        coverage.contains("COVERAGE_IGNORE: (crates/fake-claude|crates/parity-driver|xtask)/"),
+        "{coverage}"
+    );
+}
+
+#[test]
 fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_on_forks() {
     let ci = read(".github/workflows/ci.yml");
     assert!(!ci.contains("secrets.ANTHROPIC_API_KEY"));
