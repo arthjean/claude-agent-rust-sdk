@@ -20,7 +20,10 @@ const TABLE_END: &str = "<!-- parity:table:end -->";
 /// Where the commands read and write.
 #[derive(Debug, Clone)]
 pub struct Locations {
-    /// Workspace root.
+    /// Workspace root: its manifest gives the crate version that replaces
+    /// `{crate_version}` in the differences ledger, and its sources resolve
+    /// the Rust paths of the ledgers. `--root` sets it, so a test workspace
+    /// never reads the version of the checkout that runs the test.
     pub root: PathBuf,
     /// Checkout of the upstream Python SDK.
     pub upstream: PathBuf,
@@ -76,6 +79,7 @@ fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 .ok_or_else(|| format!("{name} needs a path"))
         };
         match argument.as_str() {
+            "--root" => parsed.locations.root = path("--root")?,
             "--upstream" => parsed.locations.upstream = path("--upstream")?,
             "--parity" => parsed.locations.parity = path("--parity")?,
             "--migration" => parsed.locations.migration = path("--migration")?,

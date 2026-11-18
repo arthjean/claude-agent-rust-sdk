@@ -314,6 +314,8 @@ impl Fixture {
     fn locations(&self) -> Vec<String> {
         let path = |relative: &str| self.root.join(relative).to_str().unwrap().to_owned();
         vec![
+            "--root".to_owned(),
+            path(""),
             "--upstream".to_owned(),
             path(SUBMODULE),
             "--parity".to_owned(),
