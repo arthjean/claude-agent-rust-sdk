@@ -71,6 +71,14 @@ impl Version {
         !self.pre.is_empty()
     }
 
+    /// Whether this is a pre-release of `release`: `X.Y.Z-pre` for the
+    /// release `X.Y.Z`.
+    pub fn is_pre_release_of(&self, release: &Self) -> bool {
+        self.is_pre_release()
+            && !release.is_pre_release()
+            && (self.major, self.minor, self.patch) == (release.major, release.minor, release.patch)
+    }
+
     /// The next patch version: the release of a pre-release, or `PATCH + 1`.
     pub fn next_patch(&self) -> Self {
         let patch = if self.is_pre_release() {
@@ -209,5 +217,16 @@ mod tests {
         assert_eq!(version("0.2.0-rc.1").next_minor().to_string(), "0.2.0");
         assert_eq!(version("0.2.1-rc.1").next_minor().to_string(), "0.3.0");
         assert_eq!(version("0.2.1-rc.1").major_minor(), "0.2");
+    }
+
+    #[test]
+    fn a_pre_release_belongs_only_to_the_release_with_its_numbers() {
+        let release = version("0.1.0");
+        assert!(version("0.1.0-rc.1").is_pre_release_of(&release));
+        assert!(version("0.1.0-alpha").is_pre_release_of(&release));
+        assert!(!version("0.1.1-rc.1").is_pre_release_of(&release));
+        assert!(!version("0.0.9").is_pre_release_of(&release));
+        assert!(!release.is_pre_release_of(&release));
+        assert!(!version("0.1.0-rc.1").is_pre_release_of(&version("0.1.0-rc.2")));
     }
 }

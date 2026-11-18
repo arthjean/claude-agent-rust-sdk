@@ -101,14 +101,22 @@ fn upstream_versions(repo: &Repo) -> Vec<Version> {
     versions
 }
 
-/// The `Upstream:` line of the new section: from the upstream version
-/// after the newest one the previous section covers, to the pinned one.
-fn upstream_line(repo: &Repo, changelog: &Changelog) -> Result<String, String> {
+/// The `Upstream:` line of the section of `next`: from the upstream
+/// version after the newest one the previous section covers, to the pinned
+/// one. For a release, its pre-release sections do not count as previous:
+/// its section gathers them, so its range starts where theirs does.
+fn upstream_line(repo: &Repo, changelog: &Changelog, next: &Version) -> Result<String, String> {
     let current = repo.library_constant(repo::SDK_CONSTANT)?;
     let cli = repo.library_constant(repo::CLI_CONSTANT)?;
     let current_version = Version::parse(&current)?;
-    let first = match changelog.releases().first() {
-        None => current.clone(),
+    let releases = changelog.releases();
+    let (gathered, previous): (Vec<_>, Vec<_>) = releases
+        .iter()
+        .partition(|release| release.version.is_pre_release_of(next));
+    let first = match previous.first() {
+        None => gathered
+            .last()
+            .map_or_else(|| current.clone(), |oldest| oldest.first_upstream.clone()),
         Some(previous) => {
             let last = Version::parse(&previous.last_upstream)?;
             if last >= current_version {
@@ -177,7 +185,7 @@ fn plan(repo: &Repo, bump: &Bump) -> Result<Plan, String> {
     if !problems.is_empty() {
         return Err(format!("{CHANGELOG_FILE}:\n  {}", problems.join("\n  ")));
     }
-    let upstream = upstream_line(repo, &log)?;
+    let upstream = upstream_line(repo, &log, &next)?;
     log.release(
         &next,
         &repo::today(),

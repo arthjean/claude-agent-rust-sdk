@@ -22,6 +22,12 @@
 //! Released sections are titled `## <version> - <YYYY-MM-DD>`, newest
 //! first, and open with their `Upstream:` line. Entries are grouped under
 //! [`GROUPS`], in that order, and only groups with entries appear.
+//!
+//! The section of a release that follows pre-releases (`0.1.0` after
+//! `0.1.0-rc.1` and `0.1.0-rc.2`) gathers their entries, oldest first,
+//! before its own, because its reader upgrades from the previous release
+//! and never read the pre-release sections. Those sections stay as they
+//! were published.
 
 use std::fmt::Write as _;
 
@@ -60,6 +66,8 @@ pub struct Changelog {
 pub struct Release {
     /// The version of the title.
     pub version: Version,
+    /// The oldest upstream SDK version its `Upstream:` line names.
+    pub first_upstream: String,
     /// The newest upstream SDK version its `Upstream:` line names.
     pub last_upstream: String,
 }
@@ -155,9 +163,10 @@ impl Changelog {
             .iter()
             .filter_map(|section| {
                 let version = released_version(&section.title)?;
-                let (_, last) = upstream_line(&section.body)?;
+                let (first, last) = upstream_line(&section.body)?;
                 Some(Release {
                     version,
+                    first_upstream: first,
                     last_upstream: last,
                 })
             })
@@ -193,7 +202,8 @@ impl Changelog {
     /// Turns `## Unreleased` into the section of `version`, opened by
     /// `upstream`, and inserts a new empty `## Unreleased` above it.
     /// `drafted` is added to the entries when the section holds no entry
-    /// written by hand.
+    /// written by hand. For a release, the entries of its pre-release
+    /// sections come first, oldest first, each entry once.
     pub fn release(
         &mut self,
         version: &Version,
@@ -201,6 +211,16 @@ impl Changelog {
         upstream: &str,
         drafted: &Entries,
     ) -> Result<(), String> {
+        let mut gathered: Vec<String> = self
+            .sections
+            .iter()
+            .rev()
+            .filter(|section| {
+                released_version(&section.title)
+                    .is_some_and(|found| found.is_pre_release_of(version))
+            })
+            .map(|section| section.body.clone())
+            .collect();
         let unreleased = self.unreleased_mut()?;
         let mut body = unreleased.body.trim().to_owned();
         if !has_hand_written_entry(&body) {
@@ -209,6 +229,10 @@ impl Changelog {
                     body = with_entry(&body, group, entry);
                 }
             }
+        }
+        if !gathered.is_empty() {
+            gathered.push(body);
+            body = merged(&gathered);
         }
         let body = body.trim();
         unreleased.title = format!("{version} - {date}");
@@ -234,6 +258,65 @@ impl Changelog {
         let body = with_entry(unreleased.body.trim(), group, entry);
         unreleased.body = format!("\n{}\n\n", body.trim());
         Ok(())
+    }
+}
+
+/// The entries of a section body in file order, each with its group
+/// (`None` before the first `### ` heading). An entry is a line and the
+/// indented lines that continue it; the `Upstream:` line is left out.
+fn entries_of(body: &str) -> Vec<(Option<String>, String)> {
+    let mut entries: Vec<(Option<String>, String)> = Vec::new();
+    let mut group: Option<String> = None;
+    let mut continues = false;
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continues = false;
+        } else if let Some(heading) = trimmed.strip_prefix("### ") {
+            group = Some(heading.trim().to_owned());
+            continues = false;
+        } else if trimmed.starts_with("Upstream: ") && entries.is_empty() && group.is_none() {
+            continues = false;
+        } else if continues && line.starts_with(char::is_whitespace) {
+            if let Some((_, entry)) = entries.last_mut() {
+                entry.push('\n');
+                entry.push_str(line.trim_end());
+            }
+        } else {
+            entries.push((group.clone(), line.trim_end().to_owned()));
+            continues = true;
+        }
+    }
+    entries
+}
+
+/// One body holding the entries of `bodies`, in their order and each
+/// once, under their groups in the order of [`GROUPS`]. Text outside any
+/// group comes first.
+fn merged(bodies: &[String]) -> String {
+    let mut loose: Vec<String> = Vec::new();
+    let mut seen: Vec<(String, String)> = Vec::new();
+    let mut body = String::new();
+    for (group, entry) in bodies.iter().flat_map(|body| entries_of(body)) {
+        match group {
+            None => {
+                if !loose.contains(&entry) {
+                    loose.push(entry);
+                }
+            }
+            Some(group) => {
+                let key = (group, entry);
+                if !seen.contains(&key) {
+                    body = with_entry(&body, &key.0, &key.1);
+                    seen.push(key);
+                }
+            }
+        }
+    }
+    if loose.is_empty() {
+        body
+    } else {
+        format!("{}\n\n{body}", loose.join("\n"))
     }
 }
 
@@ -477,6 +560,62 @@ mod tests {
         ), "{text}");
         assert!(!text.contains("drafted"));
         assert!(Changelog::parse(&text).problems().is_empty());
+    }
+
+    const CANDIDATES: &str = "# Changelog\n\n## Unreleased\n\n### Fixed\n\n- A late fix.\n\n## 0.2.0-rc.2 - 2026-11-21\n\nUpstream: Python SDK 0.2.186, CLI 2.1.331\n\n### Changed\n\n- Second candidate.\n\n### Fixed\n\n- A candidate fix.\n\n## 0.2.0-rc.1 - 2026-11-20\n\nUpstream: Python SDK 0.2.184 to 0.2.185, CLI 2.1.330\n\nA paragraph about the candidates.\n\n### Added\n\n- First candidate,\n  on two lines.\n\n### Fixed\n\n- A candidate fix.\n\n## 0.1.0 - 2026-11-19\n\nUpstream: Python SDK 0.2.182, CLI 2.1.325\n\n### Added\n\n- First.\n";
+
+    #[test]
+    fn a_release_gathers_the_entries_of_its_pre_releases_oldest_first_and_once() {
+        let mut changelog = Changelog::parse(CANDIDATES);
+        changelog
+            .release(
+                &Version::parse("0.2.0").unwrap(),
+                "2026-11-22",
+                "Upstream: Python SDK 0.2.184 to 0.2.186, CLI 2.1.331",
+                &draft(&["feat: drafted".to_owned()]),
+            )
+            .unwrap();
+        assert_eq!(
+            changelog.section_of("0.2.0").unwrap(),
+            "\nUpstream: Python SDK 0.2.184 to 0.2.186, CLI 2.1.331\n\nA paragraph about the candidates.\n\n### Added\n\n- First candidate,\n  on two lines.\n\n### Changed\n\n- Second candidate.\n\n### Fixed\n\n- A candidate fix.\n- A late fix.\n\n"
+        );
+        let text = changelog.render();
+        assert!(
+            !text.contains("drafted"),
+            "hand-written entries win: {text}"
+        );
+        assert!(
+            text.contains("## 0.2.0-rc.2 - 2026-11-21\n\nUpstream: Python SDK 0.2.186, CLI 2.1.331\n\n### Changed\n\n- Second candidate.\n\n### Fixed\n\n- A candidate fix.\n\n## 0.2.0-rc.1"),
+            "a pre-release section stays as published: {text}"
+        );
+        assert!(
+            text.contains("## 0.1.0 - 2026-11-19\n\nUpstream: Python SDK 0.2.182, CLI 2.1.325\n\n### Added\n\n- First.\n")
+        );
+        assert!(Changelog::parse(&text).problems().is_empty());
+        let releases = changelog.releases();
+        assert_eq!(releases[0].first_upstream, "0.2.184");
+        assert_eq!(releases[2].first_upstream, "0.2.184");
+        assert_eq!(releases[2].last_upstream, "0.2.185");
+    }
+
+    #[test]
+    fn a_pre_release_or_another_release_gathers_nothing() {
+        for version in ["0.2.0-rc.3", "0.2.1"] {
+            let mut changelog = Changelog::parse(CANDIDATES);
+            changelog
+                .release(
+                    &Version::parse(version).unwrap(),
+                    "2026-11-22",
+                    "Upstream: Python SDK 0.2.186, CLI 2.1.331",
+                    &Entries::default(),
+                )
+                .unwrap();
+            assert_eq!(
+                changelog.section_of(version).unwrap(),
+                "\nUpstream: Python SDK 0.2.186, CLI 2.1.331\n\n### Fixed\n\n- A late fix.\n\n",
+                "{version}"
+            );
+        }
     }
 
     #[test]

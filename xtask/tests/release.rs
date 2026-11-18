@@ -1015,6 +1015,56 @@ fn sync_then_prepare_gives_the_range_of_upstream_releases() {
 }
 
 #[test]
+fn prepare_of_a_release_gathers_its_release_candidates_and_their_upstream_range() {
+    let fixture = Fixture::new();
+    let release = |version: &str| {
+        let prepare = fixture.run(&["release", "prepare", version]);
+        assert!(prepare.status.success(), "{}", text(&prepare));
+        fixture.git(&[
+            "commit",
+            "--quiet",
+            "--all",
+            "--message",
+            &format!("chore: release v{version}"),
+        ]);
+        fixture.release_tag(version);
+    };
+    release("0.1.0-rc.1");
+    let sync = fixture.run(&["upstream-sync", "v0.2.184"]);
+    assert!(sync.status.success(), "{}", text(&sync));
+    fixture.git(&[
+        "commit",
+        "--quiet",
+        "--all",
+        "--message",
+        "chore: port upstream v0.2.184",
+    ]);
+    release("0.1.0-rc.2");
+    fixture.commit("fix: a late fix", &[("late.txt", "fixed\n")]);
+
+    let prepare = fixture.run(&["release", "prepare", "patch"]);
+    assert!(prepare.status.success(), "{}", text(&prepare));
+    let changelog = fixture.read("CHANGELOG.md");
+    let stable = changelog
+        .split("\n## ")
+        .find(|section| section.starts_with("0.1.0 - "))
+        .unwrap_or_else(|| panic!("no 0.1.0 section:\n{changelog}"));
+    let body = stable.split_once('\n').unwrap().1;
+    assert_eq!(
+        body,
+        "\nUpstream: Python SDK 0.2.182 to 0.2.184, CLI 2.1.327\n\n### Added\n\n- The first release.\n\n### Changed\n\n- Upstream moved to Python SDK 0.2.184 and CLI 2.1.327.\n\n### Fixed\n\n- a late fix\n",
+        "{changelog}"
+    );
+    assert!(
+        changelog.contains("\n## 0.1.0-rc.2 - ") && changelog.contains("\n## 0.1.0-rc.1 - "),
+        "the candidate sections stay: {changelog}"
+    );
+    let report = text(&prepare);
+    assert!(report.contains("moved 0.1.0-rc.2 -> 0.1.0"), "{report}");
+    assert!(report.contains("- The first release."), "{report}");
+}
+
+#[test]
 fn sync_refuses_an_unknown_tag_an_older_tag_and_a_dirty_tree() {
     let fixture = Fixture::new();
     let before = fixture.snapshot();
