@@ -14,6 +14,8 @@ mod version;
 
 use std::process::ExitCode;
 
+pub use repo::workspace_root;
+
 fn outcome(command: &str, result: Result<(), String>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,

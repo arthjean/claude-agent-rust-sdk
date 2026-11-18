@@ -5,6 +5,7 @@ mod gates;
 mod package;
 mod parity;
 mod release;
+mod semver;
 
 use std::process::ExitCode;
 
@@ -46,6 +47,12 @@ usage: cargo xtask <command>
                         nothing
   changelog-section <version>
                         print the CHANGELOG.md section of <version>
+  semver-check          compare the public API of the library with its
+                        newest release on crates.io through the pinned
+                        cargo-semver-checks, and fail on a break the
+                        workspace version does not allow (--features a,b
+                        names the features; by default every feature but
+                        `default` and `testing`)
   parity-diff [cases]   play every case of parity/cases through both SDKs
                         against fake-claude and fail on any difference not
                         in parity/differences.toml (--coverage lists the
@@ -68,6 +75,7 @@ fn main() -> ExitCode {
         Some("upstream-sync") => release::run_sync(rest),
         Some("release") => release::run(rest),
         Some("changelog-section") => release::run_section(rest),
+        Some("semver-check") => semver::run(rest),
         Some("parity-diff") => differential::run(rest),
         Some("e2e") => gates::run_e2e(rest),
         _ => {

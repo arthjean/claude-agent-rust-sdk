@@ -3,6 +3,10 @@
 //! turns `## Unreleased` into the section of the new version. It commits,
 //! tags, and pushes nothing.
 //!
+//! `patch` is refused after a commit marked breaking, and when the pinned
+//! `cargo-semver-checks` reports a break against the newest release on
+//! crates.io (`crate::semver`); either way it says to use `minor`.
+//!
 //! "The current version" a new one must exceed is the newest `v*` tag,
 //! not the workspace version: before the first release the workspace
 //! version (`0.1.0`) was never published, and a first release candidate
@@ -171,11 +175,19 @@ fn plan(repo: &Repo, bump: &Bump) -> Result<Plan, String> {
         let breaking = messages
             .iter()
             .find(|message| changelog::conventional(message).is_some_and(|commit| commit.breaking));
+        let since = previous.as_deref().unwrap_or("the first commit");
         if let Some(message) = breaking {
-            let since = previous.as_deref().unwrap_or("the first commit");
             return Err(format!(
                 "breaking change since {since}: use minor (`{}`)",
                 message.lines().next().unwrap_or_default().trim()
+            ));
+        }
+        let features = crate::semver::features(&repo.root)?;
+        let (verdict, _) = crate::semver::compare(&repo.root, &features)?;
+        if let crate::semver::Verdict::Breaking(items) = verdict {
+            return Err(format!(
+                "breaking change since {since}: use minor (cargo-semver-checks reports:{})",
+                crate::semver::listing(&items)
             ));
         }
     }

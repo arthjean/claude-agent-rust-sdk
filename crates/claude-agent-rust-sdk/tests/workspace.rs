@@ -1032,6 +1032,104 @@ fn ci_runs_the_differential_harness_on_every_pull_request_without_secrets() {
     );
 }
 
+/// The features of the library's manifest, `default` left out because it
+/// only lists other features.
+fn library_features() -> Vec<String> {
+    let manifest = read(&format!("{LIBRARY}/Cargo.toml"));
+    let table = manifest
+        .split("\n[features]\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n[").next())
+        .expect("the manifest has no [features] table");
+    let mut features: Vec<String> = table
+        .lines()
+        .filter_map(|line| line.split_once(" = "))
+        .map(|(feature, _)| feature.trim().to_owned())
+        .filter(|feature| feature != "default")
+        .collect();
+    features.sort();
+    features
+}
+
+/// The value of the constant `name` of `xtask/src/semver.rs`.
+fn semver_pin(name: &str) -> String {
+    read("xtask/src/semver.rs")
+        .split(&format!("pub const {name}: &str = \""))
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_else(|| panic!("xtask/src/semver.rs has no `{name}`"))
+        .to_owned()
+}
+
+#[test]
+fn ci_compares_the_public_api_with_the_newest_release_on_every_pull_request() {
+    let workflow = read(".github/workflows/ci.yml");
+    assert!(compact(&workflow).starts_with("name: CI on: pull_request: push:"));
+    let job = ci_job(&workflow, "semver");
+    let toolchain = semver_pin("TOOLCHAIN");
+    let tool = semver_pin("TOOL_VERSION");
+    for step in [
+        "runs-on: ubuntu-latest".to_owned(),
+        "permissions: contents: read".to_owned(),
+        "persist-credentials: false".to_owned(),
+        format!("uses: dtolnay/rust-toolchain@v1 with: toolchain: {toolchain}"),
+        format!("run: cargo install cargo-semver-checks@{tool} --locked"),
+        "The macros crate is left out:".to_owned(),
+    ] {
+        assert!(job.contains(&step), "{step}: {job}");
+    }
+    assert_eq!(
+        job.matches("toolchain:").count(),
+        1,
+        "the job builds with the pinned toolchain only: {job}"
+    );
+    for forbidden in [
+        "if:",
+        "secrets.",
+        "write",
+        "continue-on-error",
+        "--baseline",
+    ] {
+        assert!(!job.contains(forbidden), "{forbidden}: {job}");
+    }
+
+    let run = job
+        .split("run: cargo xtask semver-check --features ")
+        .nth(1)
+        .expect("the job does not run `cargo xtask semver-check --features`");
+    let mut checked: Vec<String> = run
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::to_owned)
+        .collect();
+    checked.sort();
+    let mut expected = library_features();
+    expected.retain(|feature| feature != "testing");
+    assert_eq!(
+        checked, expected,
+        "the `semver` job must name every feature of the library but `testing`"
+    );
+
+    let command = read("xtask/src/semver.rs");
+    for statement in [
+        "\"--only-explicit-features\"",
+        "pub const PACKAGE: &str = \"claude-agent-rust-sdk\";",
+        ".env(\"RUSTUP_TOOLCHAIN\", TOOLCHAIN)",
+    ] {
+        assert!(command.contains(statement), "{statement}");
+    }
+    let usage = read("xtask/src/main.rs");
+    assert!(usage.contains("\n  semver-check "));
+    assert!(usage.contains("Some(\"semver-check\") => semver::run(rest),"));
+    assert!(read("README.md").contains("\ncargo xtask semver-check "));
+    assert!(
+        read("xtask/src/release/prepare.rs").contains("crate::semver::compare(&repo.root"),
+        "release prepare patch consults the tool"
+    );
+}
+
 #[test]
 fn the_upstream_watch_runs_daily_and_only_its_issue_job_can_write() {
     let workflow = read(".github/workflows/upstream-watch.yml");

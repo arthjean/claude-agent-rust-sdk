@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Every pull request compares the public API with the newest release on crates.io through `cargo-semver-checks`, so a patch release cannot break a build against the previous release.
+
 ## 0.1.0 - 2026-11-18
 
 Upstream: Python SDK 0.2.182, CLI 2.1.325

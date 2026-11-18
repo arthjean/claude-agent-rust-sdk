@@ -14,6 +14,13 @@ push of a `v*` tag, a yank, a change of a setting) is the owner's.
 - In `0.y.z`, a change of `y` may break the public API; a change of `z` never
   does. Raising the minimum supported Rust version is a minor change. The
   `testing` feature is outside the compatibility promise.
+- The `semver` job of CI holds the promise: on every pull request and push,
+  `cargo xtask semver-check` runs `cargo-semver-checks` on the library with
+  every feature but `testing`, against its newest non-yanked release on
+  crates.io, and fails on a break the workspace version does not allow.
+  Since the version moves only at `release prepare`, a break keeps the job red
+  until the next release is prepared with `minor`, and `release prepare patch`
+  refuses it.
 - The crate version is independent of upstream. Each changelog section opens
   with the upstream versions it covers, for example
   `Upstream: Python SDK 0.2.183 to 0.2.185, CLI 2.1.330`.
@@ -28,6 +35,7 @@ push of a `v*` tag, a yank, a change of a setting) is the owner's.
 | `cargo xtask release prepare <patch\|minor\|X.Y.Z[-pre]>` | Moves the workspace version, the exact requirement on the macros crate, the README snippets when the minor changes, and `Cargo.lock`; regenerates both pages; turns `## Unreleased` into `## <version> - <today>` with its `Upstream:` line, drafting entries from the conventional commits since the previous tag when the section has no hand-written entry. The section of a release that follows release candidates opens with their entries and their upstream range, and leaves their sections as published. `--dry-run` prints the plan | Commit, tag, or push |
 | `cargo xtask release tag` | Runs the gates and the package check, then creates the commit `chore: release v<version>` and the annotated tag `v<version>` with your git identity and signing settings. `--no-gates` skips the gates, not the package check | Push |
 | `cargo xtask changelog-section <version>` | Prints the changelog section of a version | |
+| `cargo xtask semver-check` | Compares the public API of the library with its newest release on crates.io through `cargo-semver-checks`, at the version and on the toolchain pinned in `xtask/src/semver.rs`, and lists each broken item. `release prepare patch` runs the same comparison. Install the pins with `cargo install cargo-semver-checks@<version> --locked` and `rustup toolchain install <toolchain>` | Pass without having compared |
 
 Each command refuses, changes nothing, and says why when the tree is dirty,
 the branch is not `main`, the version or tag is wrong, or a check fails.
@@ -143,7 +151,11 @@ release is the owner's decision, not yet taken.
 | A rerun after success | Both versions exist | Both crates are skipped and the GitHub Release is left as it is; the run is green |
 | `attest` or `github-release` fails | The crates are published | Rerun the failed jobs; the release job does nothing when the release exists |
 | `release prepare` or `upstream-sync` refuses a dirty tree | Uncommitted files | Commit or stash the files it lists |
-| "breaking change since v0.1.2: use minor" | `patch` after a commit marked `!` or `BREAKING CHANGE:` | Use `release prepare minor` |
+| "breaking change since v0.1.2: use minor" | `patch` after a commit marked `!` or `BREAKING CHANGE:`, or after `cargo-semver-checks` reported a break, listed after the message | Use `release prepare minor` |
+| `semver`: "breaks the API of its newest release" | The public API changed in a way the workspace version does not allow; each broken item is listed | If the break is wanted, it ships in the next minor release: the job stays red until `release prepare minor`. Otherwise restore the item |
+| `semver` or `release prepare patch`: "cannot read the rustdoc JSON of Rust" | A new Rust or tool release changed the rustdoc JSON format | Move `TOOL_VERSION` and `TOOLCHAIN` of `xtask/src/semver.rs` together to a tool release that reads the format, and the same two values in the `semver` job of `ci.yml` |
+| `semver`: "crates.io could not be read" | The registry lookup failed; nothing was compared | Rerun once crates.io answers; no pin is at fault |
+| "cargo-semver-checks <version> is pinned" on your machine | Another version, or none, is installed | Run the `cargo install` command the message gives |
 | "v0.2.100 is not newer than the pin v0.2.182" | The tag is older than the pin, or unknown | Check the tag name; nothing was changed |
 | `verdict: needs-port` | Upstream changed code | Port the changes and complete the ledgers before `release prepare` |
 | Several upstream releases at once | The pin is several releases behind | Sync once to the newest tag; the changelog line gives the range |

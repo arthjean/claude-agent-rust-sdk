@@ -216,6 +216,7 @@ cargo xtask upstream-sync <tag>    move the upstream pin and every copy of the p
 cargo xtask release prepare <bump> move the crate version and write the changelog section
 cargo xtask release tag            run the checks, then create the release commit and tag
 cargo xtask changelog-section <v>  print the changelog section of a version
+cargo xtask semver-check           compare the public API with the newest release on crates.io
 cargo xtask parity-diff            compare what both SDKs send the CLI, case by case
 cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```

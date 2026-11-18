@@ -41,7 +41,41 @@ struct Fixture {
     root: PathBuf,
     origin: PathBuf,
     config: PathBuf,
+    /// The directory of the stand-in `cargo-semver-checks`: what it
+    /// answers, and the log of how it was run.
+    semver: PathBuf,
 }
+
+/// The value of the constant `name` of `xtask/src/semver.rs`.
+fn semver_pin(name: &str) -> String {
+    let source =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/semver.rs"))
+            .unwrap();
+    source
+        .split(&format!("pub const {name}: &str = \""))
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+        .to_owned()
+}
+
+/// The report of a real run of the tool on a renamed constant.
+const BREAK_REPORT: &str =
+    "    Checking claude-agent-rust-sdk v0.1.0 -> v0.1.0 (no change; assume minor)
+     Checked [   0.073s] 202 checks: 201 pass, 1 fail, 0 warn, 58 skip
+
+--- failure pub_module_level_const_missing: pub module-level const is missing ---
+
+Description:
+A public const is missing or renamed
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+
+Failed in:
+  VERSION in file /registry/claude-agent-rust-sdk-0.1.0/src/lib.rs:220
+
+     Summary semver requires new major version: 1 major and 0 minor checks failed
+    Finished [   2.822s] claude-agent-rust-sdk
+";
 
 fn write(path: &Path, content: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -83,15 +117,87 @@ impl Fixture {
         );
         let origin = directory.path().join("origin");
         let root = directory.path().join("workspace");
+        let semver = directory.path().join("semver");
         let fixture = Self {
             _directory: directory,
             root,
             origin,
             config,
+            semver,
         };
+        fixture.build_semver_stand_in();
         fixture.build_origin();
         fixture.build_workspace();
         fixture
+    }
+
+    /// A `cargo-semver-checks` that reports the pinned version, logs its
+    /// arguments and the variables that choose the toolchain, and answers
+    /// what `semver_answers` set: by default, a compatible API.
+    fn build_semver_stand_in(&self) {
+        let directory = &self.semver;
+        write(
+            &directory.join("version.txt"),
+            &format!("cargo-semver-checks {}\n", semver_pin("TOOL_VERSION")),
+        );
+        self.semver_answers(0, "     Summary no semver update required\n");
+        let path = |file: &str| directory.join(file).display().to_string();
+        if cfg!(windows) {
+            write(
+                &self.semver_tool(),
+                &format!(
+                    "@echo off\r\nif \"%~2\"==\"--version\" goto version\r\necho %*>>\"{log}\"\r\nif defined CARGO goto cargo\r\necho RUSTUP_TOOLCHAIN=%RUSTUP_TOOLCHAIN% CARGO=unset>>\"{log}\"\r\ngoto answer\r\n:cargo\r\necho RUSTUP_TOOLCHAIN=%RUSTUP_TOOLCHAIN% CARGO=set>>\"{log}\"\r\n:answer\r\ntype \"{output}\"\r\nset /p CODE=<\"{code}\"\r\nexit /b %CODE%\r\n:version\r\ntype \"{version}\"\r\nexit /b 0\r\n",
+                    log = path("log.txt"),
+                    output = path("output.txt"),
+                    code = path("code.txt"),
+                    version = path("version.txt"),
+                ),
+            );
+        } else {
+            write(
+                &self.semver_tool(),
+                &format!(
+                    "#!/bin/sh\nif [ \"$2\" = --version ]; then cat '{version}'; exit 0; fi\nprintf '%s\\n' \"$*\" >> '{log}'\nif [ -n \"${{CARGO+x}}\" ]; then cargo=set; else cargo=unset; fi\nprintf 'RUSTUP_TOOLCHAIN=%s CARGO=%s\\n' \"$RUSTUP_TOOLCHAIN\" \"$cargo\" >> '{log}'\ncat '{output}'\nexit \"$(cat '{code}')\"\n",
+                    log = path("log.txt"),
+                    output = path("output.txt"),
+                    code = path("code.txt"),
+                    version = path("version.txt"),
+                ),
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(
+                    self.semver_tool(),
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    fn semver_tool(&self) -> PathBuf {
+        self.semver.join(if cfg!(windows) {
+            "cargo-semver-checks.cmd"
+        } else {
+            "cargo-semver-checks"
+        })
+    }
+
+    /// Makes the stand-in tool exit with `code` after printing `output`.
+    fn semver_answers(&self, code: i32, output: &str) {
+        write(&self.semver.join("code.txt"), &format!("{code}\n"));
+        write(&self.semver.join("output.txt"), output);
+    }
+
+    /// How the stand-in tool was run since the last call, then forgets it.
+    fn semver_log(&self) -> String {
+        let log = self.semver.join("log.txt");
+        let text = std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        let _ = std::fs::remove_file(&log);
+        text
     }
 
     fn git_command(&self, directory: &Path) -> Command {
@@ -185,7 +291,7 @@ impl Fixture {
         );
         file(
             "crates/claude-agent-rust-sdk/Cargo.toml",
-            "[package]\nname = \"claude-agent-rust-sdk\"\nversion.workspace = true\nedition.workspace = true\n\n[dependencies]\nclaude-agent-rust-sdk-macros = { path = \"../claude-agent-rust-sdk-macros\", version = \"=0.1.0\" }\n",
+            "[package]\nname = \"claude-agent-rust-sdk\"\nversion.workspace = true\nedition.workspace = true\n\n[features]\ndefault = [\"extra\"]\nextra = []\ntesting = []\n\n[dependencies]\nclaude-agent-rust-sdk-macros = { path = \"../claude-agent-rust-sdk-macros\", version = \"=0.1.0\" }\n",
         );
         file(
             "crates/claude-agent-rust-sdk/src/lib.rs",
@@ -331,6 +437,7 @@ impl Fixture {
         let mut command = Command::new(env!("CARGO_BIN_EXE_xtask"));
         command.current_dir(&self.root).args(arguments).args(extra);
         isolate(&mut command, &self.config);
+        command.env("XTASK_SEMVER_CHECKS", self.semver_tool());
         if let Some(cargo) = cargo {
             command.env("CARGO", cargo);
         }
@@ -674,6 +781,147 @@ fn a_failure_after_the_first_writes_leaves_no_file_rewritten() {
     );
     assert_eq!(fixture.status(), "", "a file was left rewritten");
     assert_eq!(fixture.snapshot(), before);
+}
+
+#[test]
+fn prepare_patch_refuses_when_the_compatibility_tool_reports_a_break() {
+    let fixture = Fixture::new();
+    fixture.release_tag("0.1.0");
+    fixture.commit("fix: a quiet rename", &[("notes/a.txt", "a")]);
+    fixture.semver_answers(100, BREAK_REPORT);
+    let before = fixture.snapshot();
+
+    let output = fixture.run(&["release", "prepare", "patch"]);
+    assert_refused(
+        &fixture,
+        &output,
+        "breaking change since v0.1.0: use minor (cargo-semver-checks reports:\n  pub_module_level_const_missing: VERSION in file /registry/claude-agent-rust-sdk-0.1.0/src/lib.rs:220",
+    );
+    assert_eq!(fixture.snapshot(), before);
+    let log = fixture.semver_log();
+    let manifest = fixture.root.join("Cargo.toml").display().to_string();
+    assert!(
+        log.contains(&format!(
+            "semver-checks check-release --color never --manifest-path {manifest} --package claude-agent-rust-sdk --only-explicit-features --features extra\n"
+        )),
+        "{log}"
+    );
+    assert!(
+        log.contains(&format!(
+            "RUSTUP_TOOLCHAIN={} CARGO=unset\n",
+            semver_pin("TOOLCHAIN")
+        )),
+        "{log}"
+    );
+
+    let minor = fixture.run(&["release", "prepare", "minor"]);
+    assert!(minor.status.success(), "{}", text(&minor));
+    assert_eq!(fixture.semver_log(), "", "minor does not consult the tool");
+}
+
+#[test]
+fn prepare_patch_refuses_when_the_compatibility_tool_compares_nothing() {
+    let fixture = Fixture::new();
+    fixture.release_tag("0.1.0");
+    fixture.commit("fix: a fix", &[("notes/a.txt", "a")]);
+
+    fixture.semver_answers(
+        1,
+        "error: unsupported rustdoc format v61 for file: /t/doc/x.json\n(supported formats are v56, v57)\n",
+    );
+    let format = fixture.run(&["release", "prepare", "patch"]);
+    assert_refused(
+        &fixture,
+        &format,
+        "cargo-semver-checks did not compare the API (exit 1).",
+    );
+    assert!(
+        text(&format).contains("update the pins together"),
+        "{}",
+        text(&format)
+    );
+    assert!(
+        text(&format).contains("the `semver` job of .github/workflows/ci.yml"),
+        "{}",
+        text(&format)
+    );
+
+    fixture.semver_answers(0, "    Finished\n");
+    let silent = fixture.run(&["release", "prepare", "patch"]);
+    assert_refused(&fixture, &silent, "without its comparison summary");
+
+    write(
+        &fixture.semver.join("version.txt"),
+        "cargo-semver-checks 0.47.0\n",
+    );
+    let older = fixture.run(&["release", "prepare", "patch"]);
+    assert_refused(
+        &fixture,
+        &older,
+        &format!(
+            "cargo-semver-checks {} is pinned, `cargo-semver-checks 0.47.0` is installed",
+            semver_pin("TOOL_VERSION")
+        ),
+    );
+
+    std::fs::remove_file(fixture.semver_tool()).unwrap();
+    let missing = fixture.run(&["release", "prepare", "patch"]);
+    assert_refused(&fixture, &missing, "cannot run cargo-semver-checks");
+    assert!(
+        text(&missing).contains(&format!(
+            "cargo install cargo-semver-checks@{} --locked",
+            semver_pin("TOOL_VERSION")
+        )),
+        "{}",
+        text(&missing)
+    );
+}
+
+// --- semver-check ----------------------------------------------------------
+
+#[test]
+fn semver_check_passes_a_compatible_api_and_fails_naming_each_broken_item() {
+    let fixture = Fixture::new();
+    let compatible = fixture.run(&["semver-check", "--features", "extra,more"]);
+    assert!(compatible.status.success(), "{}", text(&compatible));
+    assert!(
+        text(&compatible).contains("Summary no semver update required"),
+        "the tool's report is shown"
+    );
+    assert!(
+        fixture
+            .semver_log()
+            .contains("--only-explicit-features --features extra,more\n")
+    );
+
+    fixture.semver_answers(100, BREAK_REPORT);
+    let breaking = fixture.run(&["semver-check"]);
+    assert!(!breaking.status.success());
+    let message = text(&breaking);
+    assert!(
+        message.contains("--- failure pub_module_level_const_missing"),
+        "{message}"
+    );
+    assert!(
+        message.contains(
+            "release it with `cargo xtask release prepare minor`:\n  pub_module_level_const_missing: VERSION in file"
+        ),
+        "{message}"
+    );
+    assert!(
+        fixture.semver_log().contains("--features extra\n"),
+        "without --features, the manifest's features but default and testing"
+    );
+
+    fixture.semver_answers(101, "Caused by:\n  unable to update registry `crates-io`\n");
+    let offline = fixture.run(&["semver-check"]);
+    assert!(!offline.status.success());
+    assert!(
+        text(&offline).contains("crates.io could not be read"),
+        "{}",
+        text(&offline)
+    );
+    assert_eq!(fixture.status(), "");
 }
 
 // --- release tag -----------------------------------------------------------
