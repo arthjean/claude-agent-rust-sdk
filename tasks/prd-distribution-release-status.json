@@ -25,7 +25,7 @@
     {
       "id": "EP-014",
       "title": "First publication",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 3,
       "stories_done": 0
@@ -230,7 +230,7 @@
       "id": "US-071",
       "title": "Validate assumption: both crates publish by hand as `0.1.0-rc.1`",
       "epic": "EP-014",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
@@ -238,7 +238,7 @@
         "US-067",
         "US-070"
       ],
-      "started_at": null,
+      "started_at": "2026-11-18",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -246,13 +246,13 @@
       "id": "US-072",
       "title": "Validate assumption: the workflow publishes `0.1.0-rc.2` through trusted publishing",
       "epic": "EP-014",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-071"
       ],
-      "started_at": null,
+      "started_at": "2026-11-18",
       "completed_at": null,
       "reviewed_at": null
     },
