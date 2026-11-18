@@ -1,0 +1,300 @@
+{
+  "prd": {
+    "file": "tasks/prd-distribution-release.md",
+    "title": "Distribution and release (claude-agent-rust-sdk)",
+    "created_at": "2026-11-18",
+    "status": "READY"
+  },
+  "epics": [
+    {
+      "id": "EP-012",
+      "title": "Rename, relicense, and make the package publishable",
+      "status": "DONE",
+      "priority": "P0",
+      "stories_total": 5,
+      "stories_done": 5
+    },
+    {
+      "id": "EP-013",
+      "title": "Release machinery",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 8,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-014",
+      "title": "First publication",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 3,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-015",
+      "title": "Compatibility and supply-chain checks",
+      "status": "TODO",
+      "priority": "P1",
+      "stories_total": 2,
+      "stories_done": 0
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-058",
+      "title": "Rename the crates to `claude-agent-rust-sdk`",
+      "epic": "EP-012",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [],
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
+    },
+    {
+      "id": "US-059",
+      "title": "Relicense to `MIT OR Apache-2.0`",
+      "epic": "EP-012",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-058"
+      ],
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
+    },
+    {
+      "id": "US-060",
+      "title": "Registry metadata and package contents",
+      "epic": "EP-012",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-059"
+      ],
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
+    },
+    {
+      "id": "US-061",
+      "title": "README and crate documentation for registry readers",
+      "epic": "EP-012",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-060"
+      ],
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
+    },
+    {
+      "id": "US-062",
+      "title": "Package check in CI",
+      "epic": "EP-012",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-060"
+      ],
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
+    },
+    {
+      "id": "US-063",
+      "title": "`CHANGELOG.md` and its policy",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-058"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-064",
+      "title": "`cargo xtask release prepare`",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-060",
+        "US-063"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-065",
+      "title": "`cargo xtask release tag`",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-062",
+        "US-064"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-066",
+      "title": "Release workflow: verify and publish",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-062",
+        "US-065"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-067",
+      "title": "GitHub Release with attested crate archives",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-066"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-068",
+      "title": "`cargo xtask upstream-sync <tag>`",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-063",
+        "US-064"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-069",
+      "title": "Daily upstream watch",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "S",
+      "blocked_by": [
+        "US-068"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-070",
+      "title": "`RELEASING.md` and `SECURITY.md`",
+      "epic": "EP-013",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "S",
+      "blocked_by": [
+        "US-065",
+        "US-067",
+        "US-068"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-071",
+      "title": "Validate assumption: both crates publish by hand as `0.1.0-rc.1`",
+      "epic": "EP-014",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-061",
+        "US-067",
+        "US-070"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-072",
+      "title": "Validate assumption: the workflow publishes `0.1.0-rc.2` through trusted publishing",
+      "epic": "EP-014",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-071"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-073",
+      "title": "Release `0.1.0`",
+      "epic": "EP-014",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-072"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-074",
+      "title": "API compatibility check",
+      "epic": "EP-015",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-073"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-075",
+      "title": "Scheduled advisory check",
+      "epic": "EP-015",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "S",
+      "blocked_by": [],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    }
+  ]
+}
