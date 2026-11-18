@@ -33,10 +33,10 @@
     {
       "id": "EP-015",
       "title": "Compatibility and supply-chain checks",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 2,
-      "stories_done": 0
+      "stories_done": 2
     }
   ],
   "stories": [
@@ -274,27 +274,27 @@
       "id": "US-074",
       "title": "API compatibility check",
       "epic": "EP-015",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-073"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
     },
     {
       "id": "US-075",
       "title": "Scheduled advisory check",
       "epic": "EP-015",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-11-18",
+      "completed_at": "2026-11-18",
+      "reviewed_at": "2026-11-18"
     }
   ]
 }
