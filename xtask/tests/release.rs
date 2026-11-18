@@ -191,11 +191,15 @@ impl Fixture {
     }
 
     /// How the stand-in tool was run since the last call, then forgets it.
+    /// Quotes are dropped: on Windows, Rust quotes the arguments of a batch
+    /// file that hold `~` or `,`, and `%*` keeps the quotes, while the
+    /// program still receives each argument unquoted.
     fn semver_log(&self) -> String {
         let log = self.semver.join("log.txt");
         let text = std::fs::read_to_string(&log)
             .unwrap_or_default()
-            .replace("\r\n", "\n");
+            .replace("\r\n", "\n")
+            .replace('"', "");
         let _ = std::fs::remove_file(&log);
         text
     }

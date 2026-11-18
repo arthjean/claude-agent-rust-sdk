@@ -92,12 +92,19 @@ fn require_pinned_tool() -> Result<(), String> {
                 install_hint()
             )
         })?;
+    if !output.status.success() {
+        return Err(format!(
+            "cannot run cargo-semver-checks ({}): {}",
+            output.status,
+            install_hint()
+        ));
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     let installed = text
         .trim()
         .strip_prefix("cargo-semver-checks ")
         .unwrap_or("");
-    if !output.status.success() || installed != TOOL_VERSION {
+    if installed != TOOL_VERSION {
         return Err(format!(
             "cargo-semver-checks {TOOL_VERSION} is pinned, `{}` is installed: {}",
             text.trim(),
