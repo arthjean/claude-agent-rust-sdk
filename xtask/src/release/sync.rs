@@ -170,6 +170,8 @@ fn plan(repo: &Repo, tag: &str) -> Result<Plan, String> {
     .ok_or_else(|| format!("pyproject.toml at {tag} has no version line"))?;
     let cli = cli_version(&diff::show(&upstream, &target, CLI_FILE)?)
         .ok_or_else(|| format!("{CLI_FILE} at {tag} has no `__cli_version__` line"))?;
+    Version::parse(&cli)
+        .map_err(|_| format!("{CLI_FILE} at {tag} gives `{cli}`, not a version X.Y.Z[-pre]"))?;
     if Version::parse(&sdk)? <= Version::parse(&old.sdk)? {
         return Err(format!(
             "{tag} is not newer than the pin v{} (it is version {sdk})",

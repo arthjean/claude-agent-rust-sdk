@@ -1053,6 +1053,24 @@ fn sync_refuses_an_unknown_tag_an_older_tag_and_a_dirty_tree() {
 }
 
 #[test]
+fn sync_refuses_an_upstream_cli_version_that_is_not_a_version() {
+    let fixture = Fixture::new();
+    let before = fixture.snapshot();
+    let origin = &fixture.origin;
+    write(&origin.join("pyproject.toml"), &pyproject("0.2.186"));
+    write(
+        &origin.join("src/claude_agent_sdk/_cli_version.py"),
+        "__cli_version__ = \"2.1.329\"; injected = \"x\"\n",
+    );
+    fixture.git_in(origin, &["commit", "--quiet", "--all", "--message", "Odd"]);
+    fixture.git_in(origin, &["tag", "v0.2.186"]);
+
+    let output = fixture.run(&["upstream-sync", "v0.2.186"]);
+    assert_refused(&fixture, &output, "not a version X.Y.Z[-pre]");
+    assert_eq!(fixture.snapshot(), before);
+}
+
+#[test]
 fn upstream_diff_prints_the_verdict() {
     let fixture = Fixture::new();
     let upstream = fixture.root.join(SUBMODULE);
