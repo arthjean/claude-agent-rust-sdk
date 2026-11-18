@@ -134,6 +134,55 @@ Registry checksums (SHA-256 of the `.crate` archives):
   - Release immutability: enabled.
   - Private vulnerability reporting: enabled.
 
+### Publication (2026-11-18, UTC)
+
+- `cargo xtask release prepare 0.1.0-rc.2` and `cargo xtask release tag`
+  made the commit `9c19e90` and the tag `v0.1.0-rc.2` (gates and package
+  check green). The section holds one hand-written `### Changed` entry on
+  the trusted publication.
+- 11:41:17: `git push --atomic origin main v0.1.0-rc.2`, accepted under
+  the tag ruleset through the owner's admin bypass. It started
+  `release.yml` run `44296951626`
+  (`https://github.com/arthjean/claude-agent-rust-sdk/actions/runs/44296951626`).
+- `publish`: the index lookup reported both crates missing at
+  `0.1.0-rc.2`. `rust-lang/crates-io-auth-action` exchanged the job's
+  identity token for a crates.io token on the first try ("Retrieved token
+  successfully"), and both crates were published. No stored token
+  exists in the repository or its environment.
+- The crates.io API records, for both versions, `published_by: null` and
+  `trustpub_data` with provider `github`, repository
+  `arthjean/claude-agent-rust-sdk`, run `44296951626`, and commit
+  `9c19e9059cd34e5566f86a53218f2ed61c74f928`.
+- Times: macros crate on the registry at 11:50:30, library at 11:50:59,
+  so 9 min 42 s from the tag push to an installable version. The whole
+  run ended green at 11:52:06 (10 min 49 s).
+
+Registry checksums (SHA-256):
+
+- `claude-agent-rust-sdk` 0.1.0-rc.2:
+  `6e311bb8ab11798b0be589ad987a65ae6b9ff55dd2fbe6cde4e9188b9557c0ed`
+- `claude-agent-rust-sdk-macros` 0.1.0-rc.2:
+  `2883ef678e9b76d0974817aa0b055d6ccafde570cdfa4365f4bfee094d95a8f9`
+
+### After publication
+
+- GitHub Release
+  `https://github.com/arthjean/claude-agent-rust-sdk/releases/tag/v0.1.0-rc.2`:
+  a pre-release and immutable, with the two archives. Their SHA-256, both
+  as GitHub reports them and after download, equal the registry
+  checksums. With immutability on, `gh release create` attached the
+  assets and published the release without error.
+- Attestations: the `RELEASING.md` command exits `0` for both archives.
+- Rerun: at 11:52:49, `gh run rerun 44296951626` started attempt 2, which
+  ended green at 12:11:49. `publish` logged "claude-agent-rust-sdk-macros
+  0.1.0-rc.2 is already published" and the same for the library, and
+  requested no token. `github-release` found the release and left it
+  as it was: same `publishedAt` (11:52:03), same two assets. `attest`
+  attested the same archives again, which adds attestations and changes
+  nothing published.
+- Pending, the owner's: set both crates to "Trusted Publishing Only" and
+  revoke the token `claude-agent-rust-sdk-bootstrap-rc1`.
+
 ## Deviations
 
 - The first `cargo xtask release tag` failed in the `test` gate: two tests
