@@ -8,7 +8,7 @@
 //! cargo xtask e2e
 //! ```
 //!
-//! which is `cargo test -p claude-agent-kit --all-features --test e2e --
+//! which is `cargo test -p claude-agent-rust-sdk --all-features --test e2e --
 //! --ignored --test-threads=4`: four sessions at a time. Extra arguments go
 //! to the test binary, so `cargo xtask e2e hooks::` runs one topic and
 //! `cargo xtask e2e --test-threads=1` runs the sessions one by one.
@@ -21,7 +21,7 @@
 //!
 //! The suite needs credentials. It reads `ANTHROPIC_API_KEY`, and fails,
 //! naming that variable, when it is missing. A developer whose installed
-//! CLI is already logged in sets `CLAUDE_AGENT_KIT_E2E_AUTH=cli` instead.
+//! CLI is already logged in sets `CLAUDE_AGENT_RUST_SDK_E2E_AUTH=cli` instead.
 //!
 //! Every session runs with `ANTHROPIC_DEFAULT_MODEL` pinned, and with
 //! `ANTHROPIC_MODEL` set to the same model so a `model` in the settings of

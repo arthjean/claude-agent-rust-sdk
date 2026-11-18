@@ -330,11 +330,11 @@ mod tests {
 python-only = "No counterpart in Rust."
 
 [names]
-query = { rust = "claude_agent_kit::query" }
-Message = { rust = ["claude_agent_kit::Message", "claude_agent_kit::parse_message"] }
+query = { rust = "claude_agent_rust_sdk::query" }
+Message = { rust = ["claude_agent_rust_sdk::Message", "claude_agent_rust_sdk::parse_message"] }
 CanUseToolShadowedWarning = { excluded = "python-only" }
 tool = { pending = "waiting" }
-PermissionResultAllow = { adapted = "claude_agent_kit::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
+PermissionResultAllow = { adapted = "claude_agent_rust_sdk::PermissionResult::Allow", note = "Variant of `PermissionResult`." }
 "#;
 
     #[test]
@@ -362,7 +362,7 @@ PermissionResultAllow = { adapted = "claude_agent_kit::PermissionResult::Allow",
         assert_eq!(ledger.rust_paths().len(), 4);
         assert!(ledger.rust_paths().contains(&(
             "PermissionResultAllow",
-            "claude_agent_kit::PermissionResult::Allow"
+            "claude_agent_rust_sdk::PermissionResult::Allow"
         )));
         assert_eq!(ledger.pending(), [("tool", "waiting")]);
     }
@@ -393,9 +393,9 @@ PermissionResultAllow = { adapted = "claude_agent_kit::PermissionResult::Allow",
 unused = "Nothing uses this."
 
 [names]
-gone = { rust = "claude_agent_kit::gone" }
-both = { rust = "claude_agent_kit::both", excluded = "unused" }
-twice = { rust = "claude_agent_kit::Twice", adapted = "claude_agent_kit::Twice", note = "x" }
+gone = { rust = "claude_agent_rust_sdk::gone" }
+both = { rust = "claude_agent_rust_sdk::both", excluded = "unused" }
+twice = { rust = "claude_agent_rust_sdk::Twice", adapted = "claude_agent_rust_sdk::Twice", note = "x" }
 empty = {}
 unknown = { excluded = "missing-reason" }
 "#,
@@ -418,7 +418,7 @@ unknown = { excluded = "missing-reason" }
     #[test]
     fn an_unused_exclusion_is_reported() {
         let ledger = surface(
-            "[exclusions]\nunused = \"Nothing.\"\n\n[names]\nquery = { rust = \"claude_agent_kit::query\" }\n",
+            "[exclusions]\nunused = \"Nothing.\"\n\n[names]\nquery = { rust = \"claude_agent_rust_sdk::query\" }\n",
         );
         let problems = ledger.structural_problems(&upstream(&["query"]));
         assert_eq!(
@@ -441,7 +441,8 @@ unknown = { excluded = "missing-reason" }
         assert_eq!(compiled_here("unix"), Some(cfg!(unix)));
         assert_eq!(compiled_here("plan9"), None);
 
-        let ledger = surface("[names]\nquery = { rust = \"claude_agent_kit::query @plan9\" }\n");
+        let ledger =
+            surface("[names]\nquery = { rust = \"claude_agent_rust_sdk::query @plan9\" }\n");
         let problems = ledger.structural_problems(&upstream(&["query"]));
         assert_eq!(
             problems,
@@ -456,7 +457,7 @@ unknown = { excluded = "missing-reason" }
         let surface_path = directory.join("surface.toml");
         std::fs::write(
             &surface_path,
-            "[names]\nquery = { rust = \"claude_agent_kit::query\" }\nWarning = { adapted = \"claude_agent_kit::Options::warning\" }\n",
+            "[names]\nquery = { rust = \"claude_agent_rust_sdk::query\" }\nWarning = { adapted = \"claude_agent_rust_sdk::Options::warning\" }\n",
         )
         .unwrap();
         let tests_path = directory.join("tests.toml");

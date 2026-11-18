@@ -38,7 +38,7 @@
 //! ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
 //! category = "rust-more-robust"
 //! reason = "A newer CLI must not make an older program lose data."
-//! test = "crates/claude-agent-kit/tests/message_parser.rs::unknown_message_is_kept"
+//! test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::unknown_message_is_kept"
 //! ```
 //!
 //! `ref` is required on every behavior entry, and `test` names a Rust test
@@ -110,7 +110,7 @@ pub struct Behavior {
     pub summary: String,
     /// What the Python SDK does.
     pub python: String,
-    /// What claude-agent-kit does.
+    /// What claude-agent-rust-sdk does.
     pub rust: String,
     /// The upstream lines that show the Python behavior, `path:line` or
     /// `path:first-last`.

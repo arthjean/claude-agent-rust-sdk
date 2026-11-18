@@ -16,7 +16,7 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, ContentBlock, Error, InputMessage, Message, Prompt,
 };
 use futures_util::{StreamExt, stream};

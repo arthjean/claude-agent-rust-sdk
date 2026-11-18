@@ -5,7 +5,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, HookCallback, HookInput, HookMatcher,
     HookOutput, Message, query,
 };

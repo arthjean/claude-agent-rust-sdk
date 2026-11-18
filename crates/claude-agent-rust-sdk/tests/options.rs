@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptions, EffortLevel, Error, HookEvent, HookInput, HookMatcher,
     HookOutput, McpRemoteServerConfig, McpSdkServerConfig, McpSdkServerInstance, McpServerConfig,
     McpServers, McpStdioServerConfig, PermissionMode, PermissionResult, SandboxNetworkConfig,
@@ -20,7 +20,7 @@ async fn allow_everything(
     _tool_name: String,
     _input: Value,
     _context: ToolPermissionContext,
-) -> Result<PermissionResult, claude_agent_kit::BoxError> {
+) -> Result<PermissionResult, claude_agent_rust_sdk::BoxError> {
     Ok(PermissionResult::allow())
 }
 
@@ -810,7 +810,7 @@ async fn session_store_option_reaches_the_store() {
     assert!(store.delete(&key).await.is_err());
     assert!(
         store
-            .list_subkeys(&claude_agent_kit::SessionListSubkeysKey::new(
+            .list_subkeys(&claude_agent_rust_sdk::SessionListSubkeysKey::new(
                 "project",
                 "session-1"
             ))

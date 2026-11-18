@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use claude_agent_kit::{AgentDefinition, ContentBlock, Message};
+use claude_agent_rust_sdk::{AgentDefinition, ContentBlock, Message};
 
 use crate::suite::{self, AGENT_TOOLS};
 

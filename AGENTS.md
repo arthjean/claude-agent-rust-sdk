@@ -1,12 +1,12 @@
-# claude-agent-sdk-rust
+# claude-agent-rust-sdk
 
-A Rust port of the Python Claude Agent SDK, published as the crate `claude-agent-kit`: it runs the Claude CLI as a child process and speaks its JSON control protocol over stdio. The port holds behavioral parity with one pinned upstream version, vendored as the submodule `upstream/claude-agent-sdk-python`. Upstream is the reference for behavior; `parity/` records how each upstream export and test is covered.
+A Rust port of the Python Claude Agent SDK, published as the crate `claude-agent-rust-sdk`: it runs the Claude CLI as a child process and speaks its JSON control protocol over stdio. The port holds behavioral parity with one pinned upstream version, vendored as the submodule `upstream/claude-agent-sdk-python`. Upstream is the reference for behavior; `parity/` records how each upstream export and test is covered.
 
 ## Stop for the owner
 
 Edit code, run the gates, and run every offline test without asking. Three actions wait for the owner's explicit go:
 
-- **Real-CLI runs spend API credits.** `cargo xtask e2e` (about 0.80 USD per full run), the `End-to-end` workflow, the `#[ignore]`d real-CLI tests, and every example under `crates/claude-agent-kit/examples` call the real API. Prove a change with the fake CLI or the mock transport instead.
+- **Real-CLI runs spend API credits.** `cargo xtask e2e` (about 0.80 USD per full run), the `End-to-end` workflow, the `#[ignore]`d real-CLI tests, and every example under `crates/claude-agent-rust-sdk/examples` call the real API. Prove a change with the fake CLI or the mock transport instead.
 - **Anything posted on GitHub** in the owner's name: issue, pull request, comment.
 - **Lowering a floor**: the 91.5% line coverage floor in `.github/workflows/ci.yml` only goes up, and the lint levels in the root `Cargo.toml` and `clippy.toml` stay as they are.
 
@@ -28,7 +28,7 @@ The owner is the only visible contributor: commits carry no AI attribution and n
 
 `cargo xtask gates` runs what the CI `gates` job runs: format, clippy, example build, tests, and rustdoc with warnings denied. Run it before reporting any code change as done.
 
-Always pass `--all-features` to `cargo test` and `cargo clippy`. Most integration test files open with `#![cfg(feature = "testing")]` (some also need `macros`, `rmcp`, or `otel`), so a plain `cargo test` compiles them to nothing and passes. For one file: `cargo test -p claude-agent-kit --all-features --test <file>`.
+Always pass `--all-features` to `cargo test` and `cargo clippy`. Most integration test files open with `#![cfg(feature = "testing")]` (some also need `macros`, `rmcp`, or `otel`), so a plain `cargo test` compiles them to nothing and passes. For one file: `cargo test -p claude-agent-rust-sdk --all-features --test <file>`.
 
 The gates leave out checks that CI still enforces. Run the one that matches the change:
 
@@ -36,6 +36,7 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 |---|---|
 | Renamed, moved, or removed a public item or a test; edited `parity/`; moved the submodule pin | `cargo xtask parity-check --deny-pending` (needs `git submodule update --init`; builds every test, so it is slow) |
 | Changed what reaches the CLI (command line, environment, control frames, MCP answers), `crates/fake-claude`, `crates/parity-driver`, or `parity/cases`; moved the submodule pin | `cargo xtask parity-diff` and `cargo xtask parity-diff --coverage` (needs Python 3.10+ with `parity/requirements.txt`, pointed to by `PARITY_PYTHON`; see `parity/README.md`) |
+| A manifest of a published crate, a file at the root of `crates/claude-agent-rust-sdk` or `crates/claude-agent-rust-sdk-macros`, or `xtask/src/package.rs` | `cargo xtask package-check` (packages without `--allow-dirty`, so commit first; CI runs it in the `package` job, with the docs.rs-style build: `RUSTDOCFLAGS="--cfg docsrs -D warnings" cargo +nightly doc --package claude-agent-rust-sdk --all-features --no-deps`) |
 | New or bumped dependency | `cargo deny check licenses`. The version declared in `Cargo.toml` must be a true minimum: CI resolves direct dependencies to their declared minimums and runs the tests. |
 | Dependency change, or a language or std feature that may be newer than Rust 1.88 | `cargo +1.88.0 check --workspace --all-features --locked` |
 | `.github/workflows/*.yml` | `gh actions-lock --verify` (extension: `gh extension install github/gh-actions-lock --pin v0.4.1`) |
@@ -47,15 +48,18 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 
 ## Repository policy tests
 
-`crates/claude-agent-kit/tests/workspace.rs` pins repository policy and fails on edits that look unrelated. Read the failing test's name before changing either side. The rules it enforces that a plausible edit breaks:
+`crates/claude-agent-rust-sdk/tests/workspace.rs` pins repository policy and fails on edits that look unrelated. Read the failing test's name before changing either side. The rules it enforces that a plausible edit breaks:
 
-- **Doc comments only** in `crates/claude-agent-kit/src` and `crates/fake-claude/src`: a line starting with `//` fails. Put the reason for a choice in a `///` or `//!` comment, as the surrounding code does.
+- **Doc comments only** in `crates/claude-agent-rust-sdk/src` and `crates/fake-claude/src`: a line starting with `//` fails. Put the reason for a choice in a `///` or `//!` comment, as the surrounding code does.
 - **`unsafe` lives only in `src/process/sys.rs`**. An operating-system call that needs it goes there, with a doc comment that justifies the block.
 - **Twelve examples**: the README Examples table and the example files match one to one. Adding an example means adding its row and raising the count in the test.
 - **Every Cargo feature** is described in the crate docs of `src/lib.rs` as ``//! - `name`:``.
 - **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, and the test itself. Move every copy together.
 - **README statements**: the authentication, non-affiliation, and license sentences are matched word for word.
-- **CI shape**: the gates, the parity job, and the manual-only, Linux-only, never-on-forks end-to-end workflow.
+- **The former crate name and the former license** appear in no tracked file outside `docs/research/`, `docs/validation/`, `tasks/`, and `upstream/`. A test that needs either string builds it from parts.
+- **Published packages**: each published crate directory holds copies of `LICENSE-MIT` and `LICENSE-APACHE` (the library also `THIRD_PARTY_NOTICES`) identical to the files at the repository root, so edit the root file and copy it. The `include` lists, the registry metadata, and the exact `=<version>` requirement on the macros crate are pinned, and no file under `src/` loads a file outside its package.
+- **README links** are absolute `https://` URLs, because crates.io has no repository to resolve them against, and the `Cargo.toml` snippet carries the `major.minor` of the workspace version.
+- **CI shape**: the gates, the package job, the parity job, and the manual-only, Linux-only, never-on-forks end-to-end workflow.
 
 ## Parity ledgers
 

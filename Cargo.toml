@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/claude-agent-kit",
-    "crates/claude-agent-kit-macros",
+    "crates/claude-agent-rust-sdk",
+    "crates/claude-agent-rust-sdk-macros",
     "crates/fake-claude",
     "crates/parity-driver",
     "xtask",
@@ -12,8 +12,10 @@ members = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-license = "GPL-3.0-or-later"
+license = "MIT OR Apache-2.0"
 authors = ["Arthur Jean"]
+repository = "https://github.com/arthjean/claude-agent-rust-sdk"
+homepage = "https://github.com/arthjean/claude-agent-rust-sdk"
 
 [workspace.dependencies]
 futures-core = "0.3.31"

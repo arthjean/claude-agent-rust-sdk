@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, AsyncHookOutput, ClaudeAgentOptions, ClaudeSdkClient, Error, HookCallback,
     HookEvent, HookFailureMode, HookInput, HookMatcher, HookOutput, Message, PermissionResult,
     PermissionRuleValue, PermissionUpdate, PermissionUpdateDestination, PermissionUpdateKind,
@@ -27,7 +27,7 @@ fn default_options() -> ClaudeAgentOptions {
     ClaudeAgentOptions::default()
 }
 
-fn answering_prompts() -> claude_agent_kit::testing::MockTransport {
+fn answering_prompts() -> claude_agent_rust_sdk::testing::MockTransport {
     cli_answering(|frame| {
         if frame["type"] == "user" {
             vec![assistant("Hello!"), result("Hello!")]
@@ -580,7 +580,10 @@ async fn failing_or_unknown_hook_gets_an_error_response_and_the_session_continue
         Err("the policy service is down".into())
     });
     let panicking = HookCallback::new(
-        async |_input, _tool_use_id, _context| -> Result<HookOutput, claude_agent_kit::BoxError> {
+        async |_input,
+               _tool_use_id,
+               _context|
+               -> Result<HookOutput, claude_agent_rust_sdk::BoxError> {
             panic!("hook exploded")
         },
     );
@@ -665,7 +668,7 @@ fn blocking_options(mode: HookFailureMode) -> ClaudeAgentOptions {
         .unwrap()
 }
 
-fn initialize_answering(response: Value) -> claude_agent_kit::testing::MockTransport {
+fn initialize_answering(response: Value) -> claude_agent_rust_sdk::testing::MockTransport {
     cli_answering(move |frame| {
         if is_control_request(frame, "initialize") {
             vec![success(frame, response.clone())]

@@ -5,8 +5,8 @@ mod common;
 
 use std::sync::Arc;
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, InputMessage, McpServerConnectionStatus, Message,
     PermissionMode, Prompt,
 };

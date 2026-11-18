@@ -1,7 +1,7 @@
 //! Rust driver of the differential parity harness.
 //!
 //! `parity-driver <case.json> --cli <path>` plays one case of `parity/cases`
-//! through `claude-agent-kit`, with `cli_path` set to `<path>`. The Python
+//! through `claude-agent-rust-sdk`, with `cli_path` set to `<path>`. The Python
 //! driver, `parity/drivers/python_driver.py`, plays the same case through
 //! the Python SDK, and `cargo xtask parity-diff` compares what the CLI
 //! received from each. The case format is described by
@@ -21,7 +21,7 @@ mod options;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use claude_agent_kit::{ClaudeSdkClient, Message, PermissionMode, Prompt, query};
+use claude_agent_rust_sdk::{ClaudeSdkClient, Message, PermissionMode, Prompt, query};
 use futures_util::StreamExt;
 use serde_json::{Map, Value};
 
@@ -37,8 +37,8 @@ pub(crate) enum Failure {
     Failed(String),
 }
 
-impl From<claude_agent_kit::Error> for Failure {
-    fn from(error: claude_agent_kit::Error) -> Self {
+impl From<claude_agent_rust_sdk::Error> for Failure {
+    fn from(error: claude_agent_rust_sdk::Error) -> Self {
         Self::Failed(error.to_string())
     }
 }
@@ -118,7 +118,7 @@ fn prompt(value: Option<&Value>) -> Result<Prompt, Failure> {
 
 async fn one_shot(
     value: Option<&Value>,
-    options: claude_agent_kit::ClaudeAgentOptions,
+    options: claude_agent_rust_sdk::ClaudeAgentOptions,
 ) -> Result<(), Failure> {
     let mut stream = query(prompt(value)?, options);
     let mut last = None;
@@ -135,7 +135,7 @@ async fn one_shot(
 
 async fn client(
     steps: &[Value],
-    options: claude_agent_kit::ClaudeAgentOptions,
+    options: claude_agent_rust_sdk::ClaudeAgentOptions,
 ) -> Result<(), Failure> {
     let client = ClaudeSdkClient::new(options);
     for (index, step) in steps.iter().enumerate() {

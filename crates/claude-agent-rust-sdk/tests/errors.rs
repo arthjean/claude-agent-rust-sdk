@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use claude_agent_kit::{Error, ResultErrorData};
+use claude_agent_rust_sdk::{Error, ResultErrorData};
 use serde_json::{Value, json};
 
 fn result_error_data(error: &Error) -> &ResultErrorData {

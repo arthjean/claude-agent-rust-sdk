@@ -163,7 +163,7 @@ fn list_all_sessions(limit: Option<usize>, offset: usize) -> Vec<SdkSessionInfo>
 /// call it inside `tokio::task::spawn_blocking`.
 ///
 /// ```no_run
-/// let recent = claude_agent_kit::list_sessions(Some("/path/to/project".as_ref()), Some(20), 0, true);
+/// let recent = claude_agent_rust_sdk::list_sessions(Some("/path/to/project".as_ref()), Some(20), 0, true);
 /// for session in recent {
 ///     println!("{} {}", session.session_id, session.summary);
 /// }

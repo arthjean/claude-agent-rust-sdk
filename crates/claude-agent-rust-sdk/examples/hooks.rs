@@ -20,7 +20,7 @@
 
 use std::process::ExitCode;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, ClaudeSdkClient, HookContext, HookInput, HookMatcher, HookOutput,
     HookPermissionDecision, Message, PostToolUseHookSpecificOutput, PreToolUseHookSpecificOutput,
     SyncHookOutput, UserPromptSubmitHookSpecificOutput,

@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use claude_agent_kit::{ClaudeAgentOptions, Error, Message, StderrCallback, query};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, Message, StderrCallback, query};
 use futures_util::StreamExt;
 
 #[tokio::main]

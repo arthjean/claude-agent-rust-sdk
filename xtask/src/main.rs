@@ -2,6 +2,7 @@
 
 mod differential;
 mod gates;
+mod package;
 mod parity;
 
 use std::process::ExitCode;
@@ -11,6 +12,10 @@ usage: cargo xtask <command>
 
   gates                 run the format, lint, example build, test, and
                         documentation checks
+  package-check         package both published crates with the lockfile, let
+                        cargo build each archive, and fail on a file outside
+                        the allowed set, a missing license file, a missing
+                        manifest field, or an archive over 1 MiB
   parity-check          fail when a ledger misses an upstream export or test,
                         or names a Rust path that does not exist
                         (--deny-pending also fails on pending entries)
@@ -36,6 +41,7 @@ fn main() -> ExitCode {
     let rest = arguments.get(1..).unwrap_or_default();
     match arguments.first().map(String::as_str) {
         Some("gates") => gates::run(),
+        Some("package-check") => package::run(rest),
         Some("parity-check") => parity::run_check(rest),
         Some("parity-report") => parity::run_report(rest),
         Some("parity-tests") => parity::run_tests(rest),

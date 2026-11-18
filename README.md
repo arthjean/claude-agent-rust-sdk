@@ -1,4 +1,8 @@
-# claude-agent-kit
+# claude-agent-rust-sdk
+
+[![crates.io](https://img.shields.io/crates/v/claude-agent-rust-sdk.svg)](https://crates.io/crates/claude-agent-rust-sdk)
+[![docs.rs](https://docs.rs/claude-agent-rust-sdk/badge.svg)](https://docs.rs/claude-agent-rust-sdk)
+[![CI](https://github.com/arthjean/claude-agent-rust-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arthjean/claude-agent-rust-sdk/actions/workflows/ci.yml)
 
 A Rust SDK for building agents on top of the Claude Code CLI.
 
@@ -8,11 +12,11 @@ callbacks, tools served from your own process, session stores, and session
 management, all on tokio.
 
 It is a port of the Python Claude Agent SDK, at parity with version 0.2.182.
-[`docs/migration.md`](docs/migration.md) maps every Python name to its Rust
-name, and [`docs/parity.md`](docs/parity.md) lists what was compared, the
+[`docs/migration.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/migration.md) maps every Python name to its Rust
+name, and [`docs/parity.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/parity.md) lists what was compared, the
 measured counts, and every known difference with its reason and its test.
 
-> **This is not an Anthropic product.** `claude-agent-kit` is an independent,
+> **This is not an Anthropic product.** `claude-agent-rust-sdk` is an independent,
 > community project. It is not affiliated with, endorsed by, or supported by
 > Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic, PBC.
 
@@ -43,11 +47,15 @@ Budget for API usage accordingly.
 
 ## Installation
 
-The crate is not published on crates.io yet. Depend on it from git:
+```text
+cargo add claude-agent-rust-sdk
+```
+
+Or in `Cargo.toml`, with the two crates the examples below also use:
 
 ```toml
 [dependencies]
-claude-agent-kit = { git = "https://github.com/arthjean/claude-agent-sdk-rust" }
+claude-agent-rust-sdk = "0.1"
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -57,11 +65,11 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 `query` runs one prompt and returns the stream of its messages:
 
 ```rust,no_run
-use claude_agent_kit::{ClaudeAgentOptions, Message, query};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, Message, query};
 use futures_util::StreamExt;
 
 #[tokio::main]
-async fn main() -> Result<(), claude_agent_kit::Error> {
+async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
     let options = ClaudeAgentOptions::builder().max_turns(1).build()?;
     let mut messages = query("What is 2 + 2?", options);
     while let Some(message) = messages.next().await {
@@ -78,11 +86,11 @@ async fn main() -> Result<(), claude_agent_kit::Error> {
 `ClaudeSdkClient` keeps a session open for several turns:
 
 ```rust,no_run
-use claude_agent_kit::{ClaudeAgentOptions, ClaudeSdkClient, Message};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, Message};
 use futures_util::StreamExt;
 
 #[tokio::main]
-async fn main() -> Result<(), claude_agent_kit::Error> {
+async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
     let options = ClaudeAgentOptions::builder()
         .allowed_tools(["Read", "Grep"])
         .build()?;
@@ -113,7 +121,7 @@ A tool is a Rust function. The CLI calls it over the control channel, so there
 is no separate MCP server process to run:
 
 ```rust,no_run
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, Message, SdkMcpTool, ToolResult, create_sdk_mcp_server, query,
 };
 use futures_util::StreamExt;
@@ -127,7 +135,7 @@ struct Operands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), claude_agent_kit::Error> {
+async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
     let add = SdkMcpTool::typed::<Operands>("add", "Add two numbers", |args| async move {
         Ok(ToolResult::text(format!("{}", args.a + args.b)))
     });
@@ -156,11 +164,11 @@ async fn main() -> Result<(), claude_agent_kit::Error> {
 | `macros` | The `#[tool]` attribute, which turns an async function into a tool. |
 | `rmcp` | Serving a server built with the `rmcp` crate inside your process. |
 | `otel` | OpenTelemetry trace propagation: the spans of the CLI join the trace that is active when the session starts. |
-| `testing` | A scriptable transport for your own tests. |
+| `testing` | A scriptable transport for your own tests. Outside the compatibility promise (see below). |
 
 ## Examples
 
-Each file under [`crates/claude-agent-kit/examples`](crates/claude-agent-kit/examples)
+Each file under [`crates/claude-agent-rust-sdk/examples`](https://github.com/arthjean/claude-agent-rust-sdk/tree/main/crates/claude-agent-rust-sdk/examples)
 is a runnable program:
 
 | Example | Shows |
@@ -178,13 +186,28 @@ is a runnable program:
 | `setting_sources` | Choosing which settings files the CLI loads. |
 | `session_store_adapter` | Writing a session store and resuming from it. |
 
-Run one with `cargo run -p claude-agent-kit --example quick_start`. The examples
+Run one with `cargo run -p claude-agent-rust-sdk --example quick_start`. The examples
 call the real API with your credentials.
+
+## Versioning and compatibility
+
+The crate follows semantic versioning as Cargo applies it before `1.0`:
+
+- In `0.y.z`, a change of the minor version `y` may break your build. A patch
+  release (a change of `z`) never does.
+- Raising the minimum supported Rust version, 1.88 today, is a minor change.
+- The `testing` feature is outside the compatibility promise: its items may
+  change in a patch release.
+- Each release states the version of the Python SDK and of the CLI it matches.
+  The crate version is independent of both.
+
+[`CHANGELOG.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/CHANGELOG.md) lists what each release changed.
 
 ## Development
 
 ```text
 cargo xtask gates                  format, lint, examples, test, and doc checks
+cargo xtask package-check          package both crates and check what the archives hold
 cargo xtask parity-check           check the parity ledgers against upstream
 cargo xtask parity-report          print how much of upstream is implemented
 cargo xtask parity-page            regenerate the measured region of docs/parity.md
@@ -193,7 +216,7 @@ cargo xtask parity-diff            compare what both SDKs send the CLI, case by 
 cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
 
-The parity ledgers live in [`parity/`](parity): `surface.toml` lists every name
+The parity ledgers live in [`parity/`](https://github.com/arthjean/claude-agent-rust-sdk/tree/main/parity): `surface.toml` lists every name
 the Python SDK exports, and `tests.toml` lists every upstream test, each with the
 Rust item that replaces it or the reason it is not ported.
 
@@ -202,28 +225,26 @@ case of `parity/cases` through both SDKs against the scripted stand-in CLI and
 fails on any difference in the command line, the environment, or the frames
 that `parity/differences.toml` does not list with its reason. It needs Python
 3.10 or later with the pinned dependencies of `parity/requirements.txt`; see
-[`parity/README.md`](parity/README.md).
+[`parity/README.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/parity/README.md).
 
 Once a week, the `Upstream watch` workflow compares the newest release of the
 Python SDK with the submodule pin and, when the release is newer, opens one
 issue with what `cargo xtask upstream-diff` lists and the release's changelog.
 
 The end-to-end suite spends API credits: about 0.80 USD for a full run. It
-needs `ANTHROPIC_API_KEY`, or `CLAUDE_AGENT_KIT_E2E_AUTH=cli` to use the login
+needs `ANTHROPIC_API_KEY`, or `CLAUDE_AGENT_RUST_SDK_E2E_AUTH=cli` to use the login
 of your installed CLI. In CI it never starts on its own: run the `End-to-end`
 workflow by hand when a change needs it.
 
 ## License
 
-`claude-agent-kit` is licensed under the GNU General Public License, version 3
-or later (GPL-3.0-or-later). See [`LICENSE`](LICENSE).
+`claude-agent-rust-sdk` is licensed under either of the
+[MIT license](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/LICENSE-MIT) or the
+[Apache License, Version 2.0](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/LICENSE-APACHE), at your option.
 
-Rust links crates statically, so a program that depends on this crate is a
-combined work under the GPL. **If you distribute a program that links
-`claude-agent-kit`, you must release that program under the GPL-3.0-or-later or
-a license compatible with it, and make its source available.** Programs you run
-only for yourself or inside your organization, without distributing them, are
-not affected.
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
 
 The crate is derived from the Python Claude Agent SDK, which is MIT licensed.
-Its notice is reproduced in [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES).
+Its notice is reproduced in [`THIRD_PARTY_NOTICES`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/THIRD_PARTY_NOTICES).

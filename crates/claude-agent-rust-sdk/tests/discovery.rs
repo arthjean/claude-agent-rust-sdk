@@ -6,8 +6,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Mutex;
 
-use claude_agent_kit::cli::{find_cli, managed_install_dir};
-use claude_agent_kit::{ClaudeAgentOptions, Error, SubprocessTransport};
+use claude_agent_rust_sdk::cli::{find_cli, managed_install_dir};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, SubprocessTransport};
 use serde_json::json;
 
 use common::capture::Warnings;
@@ -87,7 +87,7 @@ fn the_process_environment_drives_discovery_and_the_version_check_switch() {
 
     let managed_dir = managed_install_dir().unwrap();
     assert!(managed_dir.starts_with(root.path()), "{managed_dir:?}");
-    assert!(managed_dir.ends_with(Path::new("claude-agent-kit").join("cli")));
+    assert!(managed_dir.ends_with(Path::new("claude-agent-rust-sdk").join("cli")));
     let managed = install(&managed_dir);
     assert_eq!(find_cli().unwrap(), managed);
     std::fs::remove_file(&managed).unwrap();

@@ -13,7 +13,7 @@
 //!
 //! Run it with `cargo run --example system_prompt`.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, Error, Message, SystemPrompt, SystemPromptCustom,
     SystemPromptFile, SystemPromptPreset, query,
 };

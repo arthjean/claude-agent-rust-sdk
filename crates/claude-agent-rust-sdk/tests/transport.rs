@@ -5,7 +5,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, MessageStream, PermissionMode,
     PermissionResult, SharedTransport, StderrCallback, SubprocessTransport, ToolPermissionContext,
     Transport, query,
@@ -123,7 +123,7 @@ async fn the_child_environment_is_built_in_the_documented_order() {
     assert_eq!(reported["CLAUDE_CODE_ENTRYPOINT"], "sdk-rs");
     assert_eq!(
         reported["CLAUDE_AGENT_SDK_VERSION"],
-        claude_agent_kit::VERSION
+        claude_agent_rust_sdk::VERSION
     );
     assert_eq!(reported["CLAUDECODE"], Value::Null);
     assert_eq!(
@@ -174,7 +174,7 @@ async fn the_caller_can_override_the_entrypoint_and_the_session_state_request() 
     assert_eq!(reported["CLAUDE_CODE_SDK_READS_SESSION_STATE"], "0");
     assert_eq!(
         reported["CLAUDE_AGENT_SDK_VERSION"],
-        claude_agent_kit::VERSION
+        claude_agent_rust_sdk::VERSION
     );
     assert_eq!(
         reported["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"],
@@ -184,7 +184,7 @@ async fn the_caller_can_override_the_entrypoint_and_the_session_state_request() 
 
 #[tokio::test]
 async fn a_missing_working_directory_is_a_connection_error() {
-    let cwd = std::env::temp_dir().join("claude-agent-kit-missing-directory-9f3a");
+    let cwd = std::env::temp_dir().join("claude-agent-rust-sdk-missing-directory-9f3a");
     let options = stand_in_options().cwd(&cwd).build().unwrap();
     let transport = SubprocessTransport::new(options);
     let error = transport.connect().await.unwrap_err();
@@ -200,7 +200,7 @@ async fn a_missing_working_directory_is_a_connection_error() {
 async fn a_missing_executable_is_a_not_found_error() {
     let directory = tempfile::tempdir().unwrap();
     let cli_path = directory.path().join("claude-is-not-here");
-    let options = claude_agent_kit::ClaudeAgentOptions::builder()
+    let options = claude_agent_rust_sdk::ClaudeAgentOptions::builder()
         .cli_path(&cli_path)
         .build()
         .unwrap();
@@ -484,12 +484,12 @@ struct LoopbackTransport {
 }
 
 impl Transport for LoopbackTransport {
-    async fn connect(&self) -> claude_agent_kit::Result<()> {
+    async fn connect(&self) -> claude_agent_rust_sdk::Result<()> {
         *self.connected.lock().unwrap() = true;
         Ok(())
     }
 
-    async fn write(&self, data: &str) -> claude_agent_kit::Result<()> {
+    async fn write(&self, data: &str) -> claude_agent_rust_sdk::Result<()> {
         let frame =
             serde_json::from_str(data.trim()).map_err(|source| Error::json_decode(data, source))?;
         self.written.lock().unwrap().push(frame);
@@ -497,7 +497,7 @@ impl Transport for LoopbackTransport {
     }
 
     fn read_messages(&self) -> MessageStream {
-        let echoed: Vec<claude_agent_kit::Result<Value>> = self
+        let echoed: Vec<claude_agent_rust_sdk::Result<Value>> = self
             .written
             .lock()
             .unwrap()
@@ -507,7 +507,7 @@ impl Transport for LoopbackTransport {
         Box::pin(futures_util::stream::iter(echoed))
     }
 
-    async fn close(&self) -> claude_agent_kit::Result<()> {
+    async fn close(&self) -> claude_agent_rust_sdk::Result<()> {
         *self.connected.lock().unwrap() = false;
         Ok(())
     }
@@ -516,7 +516,7 @@ impl Transport for LoopbackTransport {
         *self.connected.lock().unwrap()
     }
 
-    async fn end_input(&self) -> claude_agent_kit::Result<()> {
+    async fn end_input(&self) -> claude_agent_rust_sdk::Result<()> {
         Ok(())
     }
 }
@@ -563,7 +563,7 @@ async fn a_batch_script_is_refused_on_windows_and_nothing_is_spawned() {
             format!("@echo off\r\necho ran> \"{}\"\r\n", marker.display()),
         )
         .unwrap();
-        let options = claude_agent_kit::ClaudeAgentOptions::builder()
+        let options = claude_agent_rust_sdk::ClaudeAgentOptions::builder()
             .cli_path(&script)
             .build()
             .unwrap();
@@ -625,7 +625,7 @@ async fn the_process_runs_as_the_requested_user() {
     let cli_path = directory.path().join("claude");
     std::fs::copy(fake_claude(), &cli_path).unwrap();
 
-    let options = claude_agent_kit::ClaudeAgentOptions::builder()
+    let options = claude_agent_rust_sdk::ClaudeAgentOptions::builder()
         .cli_path(&cli_path)
         .user(user)
         .build()
@@ -656,14 +656,14 @@ async fn the_process_runs_as_the_requested_user() {
 #[tokio::test]
 async fn an_unknown_user_fails_connect_and_nothing_is_spawned() {
     let options = stand_in_options()
-        .user("claude-agent-kit-no-such-user")
+        .user("claude-agent-rust-sdk-no-such-user")
         .build()
         .unwrap();
     let transport = SubprocessTransport::new(options);
     let message = connection_error(transport.connect().await.unwrap_err());
     assert_eq!(
         message,
-        "Failed to start Claude CLI: unknown user: claude-agent-kit-no-such-user"
+        "Failed to start Claude CLI: unknown user: claude-agent-rust-sdk-no-such-user"
     );
     assert_eq!(transport.process_id(), None);
     assert!(!transport.is_ready());
@@ -683,7 +683,7 @@ async fn the_user_option_is_refused_on_windows_and_nothing_is_spawned() {
     assert!(!transport.is_ready());
 }
 
-const CONSOLE_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_CONSOLE_HOST";
+const CONSOLE_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_CONSOLE_HOST";
 
 #[test]
 fn host_process_for_the_console_window_test() {
@@ -726,7 +726,7 @@ fn the_process_gets_no_console_window_even_when_its_parent_has_one() {
     assert!(stdout.contains("console-window=false"), "{stdout}");
 }
 
-const STDERR_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_STDERR_HOST_SCENARIO";
+const STDERR_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_STDERR_HOST_SCENARIO";
 const STDERR_MARKER: &str = "inherited-stderr-marker-5c1e";
 
 #[test]
@@ -866,7 +866,7 @@ async fn connect_is_silent_when_only_specifier_entries_are_allowed() {
 async fn query_warns_about_a_shadowed_permission_callback_before_connecting() {
     let (warnings, _guard) = Warnings::install();
     let directory = tempfile::tempdir().unwrap();
-    let options = with_permission_callback(claude_agent_kit::ClaudeAgentOptions::builder())
+    let options = with_permission_callback(claude_agent_rust_sdk::ClaudeAgentOptions::builder())
         .cli_path(directory.path().join("claude-is-not-here"))
         .allowed_tools(["Write"])
         .build()

@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, HookCallback, HookMatcher, HookOutput, Message,
     QueryStream,
 };

@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use claude_agent_kit::{Error, Message, SessionMessageType, get_session_messages};
+use claude_agent_rust_sdk::{Error, Message, SessionMessageType, get_session_messages};
 
 use crate::suite;
 

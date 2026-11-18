@@ -1,6 +1,6 @@
 # Parity
 
-This directory records how `claude-agent-kit` matches the Python SDK it ports, `claude-agent-sdk` at the commit pinned by the submodule `upstream/claude-agent-sdk-python`.
+This directory records how `claude-agent-rust-sdk` matches the Python SDK it ports, `claude-agent-sdk` at the commit pinned by the submodule `upstream/claude-agent-sdk-python`.
 
 | File | What it holds | Checked by |
 |---|---|---|
@@ -129,7 +129,7 @@ rust = "Kept as `Message::Unknown` with its raw JSON."
 ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
 category = "rust-more-robust"
 reason = "A newer CLI must not make an older program lose data."
-test = "crates/claude-agent-kit/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
 ```
 
 - `python` and `rust` are prose here: what each SDK does.

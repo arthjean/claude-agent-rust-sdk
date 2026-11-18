@@ -4,7 +4,7 @@ mod common;
 
 use std::collections::HashSet;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     Error, delete_session, fork_session, get_session_info, get_session_messages, list_sessions,
     rename_session, tag_session,
 };
@@ -129,7 +129,7 @@ fn a_transcript_whose_parent_directory_is_missing_counts_as_session_not_found() 
     }
 }
 
-const NO_PROJECTS_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_NO_PROJECTS_HOST";
+const NO_PROJECTS_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_NO_PROJECTS_HOST";
 
 #[test]
 fn host_process_for_the_missing_projects_directory_test() {

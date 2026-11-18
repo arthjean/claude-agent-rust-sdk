@@ -3,7 +3,7 @@
 
 mod common;
 
-use claude_agent_kit::{SdkMcpTool, ToolAnnotations, ToolResult, create_sdk_mcp_server, tool};
+use claude_agent_rust_sdk::{SdkMcpTool, ToolAnnotations, ToolResult, create_sdk_mcp_server, tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;

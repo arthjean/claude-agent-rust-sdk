@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, McpSdkServerConfig,
     McpSdkServerInstance, McpServerConfig, SdkMcpTool, SubprocessTransport, ToolAnnotations,
     ToolContent, ToolResult, create_sdk_mcp_server, query_with_transport,

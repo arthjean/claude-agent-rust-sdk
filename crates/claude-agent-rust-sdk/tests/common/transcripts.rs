@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
 
-use claude_agent_kit::project_key_for_directory;
+use claude_agent_rust_sdk::project_key_for_directory;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, InMemorySessionStore,
     Message, QueryStream, SessionKey, SessionListSubkeysKey, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
@@ -1149,9 +1149,10 @@ async fn a_query_over_a_custom_transport_never_reads_the_store_to_resume() {
         .resume(id.as_str())
         .build()
         .unwrap();
-    let transport = claude_agent_kit::testing::MockTransport::new();
+    let transport = claude_agent_rust_sdk::testing::MockTransport::new();
     transport.fail_connect("spawn failed");
-    let mut messages = claude_agent_kit::query_with_transport("hi", options, transport.clone());
+    let mut messages =
+        claude_agent_rust_sdk::query_with_transport("hi", options, transport.clone());
     let error = match messages.next().await {
         Some(Err(error)) => error,
         other => panic!("expected an error, got {other:?}"),
@@ -1502,10 +1503,10 @@ async fn a_dropped_query_stops_the_child_before_the_directory_is_removed() {
 /// default so it never reads the Keychain of a developer machine.
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "reads the macOS Keychain; set CLAUDE_AGENT_KIT_KEYCHAIN=1 and pass --ignored"]
+#[ignore = "reads the macOS Keychain; set CLAUDE_AGENT_RUST_SDK_KEYCHAIN=1 and pass --ignored"]
 async fn keychain_credentials_are_copied_without_the_refresh_token() {
-    if std::env::var("CLAUDE_AGENT_KIT_KEYCHAIN").as_deref() != Ok("1") {
-        eprintln!("CLAUDE_AGENT_KIT_KEYCHAIN is not 1: skipping");
+    if std::env::var("CLAUDE_AGENT_RUST_SDK_KEYCHAIN").as_deref() != Ok("1") {
+        eprintln!("CLAUDE_AGENT_RUST_SDK_KEYCHAIN is not 1: skipping");
         return;
     }
     let _serial = SERIAL.lock().await;

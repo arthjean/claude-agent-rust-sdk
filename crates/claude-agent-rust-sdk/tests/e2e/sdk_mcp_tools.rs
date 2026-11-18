@@ -1,6 +1,6 @@
 //! In-process MCP tools: execution and permission enforcement.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     McpSdkServerConfig, SdkMcpTool, SettingSource, ToolResult, create_sdk_mcp_server,
 };
 use schemars::JsonSchema;
@@ -44,7 +44,7 @@ fn server(name: &str, tools: impl IntoIterator<Item = SdkMcpTool>) -> McpSdkServ
     create_sdk_mcp_server(name, Some("1.0.0"), tools).unwrap()
 }
 
-async fn ask(options: claude_agent_kit::ClaudeAgentOptions, prompt: &str) {
+async fn ask(options: claude_agent_rust_sdk::ClaudeAgentOptions, prompt: &str) {
     let client = suite::connect(options).await;
     suite::turn(&client, prompt).await;
     client.disconnect().await.unwrap();

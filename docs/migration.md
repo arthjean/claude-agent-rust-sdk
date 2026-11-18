@@ -1,6 +1,6 @@
 # Migrating from the Python SDK
 
-`claude-agent-kit` is at parity with version 0.2.182 of the Python Claude Agent
+`claude-agent-rust-sdk` is at parity with version 0.2.182 of the Python Claude Agent
 SDK. Every name the Python package exports has a Rust counterpart, listed in the
 table at the end of this page. This guide covers what changes in shape when you
 move a program from Python to Rust. [`parity.md`](parity.md) lists every
@@ -171,163 +171,163 @@ shape, not only spelling.
 <!-- parity:table:begin -->
 | Python | Rust | Notes |
 |---|---|---|
-| `AgentDefinition` | `claude_agent_kit::AgentDefinition` |  |
-| `AssistantMessage` | `claude_agent_kit::AssistantMessage` |  |
-| `BackgroundTaskSummary` | `claude_agent_kit::BackgroundTaskSummary` |  |
-| `BaseHookInput` | `claude_agent_kit::HookInputBase` |  |
-| `CLIConnectionError` | `claude_agent_kit::Error::CliConnection` | Adapted: Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
-| `CLIJSONDecodeError` | `claude_agent_kit::Error::JsonDecode` | Adapted: Variant of `Error`. |
-| `CLINotFoundError` | `claude_agent_kit::Error::CliNotFound` | Adapted: Variant of `Error`. |
-| `CanUseTool` | `claude_agent_kit::CanUseTool` |  |
-| `CanUseToolShadowedWarning` | `claude_agent_kit::ClaudeAgentOptions::can_use_tool_shadowed_warning` | Adapted: Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect. |
-| `ClaudeAgentOptions` | `claude_agent_kit::ClaudeAgentOptions` |  |
-| `ClaudeSDKClient` | `claude_agent_kit::ClaudeSdkClient` |  |
-| `ClaudeSDKError` | `claude_agent_kit::Error` | One enum holds every error; match on its variants. |
-| `ContentBlock` | `claude_agent_kit::ContentBlock` |  |
-| `ContextUsageCategory` | `claude_agent_kit::ContextUsageCategory` |  |
-| `ContextUsageResponse` | `claude_agent_kit::ContextUsageResponse` | Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`. |
-| `ConversationResetMessage` | `claude_agent_kit::ConversationResetMessage` |  |
-| `CwdChangedHookSpecificOutput` | `claude_agent_kit::CwdChangedHookSpecificOutput` |  |
-| `DeferredToolUse` | `claude_agent_kit::DeferredToolUse` |  |
-| `EffortLevel` | `claude_agent_kit::EffortLevel` |  |
-| `ElicitationHookSpecificOutput` | `claude_agent_kit::ElicitationHookSpecificOutput` |  |
-| `ElicitationResultHookSpecificOutput` | `claude_agent_kit::ElicitationResultHookSpecificOutput` |  |
-| `FastModeDisabledReason` | `claude_agent_kit::FastModeDisabledReason` |  |
-| `FastModeState` | `claude_agent_kit::FastModeState` |  |
-| `FileChangedHookSpecificOutput` | `claude_agent_kit::FileChangedHookSpecificOutput` |  |
-| `ForkSessionResult` | `claude_agent_kit::ForkSessionResult` |  |
-| `HookCallback` | `claude_agent_kit::HookCallback` |  |
-| `HookContext` | `claude_agent_kit::HookContext` |  |
-| `HookEffort` | `claude_agent_kit::HookEffort` |  |
-| `HookEventMessage` | `claude_agent_kit::HookEventMessage` |  |
-| `HookInput` | `claude_agent_kit::HookInput` |  |
-| `HookJSONOutput` | `claude_agent_kit::HookOutput` |  |
-| `HookMatcher` | `claude_agent_kit::HookMatcher` |  |
-| `InMemorySessionStore` | `claude_agent_kit::InMemorySessionStore` |  |
-| `McpSdkServerConfig` | `claude_agent_kit::McpSdkServerConfig` |  |
-| `McpServerConfig` | `claude_agent_kit::McpServerConfig` |  |
-| `McpServerConnectionStatus` | `claude_agent_kit::McpServerConnectionStatus` |  |
-| `McpServerInfo` | `claude_agent_kit::McpServerInfo` |  |
-| `McpServerStatus` | `claude_agent_kit::McpServerStatus` |  |
-| `McpServerStatusConfig` | `claude_agent_kit::McpServerStatusConfig` | Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable. |
-| `McpStatusResponse` | `claude_agent_kit::McpStatusResponse` | Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`. |
-| `McpToolAnnotations` | `claude_agent_kit::McpToolAnnotations` |  |
-| `McpToolInfo` | `claude_agent_kit::McpToolInfo` |  |
-| `Message` | `claude_agent_kit::Message` |  |
-| `MessageDisplayHookSpecificOutput` | `claude_agent_kit::MessageDisplayHookSpecificOutput` |  |
-| `MessageOrigin` | `claude_agent_kit::MessageOrigin` |  |
-| `MessageOriginKind` | `claude_agent_kit::MessageOriginKind` |  |
-| `MirrorErrorMessage` | `claude_agent_kit::MirrorErrorMessage` |  |
-| `ModelUsage` | `claude_agent_kit::ModelUsage` | Typed struct where Python keeps the dictionary; keys it does not model are kept in `extra`, and an entry that is not an object is skipped. |
-| `NotificationHookInput` | `claude_agent_kit::NotificationHookInput` |  |
-| `NotificationHookSpecificOutput` | `claude_agent_kit::NotificationHookSpecificOutput` |  |
-| `PermissionDeniedHookSpecificOutput` | `claude_agent_kit::PermissionDeniedHookSpecificOutput` |  |
-| `PermissionMode` | `claude_agent_kit::PermissionMode` |  |
-| `PermissionRequestHookInput` | `claude_agent_kit::PermissionRequestHookInput` |  |
-| `PermissionRequestHookSpecificOutput` | `claude_agent_kit::PermissionRequestHookSpecificOutput` |  |
-| `PermissionResult` | `claude_agent_kit::PermissionResult` |  |
-| `PermissionResultAllow` | `claude_agent_kit::PermissionResult::Allow` | Adapted: Variant of `PermissionResult`. |
-| `PermissionResultDeny` | `claude_agent_kit::PermissionResult::Deny` | Adapted: Variant of `PermissionResult`. |
-| `PermissionUpdate` | `claude_agent_kit::PermissionUpdate` |  |
-| `PostModelSwitchHookSpecificOutput` | `claude_agent_kit::PostModelSwitchHookSpecificOutput` |  |
-| `PostToolBatchHookSpecificOutput` | `claude_agent_kit::PostToolBatchHookSpecificOutput` |  |
-| `PostToolUseFailureHookInput` | `claude_agent_kit::PostToolUseFailureHookInput` |  |
-| `PostToolUseFailureHookSpecificOutput` | `claude_agent_kit::PostToolUseFailureHookSpecificOutput` |  |
-| `PostToolUseHookInput` | `claude_agent_kit::PostToolUseHookInput` |  |
-| `PostToolUseHookSpecificOutput` | `claude_agent_kit::PostToolUseHookSpecificOutput` |  |
-| `PreCompactHookInput` | `claude_agent_kit::PreCompactHookInput` |  |
-| `PreModelSwitchHookSpecificOutput` | `claude_agent_kit::PreModelSwitchHookSpecificOutput` |  |
-| `PreToolUseHookInput` | `claude_agent_kit::PreToolUseHookInput` |  |
-| `PreToolUseHookSpecificOutput` | `claude_agent_kit::PreToolUseHookSpecificOutput` |  |
-| `ProcessError` | `claude_agent_kit::Error::Process` | Adapted: Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
-| `RateLimitEvent` | `claude_agent_kit::RateLimitEvent` |  |
-| `RateLimitInfo` | `claude_agent_kit::RateLimitInfo` |  |
-| `RateLimitStatus` | `claude_agent_kit::RateLimitStatus` |  |
-| `RateLimitType` | `claude_agent_kit::RateLimitType` |  |
-| `ResultError` | `claude_agent_kit::Error::ResultError` | Adapted: Variant of `Error`; its fields are in `ResultErrorData`. |
-| `ResultMessage` | `claude_agent_kit::ResultMessage` |  |
-| `SDKSessionInfo` | `claude_agent_kit::SdkSessionInfo` |  |
-| `SandboxIgnoreViolations` | `claude_agent_kit::SandboxIgnoreViolations` |  |
-| `SandboxNetworkConfig` | `claude_agent_kit::SandboxNetworkConfig` |  |
-| `SandboxSettings` | `claude_agent_kit::SandboxSettings` |  |
-| `SdkBeta` | `claude_agent_kit::SdkBeta` |  |
-| `SdkMcpTool` | `claude_agent_kit::SdkMcpTool` |  |
-| `SdkPluginConfig` | `claude_agent_kit::SdkPluginConfig` |  |
-| `ServerToolName` | `claude_agent_kit::ServerToolName` |  |
-| `ServerToolResultBlock` | `claude_agent_kit::ServerToolResultBlock` |  |
-| `ServerToolUseBlock` | `claude_agent_kit::ServerToolUseBlock` |  |
-| `SessionCronSummary` | `claude_agent_kit::SessionCronSummary` |  |
-| `SessionKey` | `claude_agent_kit::SessionKey` |  |
-| `SessionListSubkeysKey` | `claude_agent_kit::SessionListSubkeysKey` |  |
-| `SessionMessage` | `claude_agent_kit::SessionMessage` |  |
-| `SessionStartHookSpecificOutput` | `claude_agent_kit::SessionStartHookSpecificOutput` |  |
-| `SessionStore` | `claude_agent_kit::SessionStore` |  |
-| `SessionStoreEntry` | `claude_agent_kit::SessionStoreEntry` |  |
-| `SessionStoreFlushMode` | `claude_agent_kit::SessionStoreFlushMode` |  |
-| `SessionStoreListEntry` | `claude_agent_kit::SessionStoreListEntry` |  |
-| `SessionSummaryEntry` | `claude_agent_kit::SessionSummaryEntry` |  |
-| `SettingSource` | `claude_agent_kit::SettingSource` |  |
-| `StopHookInput` | `claude_agent_kit::StopHookInput` |  |
-| `StopHookSpecificOutput` | `claude_agent_kit::StopHookSpecificOutput` |  |
-| `StreamEvent` | `claude_agent_kit::StreamEvent` |  |
-| `SubagentStartHookInput` | `claude_agent_kit::SubagentStartHookInput` |  |
-| `SubagentStartHookSpecificOutput` | `claude_agent_kit::SubagentStartHookSpecificOutput` |  |
-| `SubagentStopHookInput` | `claude_agent_kit::SubagentStopHookInput` |  |
-| `SubagentStopHookSpecificOutput` | `claude_agent_kit::SubagentStopHookSpecificOutput` |  |
-| `SystemInitData` | `claude_agent_kit::SystemInitData` |  |
-| `SystemInitMcpServer` | `claude_agent_kit::SystemInitMcpServer` |  |
-| `SystemInitPlugin` | `claude_agent_kit::SystemInitPlugin` |  |
-| `SystemInitPluginError` | `claude_agent_kit::SystemInitPluginError` |  |
-| `SystemMessage` | `claude_agent_kit::SystemMessage` |  |
-| `TERMINAL_TASK_STATUSES` | `claude_agent_kit::TERMINAL_TASK_STATUSES` |  |
-| `TaskBudget` | `claude_agent_kit::TaskBudget` |  |
-| `TaskNotificationMessage` | `claude_agent_kit::TaskNotificationMessage` |  |
-| `TaskNotificationOriginSubkind` | `claude_agent_kit::TaskNotificationOriginSubkind` |  |
-| `TaskNotificationStatus` | `claude_agent_kit::TaskNotificationStatus` |  |
-| `TaskProgressMessage` | `claude_agent_kit::TaskProgressMessage` |  |
-| `TaskStartedMessage` | `claude_agent_kit::TaskStartedMessage` |  |
-| `TaskUpdatedMessage` | `claude_agent_kit::TaskUpdatedMessage` |  |
-| `TaskUpdatedStatus` | `claude_agent_kit::TaskUpdatedStatus` |  |
-| `TaskUsage` | `claude_agent_kit::TaskUsage` |  |
-| `TextBlock` | `claude_agent_kit::TextBlock` |  |
-| `ThinkingBlock` | `claude_agent_kit::ThinkingBlock` |  |
-| `ThinkingConfig` | `claude_agent_kit::ThinkingConfig` |  |
-| `ThinkingConfigAdaptive` | `claude_agent_kit::ThinkingConfig::Adaptive` | Adapted: Variant of `ThinkingConfig`. |
-| `ThinkingConfigDisabled` | `claude_agent_kit::ThinkingConfig::Disabled` | Adapted: Variant of `ThinkingConfig`. |
-| `ThinkingConfigEnabled` | `claude_agent_kit::ThinkingConfig::Enabled` | Adapted: Variant of `ThinkingConfig`. |
-| `ToolAnnotations` | `claude_agent_kit::ToolAnnotations` |  |
-| `ToolPermissionContext` | `claude_agent_kit::ToolPermissionContext` |  |
-| `ToolResultBlock` | `claude_agent_kit::ToolResultBlock` |  |
-| `ToolUseBlock` | `claude_agent_kit::ToolUseBlock` |  |
-| `Transport` | `claude_agent_kit::Transport` | A trait; `SubprocessTransport` is the implementation that runs the CLI. |
-| `UserMessage` | `claude_agent_kit::UserMessage` |  |
-| `UserPromptExpansionHookSpecificOutput` | `claude_agent_kit::UserPromptExpansionHookSpecificOutput` |  |
-| `UserPromptSubmitHookInput` | `claude_agent_kit::UserPromptSubmitHookInput` |  |
-| `UserPromptSubmitHookSpecificOutput` | `claude_agent_kit::UserPromptSubmitHookSpecificOutput` |  |
-| `WorktreeCreateHookSpecificOutput` | `claude_agent_kit::WorktreeCreateHookSpecificOutput` |  |
-| `__version__` | `claude_agent_kit::VERSION` |  |
-| `create_sdk_mcp_server` | `claude_agent_kit::create_sdk_mcp_server` |  |
-| `delete_session` | `claude_agent_kit::delete_session` |  |
-| `delete_session_via_store` | `claude_agent_kit::delete_session_via_store` |  |
-| `fold_session_summary` | `claude_agent_kit::fold_session_summary` |  |
-| `fork_session` | `claude_agent_kit::fork_session` |  |
-| `fork_session_via_store` | `claude_agent_kit::fork_session_via_store` |  |
-| `get_session_info` | `claude_agent_kit::get_session_info` |  |
-| `get_session_info_from_store` | `claude_agent_kit::get_session_info_from_store` |  |
-| `get_session_messages` | `claude_agent_kit::get_session_messages` |  |
-| `get_session_messages_from_store` | `claude_agent_kit::get_session_messages_from_store` |  |
-| `get_subagent_messages` | `claude_agent_kit::get_subagent_messages` |  |
-| `get_subagent_messages_from_store` | `claude_agent_kit::get_subagent_messages_from_store` |  |
-| `import_session_to_store` | `claude_agent_kit::import_session_to_store` |  |
-| `list_sessions` | `claude_agent_kit::list_sessions` |  |
-| `list_sessions_from_store` | `claude_agent_kit::list_sessions_from_store` |  |
-| `list_subagents` | `claude_agent_kit::list_subagents` |  |
-| `list_subagents_from_store` | `claude_agent_kit::list_subagents_from_store` |  |
-| `project_key_for_directory` | `claude_agent_kit::project_key_for_directory` |  |
-| `query` | `claude_agent_kit::query` | Returns a `Stream` of `Result<Message, Error>`. |
-| `rename_session` | `claude_agent_kit::rename_session` |  |
-| `rename_session_via_store` | `claude_agent_kit::rename_session_via_store` |  |
-| `tag_session` | `claude_agent_kit::tag_session` |  |
-| `tag_session_via_store` | `claude_agent_kit::tag_session_via_store` |  |
-| `tool` | `claude_agent_kit::tool` | Adapted: Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature. |
+| `AgentDefinition` | `claude_agent_rust_sdk::AgentDefinition` |  |
+| `AssistantMessage` | `claude_agent_rust_sdk::AssistantMessage` |  |
+| `BackgroundTaskSummary` | `claude_agent_rust_sdk::BackgroundTaskSummary` |  |
+| `BaseHookInput` | `claude_agent_rust_sdk::HookInputBase` |  |
+| `CLIConnectionError` | `claude_agent_rust_sdk::Error::CliConnection` | Adapted: Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
+| `CLIJSONDecodeError` | `claude_agent_rust_sdk::Error::JsonDecode` | Adapted: Variant of `Error`. |
+| `CLINotFoundError` | `claude_agent_rust_sdk::Error::CliNotFound` | Adapted: Variant of `Error`. |
+| `CanUseTool` | `claude_agent_rust_sdk::CanUseTool` |  |
+| `CanUseToolShadowedWarning` | `claude_agent_rust_sdk::ClaudeAgentOptions::can_use_tool_shadowed_warning` | Adapted: Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect. |
+| `ClaudeAgentOptions` | `claude_agent_rust_sdk::ClaudeAgentOptions` |  |
+| `ClaudeSDKClient` | `claude_agent_rust_sdk::ClaudeSdkClient` |  |
+| `ClaudeSDKError` | `claude_agent_rust_sdk::Error` | One enum holds every error; match on its variants. |
+| `ContentBlock` | `claude_agent_rust_sdk::ContentBlock` |  |
+| `ContextUsageCategory` | `claude_agent_rust_sdk::ContextUsageCategory` |  |
+| `ContextUsageResponse` | `claude_agent_rust_sdk::ContextUsageResponse` | Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`. |
+| `ConversationResetMessage` | `claude_agent_rust_sdk::ConversationResetMessage` |  |
+| `CwdChangedHookSpecificOutput` | `claude_agent_rust_sdk::CwdChangedHookSpecificOutput` |  |
+| `DeferredToolUse` | `claude_agent_rust_sdk::DeferredToolUse` |  |
+| `EffortLevel` | `claude_agent_rust_sdk::EffortLevel` |  |
+| `ElicitationHookSpecificOutput` | `claude_agent_rust_sdk::ElicitationHookSpecificOutput` |  |
+| `ElicitationResultHookSpecificOutput` | `claude_agent_rust_sdk::ElicitationResultHookSpecificOutput` |  |
+| `FastModeDisabledReason` | `claude_agent_rust_sdk::FastModeDisabledReason` |  |
+| `FastModeState` | `claude_agent_rust_sdk::FastModeState` |  |
+| `FileChangedHookSpecificOutput` | `claude_agent_rust_sdk::FileChangedHookSpecificOutput` |  |
+| `ForkSessionResult` | `claude_agent_rust_sdk::ForkSessionResult` |  |
+| `HookCallback` | `claude_agent_rust_sdk::HookCallback` |  |
+| `HookContext` | `claude_agent_rust_sdk::HookContext` |  |
+| `HookEffort` | `claude_agent_rust_sdk::HookEffort` |  |
+| `HookEventMessage` | `claude_agent_rust_sdk::HookEventMessage` |  |
+| `HookInput` | `claude_agent_rust_sdk::HookInput` |  |
+| `HookJSONOutput` | `claude_agent_rust_sdk::HookOutput` |  |
+| `HookMatcher` | `claude_agent_rust_sdk::HookMatcher` |  |
+| `InMemorySessionStore` | `claude_agent_rust_sdk::InMemorySessionStore` |  |
+| `McpSdkServerConfig` | `claude_agent_rust_sdk::McpSdkServerConfig` |  |
+| `McpServerConfig` | `claude_agent_rust_sdk::McpServerConfig` |  |
+| `McpServerConnectionStatus` | `claude_agent_rust_sdk::McpServerConnectionStatus` |  |
+| `McpServerInfo` | `claude_agent_rust_sdk::McpServerInfo` |  |
+| `McpServerStatus` | `claude_agent_rust_sdk::McpServerStatus` |  |
+| `McpServerStatusConfig` | `claude_agent_rust_sdk::McpServerStatusConfig` | Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable. |
+| `McpStatusResponse` | `claude_agent_rust_sdk::McpStatusResponse` | Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`. |
+| `McpToolAnnotations` | `claude_agent_rust_sdk::McpToolAnnotations` |  |
+| `McpToolInfo` | `claude_agent_rust_sdk::McpToolInfo` |  |
+| `Message` | `claude_agent_rust_sdk::Message` |  |
+| `MessageDisplayHookSpecificOutput` | `claude_agent_rust_sdk::MessageDisplayHookSpecificOutput` |  |
+| `MessageOrigin` | `claude_agent_rust_sdk::MessageOrigin` |  |
+| `MessageOriginKind` | `claude_agent_rust_sdk::MessageOriginKind` |  |
+| `MirrorErrorMessage` | `claude_agent_rust_sdk::MirrorErrorMessage` |  |
+| `ModelUsage` | `claude_agent_rust_sdk::ModelUsage` | Typed struct where Python keeps the dictionary; keys it does not model are kept in `extra`, and an entry that is not an object is skipped. |
+| `NotificationHookInput` | `claude_agent_rust_sdk::NotificationHookInput` |  |
+| `NotificationHookSpecificOutput` | `claude_agent_rust_sdk::NotificationHookSpecificOutput` |  |
+| `PermissionDeniedHookSpecificOutput` | `claude_agent_rust_sdk::PermissionDeniedHookSpecificOutput` |  |
+| `PermissionMode` | `claude_agent_rust_sdk::PermissionMode` |  |
+| `PermissionRequestHookInput` | `claude_agent_rust_sdk::PermissionRequestHookInput` |  |
+| `PermissionRequestHookSpecificOutput` | `claude_agent_rust_sdk::PermissionRequestHookSpecificOutput` |  |
+| `PermissionResult` | `claude_agent_rust_sdk::PermissionResult` |  |
+| `PermissionResultAllow` | `claude_agent_rust_sdk::PermissionResult::Allow` | Adapted: Variant of `PermissionResult`. |
+| `PermissionResultDeny` | `claude_agent_rust_sdk::PermissionResult::Deny` | Adapted: Variant of `PermissionResult`. |
+| `PermissionUpdate` | `claude_agent_rust_sdk::PermissionUpdate` |  |
+| `PostModelSwitchHookSpecificOutput` | `claude_agent_rust_sdk::PostModelSwitchHookSpecificOutput` |  |
+| `PostToolBatchHookSpecificOutput` | `claude_agent_rust_sdk::PostToolBatchHookSpecificOutput` |  |
+| `PostToolUseFailureHookInput` | `claude_agent_rust_sdk::PostToolUseFailureHookInput` |  |
+| `PostToolUseFailureHookSpecificOutput` | `claude_agent_rust_sdk::PostToolUseFailureHookSpecificOutput` |  |
+| `PostToolUseHookInput` | `claude_agent_rust_sdk::PostToolUseHookInput` |  |
+| `PostToolUseHookSpecificOutput` | `claude_agent_rust_sdk::PostToolUseHookSpecificOutput` |  |
+| `PreCompactHookInput` | `claude_agent_rust_sdk::PreCompactHookInput` |  |
+| `PreModelSwitchHookSpecificOutput` | `claude_agent_rust_sdk::PreModelSwitchHookSpecificOutput` |  |
+| `PreToolUseHookInput` | `claude_agent_rust_sdk::PreToolUseHookInput` |  |
+| `PreToolUseHookSpecificOutput` | `claude_agent_rust_sdk::PreToolUseHookSpecificOutput` |  |
+| `ProcessError` | `claude_agent_rust_sdk::Error::Process` | Adapted: Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
+| `RateLimitEvent` | `claude_agent_rust_sdk::RateLimitEvent` |  |
+| `RateLimitInfo` | `claude_agent_rust_sdk::RateLimitInfo` |  |
+| `RateLimitStatus` | `claude_agent_rust_sdk::RateLimitStatus` |  |
+| `RateLimitType` | `claude_agent_rust_sdk::RateLimitType` |  |
+| `ResultError` | `claude_agent_rust_sdk::Error::ResultError` | Adapted: Variant of `Error`; its fields are in `ResultErrorData`. |
+| `ResultMessage` | `claude_agent_rust_sdk::ResultMessage` |  |
+| `SDKSessionInfo` | `claude_agent_rust_sdk::SdkSessionInfo` |  |
+| `SandboxIgnoreViolations` | `claude_agent_rust_sdk::SandboxIgnoreViolations` |  |
+| `SandboxNetworkConfig` | `claude_agent_rust_sdk::SandboxNetworkConfig` |  |
+| `SandboxSettings` | `claude_agent_rust_sdk::SandboxSettings` |  |
+| `SdkBeta` | `claude_agent_rust_sdk::SdkBeta` |  |
+| `SdkMcpTool` | `claude_agent_rust_sdk::SdkMcpTool` |  |
+| `SdkPluginConfig` | `claude_agent_rust_sdk::SdkPluginConfig` |  |
+| `ServerToolName` | `claude_agent_rust_sdk::ServerToolName` |  |
+| `ServerToolResultBlock` | `claude_agent_rust_sdk::ServerToolResultBlock` |  |
+| `ServerToolUseBlock` | `claude_agent_rust_sdk::ServerToolUseBlock` |  |
+| `SessionCronSummary` | `claude_agent_rust_sdk::SessionCronSummary` |  |
+| `SessionKey` | `claude_agent_rust_sdk::SessionKey` |  |
+| `SessionListSubkeysKey` | `claude_agent_rust_sdk::SessionListSubkeysKey` |  |
+| `SessionMessage` | `claude_agent_rust_sdk::SessionMessage` |  |
+| `SessionStartHookSpecificOutput` | `claude_agent_rust_sdk::SessionStartHookSpecificOutput` |  |
+| `SessionStore` | `claude_agent_rust_sdk::SessionStore` |  |
+| `SessionStoreEntry` | `claude_agent_rust_sdk::SessionStoreEntry` |  |
+| `SessionStoreFlushMode` | `claude_agent_rust_sdk::SessionStoreFlushMode` |  |
+| `SessionStoreListEntry` | `claude_agent_rust_sdk::SessionStoreListEntry` |  |
+| `SessionSummaryEntry` | `claude_agent_rust_sdk::SessionSummaryEntry` |  |
+| `SettingSource` | `claude_agent_rust_sdk::SettingSource` |  |
+| `StopHookInput` | `claude_agent_rust_sdk::StopHookInput` |  |
+| `StopHookSpecificOutput` | `claude_agent_rust_sdk::StopHookSpecificOutput` |  |
+| `StreamEvent` | `claude_agent_rust_sdk::StreamEvent` |  |
+| `SubagentStartHookInput` | `claude_agent_rust_sdk::SubagentStartHookInput` |  |
+| `SubagentStartHookSpecificOutput` | `claude_agent_rust_sdk::SubagentStartHookSpecificOutput` |  |
+| `SubagentStopHookInput` | `claude_agent_rust_sdk::SubagentStopHookInput` |  |
+| `SubagentStopHookSpecificOutput` | `claude_agent_rust_sdk::SubagentStopHookSpecificOutput` |  |
+| `SystemInitData` | `claude_agent_rust_sdk::SystemInitData` |  |
+| `SystemInitMcpServer` | `claude_agent_rust_sdk::SystemInitMcpServer` |  |
+| `SystemInitPlugin` | `claude_agent_rust_sdk::SystemInitPlugin` |  |
+| `SystemInitPluginError` | `claude_agent_rust_sdk::SystemInitPluginError` |  |
+| `SystemMessage` | `claude_agent_rust_sdk::SystemMessage` |  |
+| `TERMINAL_TASK_STATUSES` | `claude_agent_rust_sdk::TERMINAL_TASK_STATUSES` |  |
+| `TaskBudget` | `claude_agent_rust_sdk::TaskBudget` |  |
+| `TaskNotificationMessage` | `claude_agent_rust_sdk::TaskNotificationMessage` |  |
+| `TaskNotificationOriginSubkind` | `claude_agent_rust_sdk::TaskNotificationOriginSubkind` |  |
+| `TaskNotificationStatus` | `claude_agent_rust_sdk::TaskNotificationStatus` |  |
+| `TaskProgressMessage` | `claude_agent_rust_sdk::TaskProgressMessage` |  |
+| `TaskStartedMessage` | `claude_agent_rust_sdk::TaskStartedMessage` |  |
+| `TaskUpdatedMessage` | `claude_agent_rust_sdk::TaskUpdatedMessage` |  |
+| `TaskUpdatedStatus` | `claude_agent_rust_sdk::TaskUpdatedStatus` |  |
+| `TaskUsage` | `claude_agent_rust_sdk::TaskUsage` |  |
+| `TextBlock` | `claude_agent_rust_sdk::TextBlock` |  |
+| `ThinkingBlock` | `claude_agent_rust_sdk::ThinkingBlock` |  |
+| `ThinkingConfig` | `claude_agent_rust_sdk::ThinkingConfig` |  |
+| `ThinkingConfigAdaptive` | `claude_agent_rust_sdk::ThinkingConfig::Adaptive` | Adapted: Variant of `ThinkingConfig`. |
+| `ThinkingConfigDisabled` | `claude_agent_rust_sdk::ThinkingConfig::Disabled` | Adapted: Variant of `ThinkingConfig`. |
+| `ThinkingConfigEnabled` | `claude_agent_rust_sdk::ThinkingConfig::Enabled` | Adapted: Variant of `ThinkingConfig`. |
+| `ToolAnnotations` | `claude_agent_rust_sdk::ToolAnnotations` |  |
+| `ToolPermissionContext` | `claude_agent_rust_sdk::ToolPermissionContext` |  |
+| `ToolResultBlock` | `claude_agent_rust_sdk::ToolResultBlock` |  |
+| `ToolUseBlock` | `claude_agent_rust_sdk::ToolUseBlock` |  |
+| `Transport` | `claude_agent_rust_sdk::Transport` | A trait; `SubprocessTransport` is the implementation that runs the CLI. |
+| `UserMessage` | `claude_agent_rust_sdk::UserMessage` |  |
+| `UserPromptExpansionHookSpecificOutput` | `claude_agent_rust_sdk::UserPromptExpansionHookSpecificOutput` |  |
+| `UserPromptSubmitHookInput` | `claude_agent_rust_sdk::UserPromptSubmitHookInput` |  |
+| `UserPromptSubmitHookSpecificOutput` | `claude_agent_rust_sdk::UserPromptSubmitHookSpecificOutput` |  |
+| `WorktreeCreateHookSpecificOutput` | `claude_agent_rust_sdk::WorktreeCreateHookSpecificOutput` |  |
+| `__version__` | `claude_agent_rust_sdk::VERSION` |  |
+| `create_sdk_mcp_server` | `claude_agent_rust_sdk::create_sdk_mcp_server` |  |
+| `delete_session` | `claude_agent_rust_sdk::delete_session` |  |
+| `delete_session_via_store` | `claude_agent_rust_sdk::delete_session_via_store` |  |
+| `fold_session_summary` | `claude_agent_rust_sdk::fold_session_summary` |  |
+| `fork_session` | `claude_agent_rust_sdk::fork_session` |  |
+| `fork_session_via_store` | `claude_agent_rust_sdk::fork_session_via_store` |  |
+| `get_session_info` | `claude_agent_rust_sdk::get_session_info` |  |
+| `get_session_info_from_store` | `claude_agent_rust_sdk::get_session_info_from_store` |  |
+| `get_session_messages` | `claude_agent_rust_sdk::get_session_messages` |  |
+| `get_session_messages_from_store` | `claude_agent_rust_sdk::get_session_messages_from_store` |  |
+| `get_subagent_messages` | `claude_agent_rust_sdk::get_subagent_messages` |  |
+| `get_subagent_messages_from_store` | `claude_agent_rust_sdk::get_subagent_messages_from_store` |  |
+| `import_session_to_store` | `claude_agent_rust_sdk::import_session_to_store` |  |
+| `list_sessions` | `claude_agent_rust_sdk::list_sessions` |  |
+| `list_sessions_from_store` | `claude_agent_rust_sdk::list_sessions_from_store` |  |
+| `list_subagents` | `claude_agent_rust_sdk::list_subagents` |  |
+| `list_subagents_from_store` | `claude_agent_rust_sdk::list_subagents_from_store` |  |
+| `project_key_for_directory` | `claude_agent_rust_sdk::project_key_for_directory` |  |
+| `query` | `claude_agent_rust_sdk::query` | Returns a `Stream` of `Result<Message, Error>`. |
+| `rename_session` | `claude_agent_rust_sdk::rename_session` |  |
+| `rename_session_via_store` | `claude_agent_rust_sdk::rename_session_via_store` |  |
+| `tag_session` | `claude_agent_rust_sdk::tag_session` |  |
+| `tag_session_via_store` | `claude_agent_rust_sdk::tag_session_via_store` |  |
+| `tool` | `claude_agent_rust_sdk::tool` | Adapted: Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature. |
 <!-- parity:table:end -->

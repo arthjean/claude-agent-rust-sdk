@@ -130,7 +130,7 @@ mod spawn_thread {
     use tokio::runtime::Handle;
     use tokio::sync::oneshot;
 
-    const THREAD_NAME: &str = "claude-agent-kit-spawn";
+    const THREAD_NAME: &str = "claude-agent-rust-sdk-spawn";
 
     type Request = (Command, Handle, oneshot::Sender<io::Result<Child>>);
 

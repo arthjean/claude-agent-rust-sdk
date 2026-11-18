@@ -3,7 +3,7 @@
 
 use std::process::Command;
 
-use claude_agent_kit::{ClaudeAgentOptions, ClaudeSdkClient, MINIMUM_CLI_VERSION};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, MINIMUM_CLI_VERSION};
 use futures_util::StreamExt;
 use serde_json::json;
 
@@ -21,7 +21,7 @@ const REAL_CLI_TEST: &str =
 fn missing_credentials_are_reported_by_naming_the_variable() {
     let message = credentials_error(|_| None).unwrap();
     assert!(message.starts_with("ANTHROPIC_API_KEY environment variable is required"));
-    assert!(message.contains("CLAUDE_AGENT_KIT_E2E_AUTH=cli"));
+    assert!(message.contains("CLAUDE_AGENT_RUST_SDK_E2E_AUTH=cli"));
 
     let empty = |name: &str| (name == CREDENTIALS_VARIABLE).then(String::new);
     assert!(credentials_error(empty).is_some());

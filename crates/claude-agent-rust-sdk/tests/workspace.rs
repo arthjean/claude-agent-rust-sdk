@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use claude_agent_kit::{CLI_VERSION, MINIMUM_CLI_VERSION, UPSTREAM_SDK_VERSION};
+use claude_agent_rust_sdk::{CLI_VERSION, MINIMUM_CLI_VERSION, UPSTREAM_SDK_VERSION};
 
 const UPSTREAM_COMMIT: &str = "4720d367f7db9d5df8a166c74d7f36a538ac8c34";
 const UPSTREAM_PATH: &str = "upstream/claude-agent-sdk-python";
@@ -27,12 +27,147 @@ fn compact(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// The files git tracks, as paths relative to the repository root, or `None`
+/// outside a git checkout.
+fn tracked_files() -> Option<Vec<String>> {
+    let root = workspace_root();
+    if !root.join(".git").exists() {
+        return None;
+    }
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
+        .output()
+        .ok()?;
+    assert!(output.status.success());
+    let listing = String::from_utf8(output.stdout).unwrap();
+    Some(
+        listing
+            .split('\0')
+            .filter(|path| !path.is_empty() && root.join(path).is_file())
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
+/// The tracked files that are text, each with its content.
+fn tracked_texts() -> Option<Vec<(String, String)>> {
+    let files = tracked_files()?
+        .into_iter()
+        .filter_map(|path| {
+            let text = std::fs::read_to_string(workspace_root().join(&path)).ok()?;
+            Some((path, text))
+        })
+        .collect();
+    Some(files)
+}
+
+/// Dated records and closed PRDs keep the names and the license of their day.
+const DATED_RECORDS: [&str; 4] = ["docs/research/", "docs/validation/", "tasks/", "upstream/"];
+
+/// The occurrences of the former crate name, in its three spellings, in
+/// `files`: one `path:line` per hit, the path itself included.
+fn former_name_hits(files: &[(String, String)]) -> Vec<String> {
+    let former = ["claude-agent", "kit"].join("-");
+    let spellings = [
+        former.clone(),
+        former.replace('-', "_"),
+        former.replace('-', "_").to_uppercase(),
+    ];
+    let mut hits = Vec::new();
+    for (path, text) in files {
+        if DATED_RECORDS.iter().any(|record| path.starts_with(record)) {
+            continue;
+        }
+        if spellings.iter().any(|spelling| path.contains(spelling)) {
+            hits.push(path.clone());
+        }
+        for (number, line) in text.lines().enumerate() {
+            if spellings.iter().any(|spelling| line.contains(spelling)) {
+                hits.push(format!("{path}:{}", number + 1));
+            }
+        }
+    }
+    hits
+}
+
+#[test]
+fn no_tracked_file_outside_dated_records_holds_the_former_crate_name() {
+    let Some(files) = tracked_texts() else {
+        return;
+    };
+    assert!(files.len() > 100, "{} files read", files.len());
+    let hits = former_name_hits(&files);
+    assert!(
+        hits.is_empty(),
+        "the former crate name remains in {hits:#?}"
+    );
+}
+
+#[test]
+fn the_former_name_check_reports_each_spelling_and_spares_dated_records() {
+    let former = ["claude-agent", "kit"].join("-");
+    let snake = former.replace('-', "_");
+    let files = vec![
+        (
+            "README.md".to_owned(),
+            format!("first\ncargo add {former}\n"),
+        ),
+        ("src/lib.rs".to_owned(), format!("use {snake}::query;\n")),
+        (
+            "ci.yml".to_owned(),
+            format!("{}_E2E_AUTH: cli\n", snake.to_uppercase()),
+        ),
+        (
+            format!("crates/{former}/Cargo.toml"),
+            "[package]\n".to_owned(),
+        ),
+        ("docs/research/old.md".to_owned(), format!("{former}\n")),
+        ("tasks/prd.md".to_owned(), format!("{snake}\n")),
+        (
+            "docs/guide.md".to_owned(),
+            "claude-agent-rust-sdk\n".to_owned(),
+        ),
+    ];
+    assert_eq!(
+        former_name_hits(&files),
+        [
+            "README.md:2".to_owned(),
+            "src/lib.rs:1".to_owned(),
+            "ci.yml:1".to_owned(),
+            format!("crates/{former}/Cargo.toml"),
+        ]
+    );
+}
+
+#[test]
+fn the_entrypoint_label_and_the_run_time_names_follow_the_crate_name() {
+    let environment = read("crates/claude-agent-rust-sdk/src/transport/environment.rs");
+    assert!(environment.contains("const ENTRYPOINT: &str = \"sdk-rs\";"));
+    let cli = read("crates/claude-agent-rust-sdk/src/cli.rs");
+    assert!(cli.contains("const MANAGED_DIR_NAME: &str = \"claude-agent-rust-sdk\";"));
+    let process = read("crates/claude-agent-rust-sdk/src/process/mod.rs");
+    assert!(process.contains("const THREAD_NAME: &str = \"claude-agent-rust-sdk-spawn\";"));
+    let manifest = read("crates/claude-agent-rust-sdk/Cargo.toml");
+    assert!(
+        !manifest.contains("[lib]"),
+        "the library name follows the package name"
+    );
+}
+
 #[test]
 fn workspace_has_its_five_members() {
     let manifest = read("Cargo.toml");
     for member in [
-        "crates/claude-agent-kit",
-        "crates/claude-agent-kit-macros",
+        "crates/claude-agent-rust-sdk",
+        "crates/claude-agent-rust-sdk-macros",
         "crates/fake-claude",
         "crates/parity-driver",
         "xtask",
@@ -41,12 +176,12 @@ fn workspace_has_its_five_members() {
         assert!(workspace_root().join(member).join("Cargo.toml").is_file());
     }
 
-    let library = read("crates/claude-agent-kit/Cargo.toml");
-    assert!(library.contains("name = \"claude-agent-kit\""));
+    let library = read("crates/claude-agent-rust-sdk/Cargo.toml");
+    assert!(library.contains("name = \"claude-agent-rust-sdk\""));
     assert!(!library.contains("publish = false"));
 
-    let macros = read("crates/claude-agent-kit-macros/Cargo.toml");
-    assert!(macros.contains("name = \"claude-agent-kit-macros\""));
+    let macros = read("crates/claude-agent-rust-sdk-macros/Cargo.toml");
+    assert!(macros.contains("name = \"claude-agent-rust-sdk-macros\""));
     assert!(macros.contains("proc-macro = true"));
 
     for (path, name) in [
@@ -68,7 +203,7 @@ fn root_manifest_sets_toolchain_license_and_lint_policy() {
     for setting in [
         "rust-version = \"1.88\"",
         "edition = \"2024\"",
-        "license = \"GPL-3.0-or-later\"",
+        "license = \"MIT OR Apache-2.0\"",
         "[workspace.lints.clippy]",
         "panic = \"deny\"",
         "unimplemented = \"deny\"",
@@ -81,8 +216,8 @@ fn root_manifest_sets_toolchain_license_and_lint_policy() {
     }
 
     for member in [
-        "crates/claude-agent-kit",
-        "crates/claude-agent-kit-macros",
+        "crates/claude-agent-rust-sdk",
+        "crates/claude-agent-rust-sdk-macros",
         "crates/fake-claude",
         "crates/parity-driver",
         "xtask",
@@ -96,6 +231,233 @@ fn root_manifest_sets_toolchain_license_and_lint_policy() {
             "{member}"
         );
     }
+}
+
+/// The version every member inherits from `[workspace.package]`.
+fn workspace_version() -> String {
+    let manifest = read("Cargo.toml");
+    let package = manifest
+        .split("[workspace.package]")
+        .nth(1)
+        .expect("the root manifest has no [workspace.package]");
+    let version = package
+        .lines()
+        .find_map(|line| line.strip_prefix("version = \""))
+        .and_then(|rest| rest.split('"').next())
+        .expect("the workspace has no version");
+    version.to_owned()
+}
+
+/// The quoted strings of the array `key` in `manifest`.
+fn manifest_list(manifest: &str, key: &str) -> Vec<String> {
+    let list = manifest
+        .split(&format!("\n{key} = ["))
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .unwrap_or_else(|| panic!("the manifest has no `{key}` list"));
+    list.split(',')
+        .map(|entry| entry.trim().trim_matches('"').to_owned())
+        .filter(|entry| !entry.is_empty())
+        .collect()
+}
+
+const REPOSITORY: &str = "https://github.com/arthjean/claude-agent-rust-sdk";
+const LIBRARY: &str = "crates/claude-agent-rust-sdk";
+const MACROS: &str = "crates/claude-agent-rust-sdk-macros";
+
+#[test]
+fn published_manifests_carry_the_registry_metadata() {
+    let root = compact(&read("Cargo.toml"));
+    for setting in [
+        "repository = \"https://github.com/arthjean/claude-agent-rust-sdk\"",
+        "homepage = \"https://github.com/arthjean/claude-agent-rust-sdk\"",
+    ] {
+        assert!(root.contains(setting), "{setting}");
+    }
+    let categories = [
+        "api-bindings",
+        "asynchronous",
+        "development-tools::procedural-macro-helpers",
+    ];
+    for (member, name, readme) in [
+        (LIBRARY, "claude-agent-rust-sdk", "../../README.md"),
+        (MACROS, "claude-agent-rust-sdk-macros", "README.md"),
+    ] {
+        let manifest = read(&format!("{member}/Cargo.toml"));
+        for setting in [
+            "\ndescription = \"".to_owned(),
+            "\nlicense.workspace = true\n".to_owned(),
+            "\nrepository.workspace = true\n".to_owned(),
+            "\nhomepage.workspace = true\n".to_owned(),
+            format!("\ndocumentation = \"https://docs.rs/{name}\"\n"),
+            format!("\nreadme = \"{readme}\"\n"),
+        ] {
+            assert!(manifest.contains(&setting), "{member}: {setting}");
+        }
+        assert!(!manifest.contains("publish = false"), "{member}");
+        let keywords = manifest_list(&manifest, "keywords");
+        assert!((1..=5).contains(&keywords.len()), "{member}: {keywords:?}");
+        let declared = manifest_list(&manifest, "categories");
+        assert!((1..=5).contains(&declared.len()), "{member}: {declared:?}");
+        for category in &declared {
+            assert!(
+                categories.contains(&category.as_str()),
+                "{member}: {category}"
+            );
+        }
+    }
+
+    let readme = read(&format!("{MACROS}/README.md"));
+    assert!(
+        compact(&readme)
+            .contains("It is used through the `macros` feature of `claude-agent-rust-sdk`")
+    );
+}
+
+#[test]
+fn the_library_requires_the_macros_crate_at_the_exact_workspace_version() {
+    let manifest = read(&format!("{LIBRARY}/Cargo.toml"));
+    let requirement = format!(
+        "claude-agent-rust-sdk-macros = {{ path = \"../claude-agent-rust-sdk-macros\", \
+         version = \"={}\", optional = true }}",
+        workspace_version()
+    );
+    assert!(manifest.contains(&requirement), "{requirement}");
+}
+
+#[test]
+fn published_crates_hold_copies_of_the_license_files_identical_to_the_root() {
+    for (member, files) in [
+        (
+            LIBRARY,
+            &["LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES"][..],
+        ),
+        (MACROS, &["LICENSE-MIT", "LICENSE-APACHE"][..]),
+    ] {
+        for file in files {
+            assert_eq!(
+                read(&format!("{member}/{file}")),
+                read(file),
+                "{member}/{file} differs from the file at the repository root"
+            );
+        }
+    }
+}
+
+#[test]
+fn published_crates_declare_what_they_package_and_package_no_test() {
+    assert_eq!(
+        manifest_list(&read(&format!("{LIBRARY}/Cargo.toml")), "include"),
+        [
+            "/README.md",
+            "/LICENSE-MIT",
+            "/LICENSE-APACHE",
+            "/THIRD_PARTY_NOTICES",
+            "/src/**",
+            "/examples/**",
+        ]
+    );
+    assert_eq!(
+        manifest_list(&read(&format!("{MACROS}/Cargo.toml")), "include"),
+        ["/README.md", "/LICENSE-MIT", "/LICENSE-APACHE", "/src/**"]
+    );
+    for member in [LIBRARY, MACROS] {
+        assert!(!read(&format!("{member}/Cargo.toml")).contains("\nexclude = "));
+    }
+    assert!(read(".gitignore").lines().any(|line| line == "*.profraw"));
+}
+
+/// The `#[path]` attributes of `text` whose target leaves the directory of
+/// the file, each as its line number.
+fn paths_leaving_the_directory(text: &str) -> Vec<usize> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| {
+            let code = line.trim_start();
+            code.starts_with("#[path") && code.contains("..")
+        })
+        .map(|(number, _)| number + 1)
+        .collect()
+}
+
+#[test]
+fn no_published_source_reaches_a_file_outside_its_package() {
+    for member in [LIBRARY, MACROS] {
+        let mut sources = Vec::new();
+        rust_sources(&workspace_root().join(member).join("src"), &mut sources);
+        assert!(!sources.is_empty());
+        for source in sources {
+            let text = std::fs::read_to_string(&source).unwrap();
+            let leaving = paths_leaving_the_directory(&text);
+            assert!(leaving.is_empty(), "{}:{leaving:?}", source.display());
+        }
+    }
+    assert_eq!(
+        paths_leaving_the_directory("mod a;\n#[path = \"../tests/common/capture.rs\"]\nmod b;\n"),
+        [2]
+    );
+    assert!(
+        workspace_root()
+            .join(LIBRARY)
+            .join("src/test_capture.rs")
+            .is_file()
+    );
+    let common = read(&format!("{LIBRARY}/tests/common/mod.rs"));
+    assert!(common.contains("#[path = \"../../src/test_capture.rs\"]\npub mod capture;"));
+}
+
+#[test]
+fn docs_rs_builds_every_feature_and_shows_which_feature_gates_an_item() {
+    let manifest = compact(&read(&format!("{LIBRARY}/Cargo.toml")));
+    assert!(manifest.contains(
+        "[package.metadata.docs.rs] all-features = true rustdoc-args = [\"--cfg\", \"docsrs\"]"
+    ));
+    let library = read(&format!("{LIBRARY}/src/lib.rs"));
+    assert!(library.contains("#![cfg_attr(docsrs, feature(doc_cfg))]"));
+    assert!(
+        !library.contains("#![feature("),
+        "an unconditional feature breaks stable"
+    );
+}
+
+/// The members of the workspace that could be published: those whose
+/// manifest lacks `publish = false`.
+fn publishable(members: &[(String, String)]) -> Vec<&str> {
+    members
+        .iter()
+        .filter(|(_, manifest)| {
+            !manifest
+                .lines()
+                .any(|line| line.trim() == "publish = false")
+        })
+        .map(|(member, _)| member.as_str())
+        .collect()
+}
+
+#[test]
+fn only_the_library_and_its_macros_are_publishable() {
+    let root = read("Cargo.toml");
+    let members: Vec<(String, String)> = manifest_list(&root, "members")
+        .into_iter()
+        .map(|member| {
+            let manifest = read(&format!("{member}/Cargo.toml"));
+            (member, manifest)
+        })
+        .collect();
+    assert_eq!(members.len(), 5);
+    assert_eq!(publishable(&members), [LIBRARY, MACROS]);
+
+    let opened = vec![
+        (
+            "xtask".to_owned(),
+            "[package]\nname = \"xtask\"\n".to_owned(),
+        ),
+        (
+            "crates/fake-claude".to_owned(),
+            "[package]\npublish = false\n".to_owned(),
+        ),
+    ];
+    assert_eq!(publishable(&opened), ["xtask"]);
 }
 
 #[test]
@@ -112,7 +474,7 @@ fn clippy_config_exempts_tests() {
 
 #[test]
 fn library_denies_missing_docs_and_unsafe_code() {
-    let library = read("crates/claude-agent-kit/src/lib.rs");
+    let library = read("crates/claude-agent-rust-sdk/src/lib.rs");
     assert!(library.contains("#![deny(missing_docs)]"));
     assert!(library.contains("#![deny(unsafe_code)]"));
 }
@@ -130,7 +492,7 @@ fn rust_sources(directory: &Path, found: &mut Vec<PathBuf>) {
 
 #[test]
 fn unsafe_code_is_confined_to_the_process_sys_module() {
-    let source_root = workspace_root().join("crates/claude-agent-kit/src");
+    let source_root = workspace_root().join("crates/claude-agent-rust-sdk/src");
     let sys_module = source_root.join("process").join("sys.rs");
     let mut sources = Vec::new();
     rust_sources(&source_root, &mut sources);
@@ -154,7 +516,7 @@ fn unsafe_code_is_confined_to_the_process_sys_module() {
 fn library_sources_carry_no_implementation_comments() {
     let mut sources = Vec::new();
     rust_sources(
-        &workspace_root().join("crates/claude-agent-kit/src"),
+        &workspace_root().join("crates/claude-agent-rust-sdk/src"),
         &mut sources,
     );
     rust_sources(
@@ -177,31 +539,159 @@ fn library_sources_carry_no_implementation_comments() {
 }
 
 #[test]
-fn readme_states_who_authenticates_the_affiliation_and_the_license_consequence() {
+fn readme_states_who_authenticates_the_affiliation_and_the_two_licenses() {
     let readme = compact(&read("README.md").replace("\n> ", " "));
     for statement in [
         "End users authenticate with their own credentials.",
         "This is not an Anthropic product.",
         "It is not affiliated with, endorsed by, or supported by Anthropic.",
-        "GNU General Public License, version 3 or later (GPL-3.0-or-later)",
-        "If you distribute a program that links `claude-agent-kit`, you must release that \
-         program under the GPL-3.0-or-later or a license compatible with it",
+        "`claude-agent-rust-sdk` is licensed under either of the [MIT license]({REPOSITORY}/blob/main/LICENSE-MIT) or the [Apache License, Version \
+         2.0]({REPOSITORY}/blob/main/LICENSE-APACHE), at your option.",
+        "Unless you explicitly state otherwise, any contribution intentionally submitted for \
+         inclusion in this crate by you, as defined in the Apache-2.0 license, shall be dual \
+         licensed as above, without any additional terms or conditions.",
+        "The crate is derived from the Python Claude Agent SDK, which is MIT licensed. Its \
+         notice is reproduced in \
+         [`THIRD_PARTY_NOTICES`]({REPOSITORY}/blob/main/THIRD_PARTY_NOTICES).",
     ] {
-        assert!(readme.contains(statement), "{statement}");
+        let statement = statement.replace("{REPOSITORY}", REPOSITORY);
+        assert!(readme.contains(&statement), "{statement}");
     }
     assert!(readme.contains(&format!("tested against {CLI_VERSION}")));
     assert!(readme.contains(&format!("at parity with version {UPSTREAM_SDK_VERSION}")));
 
-    let library = read("crates/claude-agent-kit/src/lib.rs");
+    let library = read("crates/claude-agent-rust-sdk/src/lib.rs");
     assert!(library.contains("#[doc = include_str!(\"../../../README.md\")]"));
-    let manifest = read("crates/claude-agent-kit/Cargo.toml");
+    let manifest = read("crates/claude-agent-rust-sdk/Cargo.toml");
     assert!(manifest.contains("readme = \"../../README.md\""));
+}
+
+/// The `major.minor` requirement the README snippet gives for the library.
+fn readme_requirement(readme: &str) -> Option<&str> {
+    readme
+        .lines()
+        .find_map(|line| line.strip_prefix("claude-agent-rust-sdk = \""))
+        .and_then(|rest| rest.split('"').next())
+}
+
+#[test]
+fn readme_installs_from_the_registry_at_the_workspace_minor_version() {
+    let readme = read("README.md");
+    let installation = readme
+        .split("\n## Installation\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .expect("the README has no Installation section");
+    assert!(installation.contains("\ncargo add claude-agent-rust-sdk\n"));
+    assert!(!installation.contains("git ="), "{installation}");
+    assert!(!readme.contains("not published on crates.io"));
+
+    let version = workspace_version();
+    let mut parts = version.split('.');
+    let minor = format!("{}.{}", parts.next().unwrap(), parts.next().unwrap());
+    assert_eq!(readme_requirement(installation), Some(minor.as_str()));
+    let macros = read(&format!("{MACROS}/README.md"));
+    assert!(macros.contains(&format!("claude-agent-rust-sdk = {{ version = \"{minor}\"")));
+
+    assert_eq!(
+        readme_requirement("[dependencies]\nclaude-agent-rust-sdk = \"7.3\"\ntokio = \"1\"\n"),
+        Some("7.3")
+    );
+    assert_ne!(
+        readme_requirement("claude-agent-rust-sdk = \"7.3\"\n"),
+        Some(minor.as_str())
+    );
+}
+
+/// The link targets of `markdown` that are not absolute `https` URLs: a
+/// registry page has no repository to resolve them against.
+fn relative_link_targets(markdown: &str) -> Vec<&str> {
+    markdown
+        .split("](")
+        .skip(1)
+        .filter_map(|rest| rest.split(')').next())
+        .filter(|target| !target.starts_with("https://"))
+        .collect()
+}
+
+#[test]
+fn readme_opens_with_badges_and_links_only_absolute_urls() {
+    let readme = read("README.md");
+    let opening: Vec<&str> = readme.lines().take(5).collect();
+    assert_eq!(
+        opening,
+        [
+            "# claude-agent-rust-sdk",
+            "",
+            "[![crates.io](https://img.shields.io/crates/v/claude-agent-rust-sdk.svg)](https://crates.io/crates/claude-agent-rust-sdk)",
+            "[![docs.rs](https://docs.rs/claude-agent-rust-sdk/badge.svg)](https://docs.rs/claude-agent-rust-sdk)",
+            &format!(
+                "[![CI]({REPOSITORY}/actions/workflows/ci.yml/badge.svg?branch=main)]({REPOSITORY}/actions/workflows/ci.yml)"
+            ),
+        ]
+    );
+
+    for file in ["README.md", "crates/claude-agent-rust-sdk-macros/README.md"] {
+        let text = read(file);
+        let relative = relative_link_targets(&text);
+        assert!(relative.is_empty(), "{file} links {relative:?} relatively");
+        let repository_links = text.matches("](https://github.com/").count();
+        let own_links = text.matches(&format!("]({REPOSITORY}/")).count();
+        assert_eq!(repository_links, own_links, "{file}");
+    }
+    for path in [
+        "docs/migration.md",
+        "docs/parity.md",
+        "parity/README.md",
+        "LICENSE-MIT",
+    ] {
+        assert!(
+            readme.contains(&format!("]({REPOSITORY}/blob/main/{path})")),
+            "{path}"
+        );
+        assert!(workspace_root().join(path).is_file(), "{path}");
+    }
+
+    assert_eq!(
+        relative_link_targets(
+            "[a](https://example.com/a) [guide](docs/guide.md) ![logo](./logo.png) [top](#top)"
+        ),
+        ["docs/guide.md", "./logo.png", "#top"]
+    );
+}
+
+#[test]
+fn readme_and_crate_docs_state_the_compatibility_promise() {
+    let readme = read("README.md");
+    let section = readme
+        .split("\n## Versioning and compatibility\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .expect("the README has no Versioning and compatibility section");
+    let section = compact(section);
+    for statement in [
+        "In `0.y.z`, a change of the minor version `y` may break your build.",
+        "A patch release (a change of `z`) never does.",
+        "Raising the minimum supported Rust version, 1.88 today, is a minor change.",
+        "The `testing` feature is outside the compatibility promise",
+        "Each release states the version of the Python SDK and of the CLI it matches.",
+        &format!("[`CHANGELOG.md`]({REPOSITORY}/blob/main/CHANGELOG.md)"),
+    ] {
+        assert!(section.contains(statement), "{statement}");
+    }
+    assert!(compact(&read("Cargo.toml")).contains("rust-version = \"1.88\""));
+
+    let library = compact(&read("crates/claude-agent-rust-sdk/src/lib.rs"));
+    assert!(library.contains(
+        "//! - `testing`: the `testing` module, with a scriptable transport for tests. //! It is \
+         outside the compatibility promise"
+    ));
 }
 
 #[test]
 fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
-    let library = read("crates/claude-agent-kit/src/lib.rs");
-    let manifest = read("crates/claude-agent-kit/Cargo.toml");
+    let library = read("crates/claude-agent-rust-sdk/src/lib.rs");
+    let manifest = read("crates/claude-agent-rust-sdk/Cargo.toml");
     let features = manifest
         .split("[features]")
         .nth(1)
@@ -263,45 +753,151 @@ fn every_example_of_the_readme_exists() {
     assert_eq!(named.len(), 12, "{named:?}");
     for example in named {
         let file = workspace_root()
-            .join("crates/claude-agent-kit/examples")
+            .join("crates/claude-agent-rust-sdk/examples")
             .join(format!("{example}.rs"));
         assert!(file.is_file(), "{} is missing", file.display());
     }
 }
 
 #[test]
-fn license_is_gpl_version_3_and_upstream_notice_is_preserved() {
-    let license = read("LICENSE");
-    assert!(license.starts_with("GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007"));
-    assert!(license.contains("TERMS AND CONDITIONS"));
-    assert!(license.contains("END OF TERMS AND CONDITIONS"));
+fn the_project_is_dual_licensed_and_the_upstream_notice_is_preserved() {
+    let mit = read("LICENSE-MIT");
+    assert!(mit.starts_with("MIT License\n\nCopyright (c) 2026 Arthur Jean\n\nPermission is"));
+    assert!(mit.contains("THE SOFTWARE IS PROVIDED \"AS IS\""));
+
+    let apache = read("LICENSE-APACHE");
+    assert!(
+        apache.contains("Apache License\n                           Version 2.0, January 2004")
+    );
+    assert!(apache.contains("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"));
+    assert!(apache.contains("END OF TERMS AND CONDITIONS"));
+    assert!(apache.contains("Copyright [yyyy] [name of copyright owner]"));
+    assert_eq!(apache.lines().count(), 202, "the Apache text is edited");
+    assert!(!workspace_root().join("LICENSE").exists());
 
     let notices = read("THIRD_PARTY_NOTICES");
+    assert!(compact(&notices).contains(
+        "This project is licensed under either of the MIT license (see LICENSE-MIT) or the \
+         Apache License, Version 2.0 (see LICENSE-APACHE), at your option."
+    ));
     assert!(notices.contains("claude-agent-sdk-python"));
-    assert!(notices.contains(UPSTREAM_COMMIT));
-    assert!(notices.contains("MIT License"));
-    assert!(notices.contains("Copyright (c) 2025 Anthropic, PBC"));
+    assert!(notices.contains(&format!("{UPSTREAM_COMMIT} (v{UPSTREAM_SDK_VERSION})")));
+    assert!(notices.contains("MIT License\n\nCopyright (c) 2025 Anthropic, PBC\n"));
     assert!(notices.contains(
         "The above copyright notice and this permission notice shall be included in all\n\
          copies or substantial portions of the Software."
     ));
     assert!(notices.contains("THE SOFTWARE IS PROVIDED \"AS IS\""));
+
+    let upstream = workspace_root().join(UPSTREAM_PATH).join("LICENSE");
+    if let Ok(license) = std::fs::read_to_string(upstream) {
+        let license = license.replace("\r\n", "\n");
+        assert!(
+            notices.contains(license.trim()),
+            "the upstream notice is not reproduced word for word"
+        );
+    }
+}
+
+/// The identifiers of the `allow` list of `deny.toml`.
+fn allowed_licenses(policy: &str) -> Vec<String> {
+    let list = policy
+        .split("allow = [")
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .expect("deny.toml has no allow list");
+    list.split(',')
+        .map(|entry| entry.trim().trim_matches('"').to_owned())
+        .filter(|entry| !entry.is_empty())
+        .collect()
+}
+
+/// The allowed identifiers of a copyleft or source-available family, which a
+/// permissively licensed crate cannot depend on.
+fn restrictive_licenses(allowed: &[String]) -> Vec<&str> {
+    allowed
+        .iter()
+        .map(String::as_str)
+        .filter(|identifier| {
+            ["GPL", "AGPL", "LGPL", "SSPL", "BUSL"]
+                .iter()
+                .any(|family| identifier.starts_with(family))
+        })
+        .collect()
 }
 
 #[test]
 fn license_allow_list_is_enforced_in_ci() {
     let policy = read("deny.toml");
     assert!(policy.contains("[licenses]"));
-    assert!(policy.contains("\"GPL-3.0-or-later\""));
-    assert!(policy.contains("\"MIT\""));
-    assert!(policy.contains("\"Apache-2.0\""));
-    for incompatible in ["GPL-2.0-only", "AGPL", "SSPL", "BUSL", "CC-BY-NC"] {
-        assert!(!policy.contains(incompatible), "{incompatible}");
-    }
+    let allowed = allowed_licenses(&policy);
+    assert!(allowed.iter().any(|identifier| identifier == "MIT"));
+    assert!(allowed.iter().any(|identifier| identifier == "Apache-2.0"));
+    let restrictive = restrictive_licenses(&allowed);
+    assert!(restrictive.is_empty(), "deny.toml allows {restrictive:?}");
 
     let workflow = compact(&read(".github/workflows/ci.yml"));
     assert!(workflow.contains("EmbarkStudios/cargo-deny-action@"));
     assert!(workflow.contains("command: check licenses"));
+}
+
+#[test]
+fn an_allow_list_with_a_copyleft_or_source_available_license_is_reported_by_identifier() {
+    let families = ["GPL", "AGPL", "LGPL", "SSPL", "BUSL"];
+    let identifiers = ["3.0-or-later", "3.0-only", "2.1-or-later", "1.0", "1.1"];
+    let mut policy = String::from("[licenses]\nallow = [\n    \"MIT\",\n");
+    let mut expected = Vec::new();
+    for (family, suffix) in families.iter().zip(identifiers) {
+        let identifier = [*family, suffix].join("-");
+        policy.push_str(&format!("    \"{identifier}\",\n"));
+        expected.push(identifier);
+    }
+    policy.push_str("    \"MPL-2.0\",\n]\n");
+
+    let allowed = allowed_licenses(&policy);
+
+    assert_eq!(allowed.len(), 7, "{allowed:?}");
+    assert_eq!(restrictive_licenses(&allowed), expected);
+}
+
+/// The lines of `files` that name the former copyleft license, which no
+/// file outside the dated records may state as the license of the project.
+fn former_license_hits(files: &[(String, String)]) -> Vec<String> {
+    let marks = [
+        ["GPL", "3.0"].join("-"),
+        ["General", "Public", "License"].join(" "),
+    ];
+    let mut hits = Vec::new();
+    for (path, text) in files {
+        if DATED_RECORDS.iter().any(|record| path.starts_with(record)) {
+            continue;
+        }
+        for (number, line) in text.lines().enumerate() {
+            if marks.iter().any(|mark| line.contains(mark)) {
+                hits.push(format!("{path}:{}", number + 1));
+            }
+        }
+    }
+    hits
+}
+
+#[test]
+fn no_tracked_file_outside_dated_records_states_the_former_license() {
+    let Some(files) = tracked_texts() else {
+        return;
+    };
+    let hits = former_license_hits(&files);
+    assert!(hits.is_empty(), "the former license remains in {hits:#?}");
+
+    let mark = ["GPL", "3.0", "or", "later"].join("-");
+    let sample = vec![
+        (
+            "Cargo.toml".to_owned(),
+            format!("[package]\nlicense = \"{mark}\"\n"),
+        ),
+        ("tasks/prd.md".to_owned(), format!("{mark}\n")),
+    ];
+    assert_eq!(former_license_hits(&sample), ["Cargo.toml:2"]);
 }
 
 #[test]
@@ -326,22 +922,22 @@ fn ci_tests_the_crate_without_its_default_features() {
     let job = ci_job(&read(".github/workflows/ci.yml"), "gates");
     assert!(
         job.contains(
-            "run: cargo test --package claude-agent-kit --no-default-features --features testing"
+            "run: cargo test --package claude-agent-rust-sdk --no-default-features --features testing"
         ),
         "{job}"
     );
     let gates = compact(&read("xtask/src/gates.rs"));
     assert!(gates.contains(
-        r#"&[ "test", "--package", "claude-agent-kit", "--no-default-features", "--features", "testing", ]"#
+        r#"&[ "test", "--package", "claude-agent-rust-sdk", "--no-default-features", "--features", "testing", ]"#
     ));
 }
 
 #[test]
 fn the_examples_are_built_with_default_features_in_ci_and_in_the_gates() {
     let workflow = compact(&read(".github/workflows/ci.yml"));
-    assert!(workflow.contains("run: cargo check --package claude-agent-kit --examples"));
+    assert!(workflow.contains("run: cargo check --package claude-agent-rust-sdk --examples"));
     let gates = compact(&read("xtask/src/gates.rs"));
-    assert!(gates.contains(r#"&["check", "--package", "claude-agent-kit", "--examples"]"#));
+    assert!(gates.contains(r#"&["check", "--package", "claude-agent-rust-sdk", "--examples"]"#));
 }
 
 fn ci_job(workflow: &str, name: &str) -> String {
@@ -355,6 +951,44 @@ fn ci_job(workflow: &str, name: &str) -> String {
         .collect();
     assert!(!body.is_empty(), "the workflow has no job `{name}`");
     compact(&body.join("\n"))
+}
+
+#[test]
+fn ci_packages_both_crates_on_every_pull_request_without_secrets() {
+    let workflow = read(".github/workflows/ci.yml");
+    assert!(compact(&workflow).starts_with("name: CI on: pull_request: push: branches: - main"));
+    let job = ci_job(&workflow, "package");
+    for step in [
+        "runs-on: ubuntu-latest",
+        "permissions: contents: read",
+        "persist-credentials: false",
+        "toolchain: nightly",
+        "toolchain: stable",
+        "run: cargo xtask package-check",
+        "run: cargo +nightly doc --package claude-agent-rust-sdk --all-features --no-deps env: \
+         RUSTDOCFLAGS: --cfg docsrs -D warnings",
+    ] {
+        assert!(job.contains(step), "{step}: {job}");
+    }
+    let nightly = job.find("toolchain: nightly").unwrap();
+    let stable = job.find("toolchain: stable").unwrap();
+    assert!(nightly < stable, "stable must stay the default toolchain");
+    for forbidden in ["if:", "secrets.", "write", "--allow-dirty", "matrix"] {
+        assert!(!job.contains(forbidden), "{forbidden}: {job}");
+    }
+
+    let command = read("xtask/src/package.rs");
+    assert!(command.contains(".args([\"package\", \"--locked\"])"));
+    let flag = ["--allow", "dirty"].join("-");
+    let passes_flag = command
+        .lines()
+        .any(|line| !line.trim_start().starts_with("//") && line.contains(&flag));
+    assert!(!passes_flag, "package-check must never pass {flag}");
+    let usage = read("xtask/src/main.rs");
+    assert!(usage.contains("\n  package-check "));
+    assert!(usage.contains("Some(\"package-check\") => package::run(rest),"));
+    let readme = read("README.md");
+    assert!(readme.contains("\ncargo xtask package-check "));
 }
 
 #[test]
@@ -481,7 +1115,7 @@ fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_
         .expect("the job does not run the suite");
     assert!(tests < suite, "the tests must pass before the suite starts");
     assert!(job.contains("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}"));
-    assert!(!job.contains("CLAUDE_AGENT_KIT_E2E_AUTH"), "{job}");
+    assert!(!job.contains("CLAUDE_AGENT_RUST_SDK_E2E_AUTH"), "{job}");
 
     assert!(workflow.contains(&format!("CLAUDE_CODE_VERSION: {CLI_VERSION}")));
     assert!(job.contains("| bash -s \"$CLAUDE_CODE_VERSION\""));
@@ -515,9 +1149,9 @@ fn upstream_sdk_is_a_submodule_pinned_to_the_reference_commit() {
 
 #[test]
 fn version_constants_match_the_manifest_and_the_upstream_pin() {
-    assert_eq!(claude_agent_kit::VERSION, env!("CARGO_PKG_VERSION"));
-    assert_eq!(claude_agent_kit::CLI_VERSION, "2.1.325");
-    assert_eq!(claude_agent_kit::UPSTREAM_SDK_VERSION, "0.2.182");
+    assert_eq!(claude_agent_rust_sdk::VERSION, env!("CARGO_PKG_VERSION"));
+    assert_eq!(claude_agent_rust_sdk::CLI_VERSION, "2.1.325");
+    assert_eq!(claude_agent_rust_sdk::UPSTREAM_SDK_VERSION, "0.2.182");
 }
 
 #[test]

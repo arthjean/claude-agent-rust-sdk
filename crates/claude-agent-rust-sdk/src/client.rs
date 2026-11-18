@@ -43,10 +43,10 @@ const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 /// [`disconnect`](Self::disconnect) to wait for it.
 ///
 /// ```no_run
-/// use claude_agent_kit::{ClaudeAgentOptions, ClaudeSdkClient, Message};
+/// use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, Message};
 /// use futures_util::StreamExt;
 ///
-/// # async fn demo() -> Result<(), claude_agent_kit::Error> {
+/// # async fn demo() -> Result<(), claude_agent_rust_sdk::Error> {
 /// let client = ClaudeSdkClient::new(ClaudeAgentOptions::default());
 /// client.connect().await?;
 ///
@@ -59,7 +59,7 @@ const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 /// }
 /// drop(response);
 ///
-/// client.set_permission_mode(claude_agent_kit::PermissionMode::AcceptEdits).await?;
+/// client.set_permission_mode(claude_agent_rust_sdk::PermissionMode::AcceptEdits).await?;
 /// client.query("Now write it to capital.txt").await?;
 /// client.disconnect().await?;
 /// # Ok(())

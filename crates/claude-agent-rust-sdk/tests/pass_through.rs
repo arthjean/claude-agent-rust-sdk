@@ -3,7 +3,7 @@
 
 mod common;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ContextUsageResponse, McpServerStatusConfig, McpStatusResponse, Message,
     ModelUsage, parse_message,
 };

@@ -5,7 +5,7 @@ Usage: ``python python_driver.py <case.json> --cli <path>``
 Plays one case of ``parity/cases`` through the Python SDK, imported from
 the submodule ``upstream/claude-agent-sdk-python/src`` through
 ``PYTHONPATH``, with ``cli_path`` set to ``<path>``. The Rust driver,
-``crates/parity-driver``, plays the same case through ``claude-agent-kit``,
+``crates/parity-driver``, plays the same case through ``claude-agent-rust-sdk``,
 and ``cargo xtask parity-diff`` compares what the CLI received from each.
 Both drivers read the same format, described in ``parity/README.md`` and
 ``parity/case.schema.json``; the canned callbacks are documented in the

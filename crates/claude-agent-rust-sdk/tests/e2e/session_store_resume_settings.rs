@@ -13,7 +13,7 @@
 
 use std::path::Path;
 
-use claude_agent_kit::{ClaudeAgentOptionsBuilder, InMemorySessionStore, Message};
+use claude_agent_rust_sdk::{ClaudeAgentOptionsBuilder, InMemorySessionStore, Message};
 use serde_json::{Value, json};
 
 use crate::suite;

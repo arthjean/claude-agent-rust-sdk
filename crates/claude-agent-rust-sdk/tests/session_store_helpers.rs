@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     Error, InMemorySessionStore, SdkSessionInfo, SessionKey, SessionListSubkeysKey, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
     SessionSummaryEntry, delete_session_via_store, fold_session_summary, fork_session_via_store,
@@ -582,7 +582,7 @@ fn fold_reproduces_the_python_reference() {
 
 #[tokio::test]
 async fn shared_stores_work_with_the_helpers() {
-    let shared = claude_agent_kit::SharedSessionStore::new(InMemorySessionStore::new());
+    let shared = claude_agent_rust_sdk::SharedSessionStore::new(InMemorySessionStore::new());
     let project = Project::new();
     let ids = fill(&shared, &project_key_for_directory(Some(project.path())), 2).await;
     let listed = list_sessions_from_store(&shared, Some(project.path()), None, 0)

@@ -1,6 +1,6 @@
 //! Agent definitions and setting sources.
 
-use claude_agent_kit::{AgentDefinition, Message, SettingSource};
+use claude_agent_rust_sdk::{AgentDefinition, Message, SettingSource};
 
 use crate::suite;
 

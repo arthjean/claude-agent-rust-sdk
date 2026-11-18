@@ -1,7 +1,7 @@
 //! Checks specific to this crate: the CLI accepts the `sdk-rs` entrypoint
 //! and the native JSON-RPC dispatcher that serves in-process tools.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ContentBlock, HookInput, HookMatcher, SdkMcpTool, SyncHookOutput, ToolResult,
     create_sdk_mcp_server,
 };

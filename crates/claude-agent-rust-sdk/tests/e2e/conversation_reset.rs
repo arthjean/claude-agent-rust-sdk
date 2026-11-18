@@ -1,6 +1,6 @@
 //! `/clear` in a live session yields a conversation-reset message.
 
-use claude_agent_kit::Message;
+use claude_agent_rust_sdk::Message;
 
 use crate::suite;
 

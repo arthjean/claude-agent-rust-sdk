@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, CanUseTool, PermissionResult, Prompt, SettingSource, ToolPermissionContext,
 };
 use futures_util::stream;

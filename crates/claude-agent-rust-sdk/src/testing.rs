@@ -5,11 +5,11 @@
 //! without a CLI process.
 //!
 //! ```
-//! use claude_agent_kit::testing::MockTransport;
-//! use claude_agent_kit::transport::Transport;
+//! use claude_agent_rust_sdk::testing::MockTransport;
+//! use claude_agent_rust_sdk::transport::Transport;
 //! use serde_json::json;
 //!
-//! # async fn demo() -> Result<(), claude_agent_kit::Error> {
+//! # async fn demo() -> Result<(), claude_agent_rust_sdk::Error> {
 //! let transport = MockTransport::new();
 //! transport.push_frame(json!({"type": "system", "subtype": "init"}));
 //! transport.connect().await?;

@@ -8,7 +8,7 @@
 //!
 //! Run it with `cargo run --example max_budget_usd`.
 
-use claude_agent_kit::{ClaudeAgentOptions, Error, Message, query};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, Message, query};
 use futures_util::StreamExt;
 
 /// Subtype of the result that ends a run over budget.

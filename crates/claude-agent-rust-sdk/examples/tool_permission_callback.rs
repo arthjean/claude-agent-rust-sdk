@@ -18,7 +18,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, CanUseTool, ClaudeAgentOptions, ClaudeSdkClient, Message, PermissionMode,
     PermissionResult, PermissionUpdate, ToolPermissionContext,
 };

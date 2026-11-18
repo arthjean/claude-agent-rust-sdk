@@ -24,7 +24,7 @@ const MAX_RESULT_SIZE_META_KEY: &str = "anthropic/maxResultSizeChars";
 /// showing a preview. It reaches the CLI in the `_meta` of the tool.
 ///
 /// ```
-/// use claude_agent_kit::ToolAnnotations;
+/// use claude_agent_rust_sdk::ToolAnnotations;
 ///
 /// let annotations = ToolAnnotations::new()
 ///     .read_only_hint(true)
@@ -233,7 +233,7 @@ impl From<String> for ToolContent {
 /// What a tool handler returns: content blocks and an error flag.
 ///
 /// ```
-/// use claude_agent_kit::{ToolContent, ToolResult};
+/// use claude_agent_rust_sdk::{ToolContent, ToolResult};
 ///
 /// let result = ToolResult::text("4");
 /// assert_eq!(result.content, [ToolContent::text("4")]);
@@ -332,7 +332,7 @@ type ErasedHandler =
 /// Schema and hands the handler the arguments as JSON.
 ///
 /// ```
-/// use claude_agent_kit::{SdkMcpTool, ToolResult};
+/// use claude_agent_rust_sdk::{SdkMcpTool, ToolResult};
 /// use schemars::JsonSchema;
 /// use serde::Deserialize;
 ///

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, UNIX_EPOCH};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     SdkSessionInfo, SessionMessage, SessionMessageType, get_session_info, get_session_messages,
     get_subagent_messages, list_sessions, list_subagents, project_key_for_directory,
 };
@@ -486,7 +486,7 @@ fn subagents_are_listed_and_read_with_their_parent_ids() {
     assert!(list_subagents("bad", Some(project.path())).is_empty());
 }
 
-const CONFIG_DIR_HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_CONFIG_DIR_HOST_SESSION";
+const CONFIG_DIR_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_CONFIG_DIR_HOST_SESSION";
 const CONFIG_DIR_REPORT: &str = "config-dir-report=";
 
 #[test]

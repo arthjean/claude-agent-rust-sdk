@@ -6,10 +6,10 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_agent_kit::testing::{
+use claude_agent_rust_sdk::testing::{
     MockTransport, run_session_store_conformance, run_session_store_conformance_skipping,
 };
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, InMemorySessionStore, Message, SessionKey,
     SessionListSubkeysKey, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
     SessionStoreError, SharedSessionStore, UnsupportedStoreOperation, file_path_to_session_key,

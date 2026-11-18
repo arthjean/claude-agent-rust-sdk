@@ -10,7 +10,7 @@
 use std::future::Future;
 use std::path::Path;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptionsBuilder, ContentBlock, HookCallback, HookMatcher,
     HookPermissionDecision, Message, MessageStream, PreToolUseHookSpecificOutput, SettingSource,
     SubprocessTransport, SyncHookOutput, Transport, query_with_transport,
@@ -62,11 +62,11 @@ struct Recorder {
 }
 
 impl Transport for Recorder {
-    fn connect(&self) -> impl Future<Output = claude_agent_kit::Result<()>> + Send {
+    fn connect(&self) -> impl Future<Output = claude_agent_rust_sdk::Result<()>> + Send {
         Transport::connect(&self.process)
     }
 
-    fn write(&self, data: &str) -> impl Future<Output = claude_agent_kit::Result<()>> + Send {
+    fn write(&self, data: &str) -> impl Future<Output = claude_agent_rust_sdk::Result<()>> + Send {
         Transport::write(&self.process, data)
     }
 
@@ -83,7 +83,7 @@ impl Transport for Recorder {
         )
     }
 
-    fn close(&self) -> impl Future<Output = claude_agent_kit::Result<()>> + Send {
+    fn close(&self) -> impl Future<Output = claude_agent_rust_sdk::Result<()>> + Send {
         Transport::close(&self.process)
     }
 
@@ -91,7 +91,7 @@ impl Transport for Recorder {
         Transport::is_ready(&self.process)
     }
 
-    fn end_input(&self) -> impl Future<Output = claude_agent_kit::Result<()>> + Send {
+    fn end_input(&self) -> impl Future<Output = claude_agent_rust_sdk::Result<()>> + Send {
         Transport::end_input(&self.process)
     }
 }

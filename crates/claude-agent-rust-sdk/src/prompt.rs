@@ -22,7 +22,7 @@ pub type InputStream = Pin<Box<dyn Stream<Item = Result<Value, BoxError>> + Send
 /// [`Prompt::stream`], or with [`Prompt::try_stream`] when it can fail.
 ///
 /// ```
-/// use claude_agent_kit::{InputMessage, Prompt};
+/// use claude_agent_rust_sdk::{InputMessage, Prompt};
 /// use futures_util::stream;
 ///
 /// let text: Prompt = "What is 2 + 2?".into();
@@ -105,7 +105,7 @@ impl fmt::Debug for Prompt {
 /// It converts into the JSON object the CLI reads:
 ///
 /// ```
-/// use claude_agent_kit::InputMessage;
+/// use claude_agent_rust_sdk::InputMessage;
 /// use serde_json::{Value, json};
 ///
 /// let message: Value = InputMessage::user("Hello").session_id("main").into();

@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Maintenance tasks for the claude-agent-sdk-rust workspace"
+description = "Maintenance tasks for the claude-agent-rust-sdk workspace"
 publish = false
 version.workspace = true
 edition.workspace = true

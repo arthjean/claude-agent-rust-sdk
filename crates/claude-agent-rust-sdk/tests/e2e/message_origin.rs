@@ -1,6 +1,6 @@
 //! A host-stamped origin and message id come back on the result.
 
-use claude_agent_kit::{MessageOriginKind, Prompt};
+use claude_agent_rust_sdk::{MessageOriginKind, Prompt};
 use futures_util::stream;
 use serde_json::{Value, json};
 

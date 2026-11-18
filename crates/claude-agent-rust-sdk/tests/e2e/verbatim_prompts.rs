@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use claude_agent_kit::{ClaudeAgentOptions, ContentBlock, Message, SettingSource};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, ContentBlock, Message, SettingSource};
 
 use crate::suite;
 

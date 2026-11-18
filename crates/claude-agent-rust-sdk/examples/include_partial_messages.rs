@@ -14,7 +14,7 @@
 
 use std::io::Write;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, ClaudeSdkClient, Message, ThinkingConfig, ThinkingDisplay,
 };
 use futures_util::StreamExt;

@@ -1,6 +1,6 @@
 [package]
 name = "parity-driver"
-description = "Rust driver of the differential parity harness: plays one case through claude-agent-kit"
+description = "Rust driver of the differential parity harness: plays one case through claude-agent-rust-sdk"
 publish = false
 version.workspace = true
 edition.workspace = true
@@ -9,7 +9,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-claude-agent-kit = { path = "../claude-agent-kit" }
+claude-agent-rust-sdk = { path = "../claude-agent-rust-sdk" }
 futures-util.workspace = true
 indexmap.workspace = true
 serde.workspace = true

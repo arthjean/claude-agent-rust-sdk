@@ -48,9 +48,9 @@ fn key_to_string(key: &SessionKey) -> String {
 /// process exits. Clones share the same content.
 ///
 /// ```
-/// use claude_agent_kit::{InMemorySessionStore, SessionKey, SessionStore};
+/// use claude_agent_rust_sdk::{InMemorySessionStore, SessionKey, SessionStore};
 ///
-/// # async fn demo() -> Result<(), claude_agent_kit::SessionStoreError> {
+/// # async fn demo() -> Result<(), claude_agent_rust_sdk::SessionStoreError> {
 /// let store = InMemorySessionStore::new();
 /// let key = SessionKey::new("project", "session");
 /// let entry = serde_json::json!({"type": "user", "uuid": "u1"});

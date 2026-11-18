@@ -1,6 +1,6 @@
 //! A terminal error result surfaces as a typed error.
 
-use claude_agent_kit::Error;
+use claude_agent_rust_sdk::Error;
 
 use crate::suite;
 

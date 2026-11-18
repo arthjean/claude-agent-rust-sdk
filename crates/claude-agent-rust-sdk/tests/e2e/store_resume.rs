@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use claude_agent_kit::{ClaudeAgentOptions, InMemorySessionStore, Message, SessionKey};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, InMemorySessionStore, Message, SessionKey};
 
 use crate::suite;
 
@@ -58,7 +58,7 @@ async fn turn(prompt: &str, options: ClaudeAgentOptions) -> (String, String) {
 async fn a_session_held_only_in_a_store_is_resumed_by_the_cli() {
     let first_options = suite::options();
     let (_directory, cwd) = suite::workspace();
-    let project_key = claude_agent_kit::project_key_for_directory(Some(&cwd));
+    let project_key = claude_agent_rust_sdk::project_key_for_directory(Some(&cwd));
     let local_project = suite::project_directory(&cwd);
     let store = InMemorySessionStore::new();
 

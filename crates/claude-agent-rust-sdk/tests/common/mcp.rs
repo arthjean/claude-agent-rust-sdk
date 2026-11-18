@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{ClaudeAgentOptions, ClaudeSdkClient, McpServerConfig};
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, McpServerConfig};
 use serde_json::{Value, json};
 
 use super::mock::{cli, connected, response_to, settle};

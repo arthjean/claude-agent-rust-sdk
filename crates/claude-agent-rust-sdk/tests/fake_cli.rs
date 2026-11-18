@@ -2,7 +2,7 @@
 
 mod common;
 
-use claude_agent_kit::{MessageStream, SubprocessTransport};
+use claude_agent_rust_sdk::{MessageStream, SubprocessTransport};
 use serde_json::{Value, json};
 
 use common::{next, next_message, options_for, scenarios_dir};

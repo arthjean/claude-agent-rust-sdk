@@ -3,7 +3,7 @@
 
 mod common;
 
-use claude_agent_kit::{ClaudeAgentOptionsBuilder, ClaudeSdkClient, Message, query};
+use claude_agent_rust_sdk::{ClaudeAgentOptionsBuilder, ClaudeSdkClient, Message, query};
 use futures_util::StreamExt;
 use opentelemetry::propagation::text_map_propagator::FieldIter;
 use opentelemetry::propagation::{Extractor, Injector, TextMapPropagator};

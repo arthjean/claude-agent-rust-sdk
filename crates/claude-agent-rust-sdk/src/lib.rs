@@ -33,6 +33,8 @@
 //!   the trace of the caller. Variables set in the `env` option are never
 //!   overwritten.
 //! - `testing`: the `testing` module, with a scriptable transport for tests.
+//!   It is outside the compatibility promise: its items may change in a
+//!   patch release.
 //!
 //! # Platform support
 //!
@@ -52,10 +54,10 @@
 //! # Example
 //!
 //! ```no_run
-//! use claude_agent_kit::{ClaudeAgentOptions, Message, query};
+//! use claude_agent_rust_sdk::{ClaudeAgentOptions, Message, query};
 //! use futures_util::StreamExt;
 //!
-//! # async fn demo() -> Result<(), claude_agent_kit::Error> {
+//! # async fn demo() -> Result<(), claude_agent_rust_sdk::Error> {
 //! let mut messages = query("What is 2 + 2?", ClaudeAgentOptions::default());
 //! while let Some(message) = messages.next().await {
 //!     if let Message::Assistant(assistant) = message? {
@@ -80,10 +82,10 @@
 //!   [`ClaudeAgentOptions::builder`].
 //!
 //! ```
-//! use claude_agent_kit::{ClaudeAgentOptions, Message, PermissionMode, parse_message};
+//! use claude_agent_rust_sdk::{ClaudeAgentOptions, Message, PermissionMode, parse_message};
 //! use serde_json::json;
 //!
-//! # fn main() -> Result<(), claude_agent_kit::Error> {
+//! # fn main() -> Result<(), claude_agent_rust_sdk::Error> {
 //! let options = ClaudeAgentOptions::builder()
 //!     .model("claude-sonnet-5")
 //!     .permission_mode(PermissionMode::AcceptEdits)
@@ -105,6 +107,7 @@
 //! # }
 //! ```
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
@@ -121,11 +124,10 @@ mod query;
 mod resume;
 pub mod session_store;
 pub mod sessions;
-/// The `tracing` capture helper of the integration tests, shared with the
-/// unit tests so both assert logged warnings the same way.
+/// The `tracing` capture helper of the unit tests. The integration tests
+/// load the same file, so both assert logged warnings the same way.
 #[cfg(test)]
 #[allow(dead_code)]
-#[path = "../tests/common/capture.rs"]
 mod test_capture;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -159,7 +161,7 @@ pub use message_parser::parse_message;
 ///   [`ToolAnnotations`].
 ///
 /// ```
-/// use claude_agent_kit::{ToolResult, create_sdk_mcp_server, tool};
+/// use claude_agent_rust_sdk::{ToolResult, create_sdk_mcp_server, tool};
 /// use schemars::JsonSchema;
 /// use serde::Deserialize;
 ///
@@ -178,7 +180,7 @@ pub use message_parser::parse_message;
 ///     Ok(ToolResult::text((args.dividend / args.divisor).to_string()))
 /// }
 ///
-/// # fn main() -> Result<(), claude_agent_kit::Error> {
+/// # fn main() -> Result<(), claude_agent_rust_sdk::Error> {
 /// let tool = divide();
 /// assert_eq!(tool.name(), "divide");
 /// assert_eq!(tool.description(), "Divide one number by another.");
@@ -188,7 +190,7 @@ pub use message_parser::parse_message;
 /// # }
 /// ```
 #[cfg(feature = "macros")]
-pub use claude_agent_kit_macros::tool;
+pub use claude_agent_rust_sdk_macros::tool;
 pub use prompt::{InputMessage, InputStream, Prompt};
 pub use query::{QueryStream, query, query_with_transport};
 pub use session_store::{

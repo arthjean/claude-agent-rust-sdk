@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use claude_agent_kit::{ClaudeAgentOptionsBuilder, PermissionMode};
+use claude_agent_rust_sdk::{ClaudeAgentOptionsBuilder, PermissionMode};
 use serde_json::{Value, json};
 
 use crate::suite;

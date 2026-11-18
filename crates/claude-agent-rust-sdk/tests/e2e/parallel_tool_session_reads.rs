@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ContentBlock, InMemorySessionStore, SdkMcpTool, SessionKey, SessionMessage, SessionMessageType,
     ToolResult, create_sdk_mcp_server, get_session_messages, get_session_messages_from_store,
     project_key_for_directory,

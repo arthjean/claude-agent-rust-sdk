@@ -33,10 +33,10 @@ const ONE_SHOT_SESSION_ID: &str = "";
 /// The stream must be polled inside a Tokio runtime.
 ///
 /// ```no_run
-/// use claude_agent_kit::{ClaudeAgentOptions, Message, query};
+/// use claude_agent_rust_sdk::{ClaudeAgentOptions, Message, query};
 /// use futures_util::StreamExt;
 ///
-/// # async fn demo() -> Result<(), claude_agent_kit::Error> {
+/// # async fn demo() -> Result<(), claude_agent_rust_sdk::Error> {
 /// let options = ClaudeAgentOptions::builder().max_turns(1).build()?;
 /// let mut messages = query("What is 2 + 2?", options);
 /// while let Some(message) = messages.next().await {

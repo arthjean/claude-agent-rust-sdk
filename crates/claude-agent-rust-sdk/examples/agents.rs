@@ -10,7 +10,9 @@
 //!
 //! Run it with `cargo run --example agents`.
 
-use claude_agent_kit::{AgentDefinition, ClaudeAgentOptions, Error, Message, SettingSource, query};
+use claude_agent_rust_sdk::{
+    AgentDefinition, ClaudeAgentOptions, Error, Message, SettingSource, query,
+};
 use futures_util::StreamExt;
 
 /// Directory of this crate, used as the working directory of the session.

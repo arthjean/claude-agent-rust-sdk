@@ -43,7 +43,7 @@ const REQUEST_CANCELLED: i64 = -32800;
 /// never as protocol errors.
 ///
 /// ```
-/// use claude_agent_kit::{ClaudeAgentOptions, SdkMcpTool, ToolResult, create_sdk_mcp_server};
+/// use claude_agent_rust_sdk::{ClaudeAgentOptions, SdkMcpTool, ToolResult, create_sdk_mcp_server};
 /// use schemars::JsonSchema;
 /// use serde::Deserialize;
 ///
@@ -53,7 +53,7 @@ const REQUEST_CANCELLED: i64 = -32800;
 ///     b: f64,
 /// }
 ///
-/// # fn main() -> Result<(), claude_agent_kit::Error> {
+/// # fn main() -> Result<(), claude_agent_rust_sdk::Error> {
 /// let add = SdkMcpTool::typed::<Add>("add", "Add two numbers", |args| async move {
 ///     Ok(ToolResult::text((args.a + args.b).to_string()))
 /// });

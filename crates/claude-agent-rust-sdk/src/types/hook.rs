@@ -1065,7 +1065,7 @@ type HookCallbackFn = dyn Fn(HookInput, Option<String>, HookContext) -> BoxFutur
 /// Any async closure converts into this type:
 ///
 /// ```
-/// use claude_agent_kit::{HookCallback, HookOutput};
+/// use claude_agent_rust_sdk::{HookCallback, HookOutput};
 ///
 /// let callback = HookCallback::new(async |_input, _tool_use_id, _context| {
 ///     Ok(HookOutput::default())

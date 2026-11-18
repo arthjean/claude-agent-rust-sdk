@@ -1,6 +1,6 @@
 //! Partial message streaming.
 
-use claude_agent_kit::{ContentBlock, Message, ThinkingConfig, ThinkingDisplay};
+use claude_agent_rust_sdk::{ContentBlock, Message, ThinkingConfig, ThinkingDisplay};
 use serde_json::Value;
 
 use crate::suite;

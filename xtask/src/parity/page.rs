@@ -351,7 +351,7 @@ pub fn render(facts: &Facts) -> String {
     } = &facts.upstream;
     let mut page = format!(
         "## What was compared\n\n\
-         `claude-agent-kit` against the Python Claude Agent SDK {version}, at upstream commit \
+         `claude-agent-rust-sdk` against the Python Claude Agent SDK {version}, at upstream commit \
          `{commit}`, committed on {date}. The upstream source is the submodule \
          `upstream/claude-agent-sdk-python`.\n\n\
          ### The ledgers\n\n\

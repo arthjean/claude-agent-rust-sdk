@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const EXISTING_PATH: &str = "claude_agent_kit::query";
+const EXISTING_PATH: &str = "claude_agent_rust_sdk::query";
 const EXISTING_TEST: &str =
     "xtask/tests/parity.rs::this_test_exists_so_a_ledger_can_name_a_real_rust_test";
 
@@ -226,7 +226,10 @@ fn a_rust_path_that_does_not_exist_fails_the_check() {
         &["query", "Missing"],
         &surface(&[
             ("query", &rust(EXISTING_PATH)),
-            ("Missing", &rust("claude_agent_kit::NoSuchItemAnywhere")),
+            (
+                "Missing",
+                &rust("claude_agent_rust_sdk::NoSuchItemAnywhere"),
+            ),
         ]),
         &tests_ledger(&rust(EXISTING_TEST)),
     );
@@ -238,11 +241,32 @@ fn a_rust_path_that_does_not_exist_fails_the_check() {
     assert!(
         stderr.contains(
             "parity/surface.toml: `Missing` names Rust path \
-             `claude_agent_kit::NoSuchItemAnywhere`, which does not exist"
+             `claude_agent_rust_sdk::NoSuchItemAnywhere`, which does not exist"
         ),
         "{stderr}"
     );
     assert!(!stderr.contains("`query` names"), "{stderr}");
+}
+
+#[test]
+fn a_ledger_entry_still_naming_the_former_crate_fails_the_check_by_name() {
+    let former = ["claude_agent", "kit"].join("_");
+    let fixture = Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(&format!("{former}::query")))]),
+        &tests_ledger(&rust(EXISTING_TEST)),
+    );
+
+    let check = fixture.run("parity-check", &[]);
+
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains(&format!(
+            "parity/surface.toml: `query` names Rust path `{former}::query`, which does not exist"
+        )),
+        "{}",
+        stderr(&check)
+    );
 }
 
 #[test]
@@ -325,7 +349,7 @@ fn a_migration_table_out_of_date_with_the_ledger_fails_the_check() {
     let guide = fixture.root.join("migration.md");
     let table = std::fs::read_to_string(&guide).unwrap();
     assert!(
-        table.contains("| `query` | `claude_agent_kit::query` |"),
+        table.contains("| `query` | `claude_agent_rust_sdk::query` |"),
         "{table}"
     );
     write(
@@ -353,7 +377,7 @@ fn an_adapted_entry_is_resolved_reported_apart_and_rendered_with_its_note() {
             ("query", &adapted),
             (
                 "Gone",
-                "{ adapted = \"claude_agent_kit::NoSuchAdaptedItem\", note = \"Moved.\" }",
+                "{ adapted = \"claude_agent_rust_sdk::NoSuchAdaptedItem\", note = \"Moved.\" }",
             ),
         ]),
         &tests_ledger(&rust(EXISTING_TEST)),
@@ -364,7 +388,7 @@ fn an_adapted_entry_is_resolved_reported_apart_and_rendered_with_its_note() {
     let text = stderr(&check);
     assert!(
         text.contains(
-            "parity/surface.toml: `Gone` names Rust path `claude_agent_kit::NoSuchAdaptedItem`, which does not exist"
+            "parity/surface.toml: `Gone` names Rust path `claude_agent_rust_sdk::NoSuchAdaptedItem`, which does not exist"
         ),
         "{text}"
     );
@@ -384,7 +408,7 @@ fn an_adapted_entry_is_resolved_reported_apart_and_rendered_with_its_note() {
     let guide = std::fs::read_to_string(fixture.root.join("migration.md")).unwrap();
     assert!(
         guide.contains(
-            "| `query` | `claude_agent_kit::query` | Adapted: A stream where Python yields. |"
+            "| `query` | `claude_agent_rust_sdk::query` | Adapted: A stream where Python yields. |"
         ),
         "{guide}"
     );

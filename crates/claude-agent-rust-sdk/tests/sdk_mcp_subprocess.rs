@@ -5,7 +5,7 @@ mod common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use claude_agent_kit::{Error, Message, SdkMcpTool, ToolResult, create_sdk_mcp_server, query};
+use claude_agent_rust_sdk::{Error, Message, SdkMcpTool, ToolResult, create_sdk_mcp_server, query};
 use futures_util::StreamExt;
 use schemars::JsonSchema;
 use serde::Deserialize;

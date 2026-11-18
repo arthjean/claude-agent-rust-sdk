@@ -29,7 +29,7 @@ const GATES: &[Gate] = &[
     },
     Gate {
         name: "examples",
-        args: &["check", "--package", "claude-agent-kit", "--examples"],
+        args: &["check", "--package", "claude-agent-rust-sdk", "--examples"],
         env: &[],
     },
     Gate {
@@ -42,7 +42,7 @@ const GATES: &[Gate] = &[
         args: &[
             "test",
             "--package",
-            "claude-agent-kit",
+            "claude-agent-rust-sdk",
             "--no-default-features",
             "--features",
             "testing",
@@ -59,7 +59,7 @@ const GATES: &[Gate] = &[
 const E2E: &[&str] = &[
     "test",
     "--package",
-    "claude-agent-kit",
+    "claude-agent-rust-sdk",
     "--all-features",
     "--test",
     "e2e",

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, AgentEffort, AgentMcpServer, AgentMemory, AssistantMessage, AsyncHookOutput,
     BackgroundTaskSummary, CanUseTool, ContentBlock, ContextUsageResponse, EffortLevel,
     ElicitationAction, ElicitationHookSpecificOutput, FastModeDisabledReason, FastModeState,

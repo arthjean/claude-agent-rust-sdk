@@ -26,7 +26,7 @@
 
 use std::path::PathBuf;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, AsyncHookOutput, CanUseTool, ClaudeAgentOptions, ClaudeAgentOptionsBuilder,
     HookCallback, HookMatcher, HookOutput, InMemorySessionStore, McpRemoteServerConfig,
     McpServerConfig, McpServers, McpStdioServerConfig, PermissionResult, SandboxSettings, SdkBeta,
@@ -283,7 +283,7 @@ fn mcp_servers(field: &Field<'_>) -> Result<McpServers, Failure> {
 fn sdk_server(
     field: &Field<'_>,
     name: &str,
-) -> Result<claude_agent_kit::McpSdkServerConfig, Failure> {
+) -> Result<claude_agent_rust_sdk::McpSdkServerConfig, Failure> {
     let version = field.value.get("version").and_then(Value::as_str);
     let mut tools = Vec::new();
     for tool in field

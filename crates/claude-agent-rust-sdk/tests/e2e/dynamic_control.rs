@@ -1,6 +1,6 @@
 //! Settings changed while a session is running.
 
-use claude_agent_kit::PermissionMode;
+use claude_agent_rust_sdk::PermissionMode;
 
 use crate::suite;
 

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 
-const MANAGED_DIR_NAME: &str = "claude-agent-kit";
+const MANAGED_DIR_NAME: &str = "claude-agent-rust-sdk";
 const MANAGED_CLI_SUBDIR: &str = "cli";
 const UNIX_CLI_NAME: &str = "claude";
 const WINDOWS_CLI_NAME: &str = "claude.exe";
@@ -62,10 +62,10 @@ impl Platform {
 /// Directory where this crate keeps a CLI it installed itself.
 ///
 /// The CLI found there takes precedence over `PATH`. The directory is
-/// `%LOCALAPPDATA%\claude-agent-kit\cli` on Windows,
-/// `~/Library/Application Support/claude-agent-kit/cli` on macOS, and
-/// `$XDG_DATA_HOME/claude-agent-kit/cli` (default
-/// `~/.local/share/claude-agent-kit/cli`) elsewhere. Returns `None` when
+/// `%LOCALAPPDATA%\claude-agent-rust-sdk\cli` on Windows,
+/// `~/Library/Application Support/claude-agent-rust-sdk/cli` on macOS, and
+/// `$XDG_DATA_HOME/claude-agent-rust-sdk/cli` (default
+/// `~/.local/share/claude-agent-rust-sdk/cli`) elsewhere. Returns `None` when
 /// the base directory cannot be determined.
 #[must_use]
 pub fn managed_install_dir() -> Option<PathBuf> {

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, ClaudeSdkClient, ContentBlock,
     HookCallback, HookContext, HookInput, HookOutput, Message, Prompt, ResultMessage,
     SyncHookOutput, UserContent, project_key_for_directory, query,
@@ -15,7 +15,7 @@ use serde_json::Value;
 /// Variable holding the API key the suite authenticates with.
 pub const CREDENTIALS_VARIABLE: &str = "ANTHROPIC_API_KEY";
 /// Variable a developer sets to `cli` to use the login of the installed CLI.
-pub const LOGIN_VARIABLE: &str = "CLAUDE_AGENT_KIT_E2E_AUTH";
+pub const LOGIN_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_E2E_AUTH";
 /// Value of [`LOGIN_VARIABLE`] that selects the login of the installed CLI.
 pub const LOGIN_VALUE: &str = "cli";
 /// Variable through which the suite pins the default model of the CLI.
@@ -156,7 +156,7 @@ pub async fn run(prompt: impl Into<Prompt>, options: ClaudeAgentOptions) -> Vec<
 pub async fn run_to_end(
     prompt: impl Into<Prompt>,
     options: ClaudeAgentOptions,
-) -> (Vec<Message>, Option<claude_agent_kit::Error>) {
+) -> (Vec<Message>, Option<claude_agent_rust_sdk::Error>) {
     let mut stream = query(prompt, options);
     let mut messages = Vec::new();
     let collected = tokio::time::timeout(TURN_LIMIT, async {

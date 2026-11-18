@@ -42,7 +42,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 /// ```
 ///
 /// ```
-/// use claude_agent_kit::Error;
+/// use claude_agent_rust_sdk::Error;
 ///
 /// fn handle(error: &Error) -> &'static str {
 ///     if error.is_process() {

@@ -923,7 +923,7 @@ type StderrCallbackFn = dyn Fn(String) -> BoxFuture<'static, ()> + Send + Sync;
 /// [`StderrCallback::from_sync`] for a plain closure.
 ///
 /// ```
-/// use claude_agent_kit::StderrCallback;
+/// use claude_agent_rust_sdk::StderrCallback;
 ///
 /// let from_async = StderrCallback::new(async |line: String| eprintln!("{line}"));
 /// let from_sync = StderrCallback::from_sync(|line| eprintln!("{line}"));

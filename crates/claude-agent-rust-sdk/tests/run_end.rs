@@ -5,8 +5,8 @@ mod common;
 
 use std::time::Duration;
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, Error, HookMatcher, InputMessage, Message, PermissionResult, Prompt,
     create_sdk_mcp_server, query_with_transport,
 };

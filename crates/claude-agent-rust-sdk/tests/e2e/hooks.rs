@@ -1,6 +1,6 @@
 //! Hook callbacks and the fields of their answers.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     HookMatcher, HookPermissionDecision, PostToolUseHookSpecificOutput,
     PreToolUseHookSpecificOutput, SyncHookOutput,
 };

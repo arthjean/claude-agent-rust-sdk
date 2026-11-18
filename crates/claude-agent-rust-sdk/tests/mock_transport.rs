@@ -5,8 +5,8 @@ mod common;
 
 use std::time::Duration;
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{Error, SharedTransport, Transport};
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{Error, SharedTransport, Transport};
 use futures_util::{FutureExt, StreamExt};
 use serde_json::{Value, json};
 

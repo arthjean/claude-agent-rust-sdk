@@ -561,7 +561,7 @@ mod tests {
         let mut entries = IndexMap::new();
         entries.insert(
             "query".to_owned(),
-            entry(Some("claude_agent_kit::query"), None, None),
+            entry(Some("claude_agent_rust_sdk::query"), None, None),
         );
         entries.insert(
             "Shadowed".to_owned(),
@@ -571,7 +571,7 @@ mod tests {
         entries.insert(
             "Warning".to_owned(),
             table(&[
-                ("adapted", Some("claude_agent_kit::Options::warning")),
+                ("adapted", Some("claude_agent_rust_sdk::Options::warning")),
                 ("note", Some("A method returns the text.")),
             ]),
         );
@@ -617,9 +617,9 @@ mod tests {
         let table = migration_table(&sample());
         assert_eq!(table.lines().count(), 6);
         assert!(table.contains(
-            "| `Warning` | `claude_agent_kit::Options::warning` | Adapted: A method returns the text. |"
+            "| `Warning` | `claude_agent_rust_sdk::Options::warning` | Adapted: A method returns the text. |"
         ));
-        assert!(table.contains("| `query` | `claude_agent_kit::query` |  |"));
+        assert!(table.contains("| `query` | `claude_agent_rust_sdk::query` |  |"));
         assert!(table.contains("| `Shadowed` | not ported | Python typing helper. |"));
         assert!(table.contains("| `later` | pending | next bump |"));
     }
@@ -641,8 +641,8 @@ mod tests {
         assert_eq!(
             problems,
             [
-                "parity/surface.toml: `query` names Rust path `claude_agent_kit::query`, which does not exist",
-                "parity/surface.toml: `Warning` names Rust path `claude_agent_kit::Options::warning`, which does not exist",
+                "parity/surface.toml: `query` names Rust path `claude_agent_rust_sdk::query`, which does not exist",
+                "parity/surface.toml: `Warning` names Rust path `claude_agent_rust_sdk::Options::warning`, which does not exist",
             ]
         );
     }

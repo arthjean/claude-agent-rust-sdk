@@ -5,7 +5,7 @@ mod common;
 
 use std::time::Duration;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, HookMatcher, query_with_transport,
 };
 use futures_util::StreamExt;
@@ -15,7 +15,7 @@ use common::mock::{cli, passive_hook, result, session_state, settle, silent_cli}
 const STREAM_CLOSE_TIMEOUT_VARIABLE: &str = "CLAUDE_CODE_STREAM_CLOSE_TIMEOUT";
 const CEILING_VARIABLE: &str = "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS";
 
-fn hook_options() -> claude_agent_kit::ClaudeAgentOptionsBuilder {
+fn hook_options() -> claude_agent_rust_sdk::ClaudeAgentOptionsBuilder {
     ClaudeAgentOptions::builder().hook("PreToolUse", HookMatcher::new().hook(passive_hook()))
 }
 

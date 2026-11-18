@@ -1,11 +1,18 @@
 [package]
-name = "claude-agent-kit-macros"
-description = "Procedural macros for claude-agent-kit"
+name = "claude-agent-rust-sdk-macros"
+description = "Procedural macros of claude-agent-rust-sdk, used through its `macros` feature"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/claude-agent-rust-sdk-macros"
+readme = "README.md"
+keywords = ["claude", "agent", "sdk", "anthropic", "macros"]
+categories = ["development-tools::procedural-macro-helpers"]
+include = ["/README.md", "/LICENSE-MIT", "/LICENSE-APACHE", "/src/**"]
 
 [lib]
 proc-macro = true

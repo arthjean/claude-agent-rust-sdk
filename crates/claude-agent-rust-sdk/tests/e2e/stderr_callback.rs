@@ -6,7 +6,7 @@
 //! credentials come from the environment, the session gets an empty
 //! configuration directory, where there is no login to conflict with.
 
-use claude_agent_kit::StderrCallback;
+use claude_agent_rust_sdk::StderrCallback;
 
 use crate::suite;
 

@@ -3,7 +3,6 @@ all-features = true
 
 [licenses]
 allow = [
-    "GPL-3.0-or-later",
     "MIT",
     "MIT-0",
     "Apache-2.0",

@@ -96,8 +96,8 @@ const MTIME_FLOOR: i64 = 1_000_000_000_000;
 /// first contract broken.
 ///
 /// ```
-/// use claude_agent_kit::InMemorySessionStore;
-/// use claude_agent_kit::testing::run_session_store_conformance;
+/// use claude_agent_rust_sdk::InMemorySessionStore;
+/// use claude_agent_rust_sdk::testing::run_session_store_conformance;
 ///
 /// # async fn demo() {
 /// run_session_store_conformance(|| async { InMemorySessionStore::new() })

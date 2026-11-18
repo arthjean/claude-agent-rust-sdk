@@ -5,7 +5,7 @@ mod common;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     InMemorySessionStore, SdkSessionInfo, SessionKey, SessionStore, SessionStoreCapabilities,
     SessionStoreEntry, SessionStoreError, SessionStoreListEntry, SessionSummaryEntry,
     UnsupportedStoreOperation, fold_session_summary, list_sessions_from_store,

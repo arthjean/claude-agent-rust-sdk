@@ -1,6 +1,6 @@
-//! Procedural macros for `claude-agent-kit`.
+//! Procedural macros for `claude-agent-rust-sdk`.
 //!
-//! The macros are re-exported by `claude-agent-kit` behind its `macros`
+//! The macros are re-exported by `claude-agent-rust-sdk` behind its `macros`
 //! feature and are documented there. Depend on that crate, not on this one.
 
 #![deny(missing_docs)]
@@ -16,7 +16,7 @@ use syn::{
 
 /// Turns an async function into a function returning the tool it defines.
 ///
-/// See the documentation of `claude_agent_kit::tool`.
+/// See the documentation of `claude_agent_rust_sdk::tool`.
 #[proc_macro_attribute]
 pub fn tool(arguments: TokenStream, item: TokenStream) -> TokenStream {
     expand(arguments.into(), item.into())
@@ -92,7 +92,7 @@ impl Settings {
             return None;
         }
         Some(quote! {
-            .annotations(::claude_agent_kit::ToolAnnotations::new() #(#setters)*)
+            .annotations(::claude_agent_rust_sdk::ToolAnnotations::new() #(#setters)*)
         })
     }
 }
@@ -196,16 +196,16 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
     let block = &function.block;
     Ok(quote! {
         #(#attributes)*
-        #visibility fn #ident() -> ::claude_agent_kit::SdkMcpTool {
+        #visibility fn #ident() -> ::claude_agent_rust_sdk::SdkMcpTool {
             #signature #block
 
-            ::claude_agent_kit::SdkMcpTool::typed::<#argument>(
+            ::claude_agent_rust_sdk::SdkMcpTool::typed::<#argument>(
                 #name,
                 #description,
-                |__claude_agent_kit_arguments| async move {
-                    #ident(__claude_agent_kit_arguments)
+                |__claude_agent_rust_sdk_arguments| async move {
+                    #ident(__claude_agent_rust_sdk_arguments)
                         .await
-                        .map_err(::claude_agent_kit::BoxError::from)
+                        .map_err(::claude_agent_rust_sdk::BoxError::from)
                 },
             )
             #annotations

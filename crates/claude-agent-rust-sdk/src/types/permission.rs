@@ -370,7 +370,7 @@ type CanUseToolFn = dyn Fn(
 /// Any async closure converts into this type:
 ///
 /// ```
-/// use claude_agent_kit::{CanUseTool, PermissionResult};
+/// use claude_agent_rust_sdk::{CanUseTool, PermissionResult};
 ///
 /// let callback = CanUseTool::new(async |_tool_name, _input, _context| {
 ///     Ok(PermissionResult::allow())

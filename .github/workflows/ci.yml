@@ -42,19 +42,19 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --no-deps
 
       - name: Examples (default features)
-        run: cargo check --package claude-agent-kit --examples
+        run: cargo check --package claude-agent-rust-sdk --examples
 
       - name: Test
         run: cargo test --workspace --all-features
 
       - name: Test (no default features)
-        run: cargo test --package claude-agent-kit --no-default-features --features testing
+        run: cargo test --package claude-agent-rust-sdk --no-default-features --features testing
 
       - name: Keychain resume (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          keychain="$RUNNER_TEMP/claude-agent-kit-test.keychain-db"
+          keychain="$RUNNER_TEMP/claude-agent-rust-sdk-test.keychain-db"
           security create-keychain -p ci-only "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p ci-only "$keychain"
@@ -63,7 +63,7 @@ jobs:
             -w '{"claudeAiOauth":{"accessToken":"ci-access","refreshToken":"ci-refresh"}}' "$keychain"
           trap 'security delete-keychain "$keychain"' EXIT
           unset CLAUDE_CONFIG_DIR ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
-          CLAUDE_AGENT_KIT_KEYCHAIN=1 cargo test -p claude-agent-kit --all-features --test session_resume \
+          CLAUDE_AGENT_RUST_SDK_KEYCHAIN=1 cargo test -p claude-agent-rust-sdk --all-features --test session_resume \
             keychain -- --ignored --nocapture
 
       - name: Documentation
@@ -86,6 +86,39 @@ jobs:
 
       - name: Check
         run: cargo check --workspace --all-features --locked
+
+  # Packages both published crates as a release does and checks what the
+  # archives hold, then builds the documentation the way docs.rs does.
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Nightly builds the documentation; the stable toolchain, installed
+      # last, stays the default and packages the crates.
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: nightly
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2.9.3
+
+      - name: Package check
+        run: cargo xtask package-check
+
+      - name: Documentation as docs.rs builds it
+        run: cargo +nightly doc --package claude-agent-rust-sdk --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings
 
   licenses:
     name: Dependency licenses

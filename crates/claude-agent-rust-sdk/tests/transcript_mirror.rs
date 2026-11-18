@@ -6,8 +6,8 @@ mod common;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use claude_agent_kit::testing::MockTransport;
-use claude_agent_kit::{
+use claude_agent_rust_sdk::testing::MockTransport;
+use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, InMemorySessionStore, Message, SessionKey, SessionStore,
     SessionStoreEntry, SessionStoreError, SessionStoreFlushMode, SystemMessage,
     file_path_to_session_key, query_with_transport,
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use common::mock::{Recorder, assistant, cli_answering, result, silent_cli, success};
 
 fn config_dir() -> PathBuf {
-    std::env::temp_dir().join("claude-agent-kit-mirror-test-config")
+    std::env::temp_dir().join("claude-agent-rust-sdk-mirror-test-config")
 }
 
 fn transcript_path(session: &str) -> String {

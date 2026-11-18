@@ -7,7 +7,7 @@
 //! Run it with `cargo run --example mcp_calculator`, or pass prompts of
 //! your own: `cargo run --example mcp_calculator -- "What is 7 * 6?"`.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, ClaudeSdkClient, ContentBlock, Message, SdkMcpTool,
     ToolAnnotations, ToolResult, UserContent, create_sdk_mcp_server,
 };
@@ -137,7 +137,7 @@ fn display(message: &Message) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), claude_agent_kit::Error> {
+async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
     let tools = calculator_tools();
     let allowed: Vec<String> = tools
         .iter()

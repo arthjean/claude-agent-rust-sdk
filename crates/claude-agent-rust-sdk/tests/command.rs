@@ -4,7 +4,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, EffortLevel, Error,
     McpSdkServerConfig, McpSdkServerInstance, McpServers, McpStdioServerConfig, PermissionMode,
     SandboxNetworkConfig, SandboxSettings, SdkBeta, SdkPluginConfig, SessionKey, SessionStore,
@@ -745,7 +745,7 @@ fn sandbox_network_and_ignored_violations_pass_through() {
         .ignore_violations(
             [("git".to_owned(), vec!["/etc/hosts".to_owned()])]
                 .into_iter()
-                .collect::<claude_agent_kit::SandboxIgnoreViolations>(),
+                .collect::<claude_agent_rust_sdk::SandboxIgnoreViolations>(),
         );
     let parsed = settings_value(&build(options().sandbox(sandbox)));
     assert_eq!(

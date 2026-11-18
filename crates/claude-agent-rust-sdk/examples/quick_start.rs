@@ -6,7 +6,7 @@
 //!
 //! Run it with `cargo run --example quick_start`.
 
-use claude_agent_kit::{BoxError, ClaudeAgentOptions, Error, Message, query};
+use claude_agent_rust_sdk::{BoxError, ClaudeAgentOptions, Error, Message, query};
 use futures_util::StreamExt;
 
 /// Prints the text of an assistant message, and the cost of a result.

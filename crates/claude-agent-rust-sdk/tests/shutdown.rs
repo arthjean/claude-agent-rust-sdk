@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use claude_agent_kit::{ClaudeAgentOptions, Error, SubprocessTransport};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, SubprocessTransport};
 use futures_util::FutureExt;
 use serde_json::json;
 
 use common::{Fake, fake_claude, next_message, process_exists, stand_in_options, wait_until_gone};
 
-const HOST_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_HOST_SCENARIO";
+const HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_HOST_SCENARIO";
 const WORST_CASE_CLOSE: Duration = Duration::from_secs(20);
 
 async fn connected(options: ClaudeAgentOptions) -> (SubprocessTransport, u32) {

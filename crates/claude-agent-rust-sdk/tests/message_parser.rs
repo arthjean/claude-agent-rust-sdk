@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AssistantMessage, AssistantMessageError, ContentBlock, Error, Message, MessageOriginKind,
     RateLimitEvent, RateLimitStatus, RateLimitType, ResultMessage, ServerToolName, SessionKey,
     StreamEvent, SystemMessage, TERMINAL_TASK_STATUSES, TaskNotificationOriginSubkind,

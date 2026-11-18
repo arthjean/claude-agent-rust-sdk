@@ -129,10 +129,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "claude-agent-kit"
+name = "claude-agent-rust-sdk"
 version = "0.1.0"
 dependencies = [
- "claude-agent-kit-macros",
+ "claude-agent-rust-sdk-macros",
  "futures-core",
  "futures-util",
  "indexmap",
@@ -156,7 +156,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "claude-agent-kit-macros"
+name = "claude-agent-rust-sdk-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
@@ -725,7 +725,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 name = "parity-driver"
 version = "0.1.0"
 dependencies = [
- "claude-agent-kit",
+ "claude-agent-rust-sdk",
  "futures-util",
  "indexmap",
  "serde",

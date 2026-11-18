@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use claude_agent_kit::McpServerConfig;
+use claude_agent_rust_sdk::McpServerConfig;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, InitializeRequestParams,
     InitializeResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams, ServerConfig,

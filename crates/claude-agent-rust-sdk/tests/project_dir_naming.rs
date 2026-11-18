@@ -5,7 +5,7 @@
 //! default. Run it with:
 //!
 //! ```text
-//! CLAUDE_AGENT_KIT_E2E=1 cargo test --test project_dir_naming -- --ignored --nocapture
+//! CLAUDE_AGENT_RUST_SDK_E2E=1 cargo test --test project_dir_naming -- --ignored --nocapture
 //! ```
 //!
 //! For each case the CLI answers one prompt in a fresh working directory;
@@ -20,8 +20,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use claude_agent_kit::cli::find_cli;
-use claude_agent_kit::{list_sessions, project_key_for_directory};
+use claude_agent_rust_sdk::cli::find_cli;
+use claude_agent_rust_sdk::{list_sessions, project_key_for_directory};
 
 fn projects_dir() -> PathBuf {
     match std::env::var("CLAUDE_CONFIG_DIR") {
@@ -87,10 +87,10 @@ fn run_case(cli: &Path, label: &str, cwd: &Path) -> bool {
 }
 
 #[test]
-#[ignore = "runs the real CLI; set CLAUDE_AGENT_KIT_E2E=1 and pass --ignored"]
+#[ignore = "runs the real CLI; set CLAUDE_AGENT_RUST_SDK_E2E=1 and pass --ignored"]
 fn project_directory_naming_matches_the_cli() {
-    if std::env::var("CLAUDE_AGENT_KIT_E2E").as_deref() != Ok("1") {
-        eprintln!("CLAUDE_AGENT_KIT_E2E is not 1: skipping");
+    if std::env::var("CLAUDE_AGENT_RUST_SDK_E2E").as_deref() != Ok("1") {
+        eprintln!("CLAUDE_AGENT_RUST_SDK_E2E is not 1: skipping");
         return;
     }
     let cli = find_cli().unwrap();

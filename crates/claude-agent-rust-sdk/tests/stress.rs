@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use claude_agent_kit::{ClaudeAgentOptions, SubprocessTransport};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, SubprocessTransport};
 use futures_util::FutureExt;
 use tokio::sync::Semaphore;
 

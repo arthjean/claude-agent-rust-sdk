@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     AgentDefinition, ContentBlock, InMemorySessionStore, SessionMessage, get_subagent_messages,
     get_subagent_messages_from_store, list_subagents, list_subagents_from_store,
 };

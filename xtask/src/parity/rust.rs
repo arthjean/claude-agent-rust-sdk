@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-const LIBRARY_PACKAGE: &str = "claude-agent-kit";
+const LIBRARY_PACKAGE: &str = "claude-agent-rust-sdk";
 const PROBE_PACKAGE: &str = "parity-probe";
 
 fn tool(variable: &str, fallback: &str) -> OsString {

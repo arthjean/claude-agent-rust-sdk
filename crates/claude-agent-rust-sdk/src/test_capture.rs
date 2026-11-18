@@ -1,6 +1,6 @@
 //! Captures the `tracing` events of one level emitted on the current
-//! thread. Shared by the integration tests and, through `#[path]`, by unit
-//! tests of the crate.
+//! thread. Compiled for the unit tests of the crate and loaded by the
+//! integration tests through `#[path]`, so it stays inside the package.
 //!
 //! One collector is the global default subscriber of the test binary, and
 //! each [`Warnings`] is a sink of the thread that installed it. A

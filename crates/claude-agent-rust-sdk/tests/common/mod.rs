@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use claude_agent_kit::{ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, MessageStream};
+use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, MessageStream};
 use futures_util::StreamExt;
 use serde_json::Value;
 
@@ -18,7 +18,7 @@ pub mod transcripts;
 pub const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
 pub const STEP_LIMIT: Duration = Duration::from_secs(30);
 
-pub const FAKE_CLAUDE_VARIABLE: &str = "CLAUDE_AGENT_KIT_TEST_FAKE_CLAUDE";
+pub const FAKE_CLAUDE_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_FAKE_CLAUDE";
 
 pub fn fake_claude() -> PathBuf {
     static BINARY: OnceLock<PathBuf> = OnceLock::new();
@@ -183,4 +183,5 @@ pub fn processes_matching(token: &str) -> Vec<String> {
         .collect()
 }
 
+#[path = "../../src/test_capture.rs"]
 pub mod capture;

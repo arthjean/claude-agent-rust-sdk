@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::UNIX_EPOCH;
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptions, Message, SessionKey, SessionListSubkeysKey, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
     SessionSummaryEntry, SystemMessage, fold_session_summary, get_session_info_from_store,
@@ -370,7 +370,7 @@ async fn run(prompt: &str, options: ClaudeAgentOptions) -> Result<String, BoxErr
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     let root = std::env::args_os().nth(1).map_or_else(
-        || std::env::temp_dir().join("claude-agent-kit-session-store"),
+        || std::env::temp_dir().join("claude-agent-rust-sdk-session-store"),
         PathBuf::from,
     );
     let store = JsonlDirectoryStore::new(root);

@@ -1,6 +1,6 @@
 //! Hook event types and the inputs they deliver.
 
-use claude_agent_kit::{
+use claude_agent_rust_sdk::{
     HookInput, HookMatcher, HookPermissionDecision, NotificationHookSpecificOutput,
     PostToolUseHookSpecificOutput, PreToolUseHookSpecificOutput, SyncHookOutput,
 };
