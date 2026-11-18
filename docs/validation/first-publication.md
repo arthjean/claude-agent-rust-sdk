@@ -180,8 +180,56 @@ Registry checksums (SHA-256):
   as it was: same `publishedAt` (11:52:03), same two assets. `attest`
   attested the same archives again, which adds attestations and changes
   nothing published.
-- Pending, the owner's: set both crates to "Trusted Publishing Only" and
-  revoke the token `claude-agent-rust-sdk-bootstrap-rc1`.
+- "Trusted Publishing Only": the owner checked "Require trusted
+  publishing for all new versions" on both crates. The crates.io API
+  then gave `trustpub_only: true` for both.
+- Bootstrap token: the owner reported on 2026-11-18 that he revoked
+  `claude-agent-rust-sdk-bootstrap-rc1`. The session cannot read the
+  owner's token list, so this rests on his report. Both crates refuse a
+  token publication either way.
+
+## 0.1.0 (US-073)
+
+- Changelog: the owner chose on 2026-11-18 that the section of a release
+  gathers the entries of its release candidates (`0708600`). `release
+  prepare 0.1.0` wrote the section from those of `0.1.0-rc.1` and
+  `0.1.0-rc.2`. On review, before the tag, the candidate-only entry
+  ("This is a release candidate...") was removed and the trusted
+  publication entry moved from `### Changed` to `### Added`, since the
+  section is read against no earlier release.
+- `release tag` made the commit `5087d4e` and the tag `v0.1.0` (gates and
+  package check green). At 12:58:58 UTC, `git push --atomic origin main
+  v0.1.0`, on the owner's go, started run `44309118563`
+  (`https://github.com/arthjean/claude-agent-rust-sdk/actions/runs/44309118563`).
+- The run ended green at 13:11:19, all 16 jobs successful. Macros crate
+  on the registry at 13:10:15 and library at 13:10:39, so 11 min 41 s
+  from the tag push to an installable version and 12 min 21 s for the
+  whole run, within the 45-minute Month-1 target.
+- crates.io: `trustpub_data` names run `44309118563` for both crates,
+  `max_stable_version` is `0.1.0`, and `trustpub_only` is still `true`.
+  URLs: `https://crates.io/crates/claude-agent-rust-sdk/0.1.0`,
+  `https://crates.io/crates/claude-agent-rust-sdk-macros/0.1.0`,
+  `https://docs.rs/claude-agent-rust-sdk/0.1.0`,
+  `https://docs.rs/claude-agent-rust-sdk-macros/0.1.0` (both docs.rs
+  builds succeeded).
+- Registry checksums (SHA-256):
+  - `claude-agent-rust-sdk` 0.1.0:
+    `ea36769b8d6590de3ef63090bb83f1e010e1bec07f258348cebfe030262f1796`
+  - `claude-agent-rust-sdk-macros` 0.1.0:
+    `b1a8b3d8cda61e74f99420ded799d3a618075680714f97215193622542c35d56`
+- GitHub Release
+  `https://github.com/arthjean/claude-agent-rust-sdk/releases/tag/v0.1.0`:
+  not a pre-release, immutable. Its notes are the `0.1.0` section of the
+  changelog followed by the crates.io and docs.rs links. Its two archives
+  match the registry checksums after download, and both attestations
+  verify with the `RELEASING.md` command.
+- In an empty project, `cargo add claude-agent-rust-sdk` wrote
+  `claude-agent-rust-sdk = "0.1.0"`. A second empty project used the
+  README snippet (`claude-agent-rust-sdk = "0.1"`, `futures-util`,
+  `tokio`) with the README quick start: it resolved
+  `claude-agent-rust-sdk 0.1.0` and built. Nothing was run.
+- No defect was found after publication, so nothing was yanked. The
+  procedure is the "Yanking a version" section of `RELEASING.md`.
 
 ## Deviations
 
