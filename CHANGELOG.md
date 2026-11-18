@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0-rc.2 - 2026-11-18
+
+Upstream: Python SDK 0.2.182, CLI 2.1.325
+
 ### Changed
 
 - Published by the release workflow through crates.io trusted publishing, with no stored registry token. The `.crate` archives attached to the GitHub Release carry a build attestation that `gh attestation verify` checks, as `RELEASING.md` shows.
