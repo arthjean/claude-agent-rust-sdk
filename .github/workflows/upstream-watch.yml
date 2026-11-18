@@ -1,13 +1,15 @@
 name: Upstream watch
 
-# Opens one issue when the upstream Python SDK publishes a release newer than
-# the submodule pin, with what `cargo xtask upstream-diff` lists and the
-# changelog section of the release. Makes no commit and opens no pull
-# request. The logic is in .github/scripts/upstream-watch.sh, tested offline
-# by the `scripts` job of ci.yml.
+# Runs daily. Opens one issue when the upstream Python SDK publishes a
+# release newer than the submodule pin, with the verdict (`cli-only` or
+# `needs-port`), the `cargo xtask upstream-sync <tag>` command that starts the
+# port, what `cargo xtask upstream-diff` lists, and the changelog section of
+# the release. Makes no commit and opens no pull request. The logic is in
+# .github/scripts/upstream-watch.sh, tested offline by the `scripts` job of
+# ci.yml.
 on:
   schedule:
-    - cron: "41 6 * * 1"
+    - cron: "41 6 * * *"
   workflow_dispatch:
     inputs:
       dry-run:

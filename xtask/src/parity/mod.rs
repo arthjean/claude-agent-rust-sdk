@@ -1,7 +1,7 @@
 //! The parity commands: `parity-check`, `parity-report`, `parity-tests`,
 //! `migration-table`, `parity-page`, and `upstream-diff`.
 
-mod diff;
+pub(crate) mod diff;
 mod ledger;
 mod page;
 pub(crate) mod python;
@@ -35,9 +35,15 @@ pub struct Locations {
 impl Locations {
     /// The locations of this workspace.
     pub fn of_workspace() -> Self {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        Self::at(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf),
+        )
+    }
+
+    /// The locations of the workspace at `root`.
+    pub fn at(root: PathBuf) -> Self {
         Self {
             upstream: root.join("upstream").join("claude-agent-sdk-python"),
             parity: root.join("parity"),
@@ -244,7 +250,35 @@ fn differences(locations: &Locations) -> Result<crate::differential::ledger::Led
     crate::differential::ledger::load(
         &locations.parity.join("differences.toml"),
         &locations.upstream,
+        &locations.root,
     )
+}
+
+/// Rewrites the migration table and the parity page of `locations`, as
+/// `migration-table` and `parity-page` do. Fails on a claim of the page the
+/// counts do not support.
+pub fn regenerate(locations: &Locations) -> Result<(), String> {
+    let loaded = load(locations)?;
+    let document = read(&locations.migration)?;
+    let updated = with_table(
+        &document,
+        &migration_table(&loaded.surface),
+        &locations.migration,
+    )?;
+    if updated != document {
+        std::fs::write(&locations.migration, updated)
+            .map_err(|error| format!("cannot write {}: {error}", locations.migration.display()))?;
+    }
+    let (document, expected) = expected_page(locations, &loaded)?;
+    let claims = page::unsupported_claims(&document, &locations.page);
+    if !claims.is_empty() {
+        return Err(claims.join("\n"));
+    }
+    if document != expected {
+        std::fs::write(&locations.page, &expected)
+            .map_err(|error| format!("cannot write {}: {error}", locations.page.display()))?;
+    }
+    Ok(())
 }
 
 fn page_facts(locations: &Locations, loaded: &Loaded) -> Result<page::Facts, String> {

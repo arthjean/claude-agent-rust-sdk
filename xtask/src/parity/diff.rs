@@ -28,7 +28,8 @@ fn git(upstream: &Path, arguments: &[&str]) -> Result<Option<String>, String> {
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned()))
 }
 
-fn commit(upstream: &Path, revision: &str) -> Result<Option<String>, String> {
+/// The commit `revision` names in `upstream`, `None` when it names none.
+pub fn commit(upstream: &Path, revision: &str) -> Result<Option<String>, String> {
     let object = format!("{revision}^{{commit}}");
     Ok(
         git(upstream, &["rev-parse", "--verify", "--quiet", &object])?
@@ -36,7 +37,9 @@ fn commit(upstream: &Path, revision: &str) -> Result<Option<String>, String> {
     )
 }
 
-fn resolve(upstream: &Path, revision: &str) -> Result<String, String> {
+/// The commit `revision` names in `upstream`, fetching the tags of
+/// `origin` when it is not there yet.
+pub fn resolve(upstream: &Path, revision: &str) -> Result<String, String> {
     if let Some(hash) = commit(upstream, revision)? {
         return Ok(hash);
     }
@@ -50,7 +53,8 @@ fn resolve(upstream: &Path, revision: &str) -> Result<String, String> {
     })
 }
 
-fn show(upstream: &Path, revision: &str, file: &str) -> Result<String, String> {
+/// The content of `file` at `revision`, empty when the file is missing.
+pub fn show(upstream: &Path, revision: &str, file: &str) -> Result<String, String> {
     Ok(git(upstream, &["show", &format!("{revision}:{file}")])?.unwrap_or_default())
 }
 
@@ -171,6 +175,66 @@ fn short(hash: &str) -> &str {
     hash.get(..7).unwrap_or(hash)
 }
 
+/// The upstream files a release that only moves versions may change.
+pub const VERSION_FILES: [&str; 3] = [
+    "src/claude_agent_sdk/_cli_version.py",
+    "src/claude_agent_sdk/_version.py",
+    CHANGELOG,
+];
+const MANIFEST: &str = "pyproject.toml";
+
+/// Whether an upstream change needs more than moving the pinned versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Only [`VERSION_FILES`] and the version line of `pyproject.toml`
+    /// changed: moving the copies of the versions is the whole port.
+    CliOnly,
+    /// Anything else changed: the port needs code and ledger work.
+    NeedsPort,
+}
+
+impl Verdict {
+    /// The word `upstream-diff` and `upstream-sync` print.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::CliOnly => "cli-only",
+            Self::NeedsPort => "needs-port",
+        }
+    }
+}
+
+/// The verdict of the change between the commits `base` and `target`,
+/// from the files it touches.
+pub fn verdict(upstream: &Path, base: &str, target: &str) -> Result<Verdict, String> {
+    let files = git(upstream, &["diff", "--name-only", base, target])?
+        .ok_or_else(|| format!("cannot list the files changed between {base} and {target}"))?;
+    for file in files.lines().filter(|file| !file.is_empty()) {
+        if VERSION_FILES.contains(&file) {
+            continue;
+        }
+        if file != MANIFEST {
+            return Ok(Verdict::NeedsPort);
+        }
+        let patch = git(
+            upstream,
+            &["diff", "--unified=0", base, target, "--", MANIFEST],
+        )?
+        .ok_or_else(|| format!("cannot read the change of {MANIFEST}"))?;
+        let only_version = patch
+            .lines()
+            .filter(|line| {
+                (line.starts_with('+') || line.starts_with('-'))
+                    && !line.starts_with("+++")
+                    && !line.starts_with("---")
+            })
+            .all(|line| line[1..].trim_start().starts_with("version"));
+        if !only_version {
+            return Ok(Verdict::NeedsPort);
+        }
+    }
+    Ok(Verdict::CliOnly)
+}
+
 /// Compares the pinned commit of the submodule with `revision`.
 pub fn run(upstream: &Path, revision: &str) -> Result<String, String> {
     let pinned = commit(upstream, "HEAD")?.ok_or_else(|| {
@@ -181,9 +245,10 @@ pub fn run(upstream: &Path, revision: &str) -> Result<String, String> {
     })?;
     let target = resolve(upstream, revision)?;
     let heading = format!(
-        "upstream-diff: {} (pinned) -> {revision} ({})",
+        "upstream-diff: {} (pinned) -> {revision} ({})\nverdict: {}",
         short(&pinned),
-        short(&target)
+        short(&target),
+        verdict(upstream, &pinned, &target)?.word()
     );
     Ok(render(
         &heading,

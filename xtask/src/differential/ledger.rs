@@ -26,6 +26,14 @@
 //! An entry matches a difference when the case, the location, and both
 //! values agree. An entry that matches nothing in a full run is stale.
 //!
+//! A value that moves with every release is written as a token instead of
+//! a literal, so no release has to edit the ledger: [`CRATE_VERSION`]
+//! stands for the workspace version of the root `Cargo.toml`, and
+//! [`UPSTREAM_VERSION`] for the version of the upstream checkout's
+//! `pyproject.toml`. Tokens are replaced in the whole file before it is
+//! parsed, and the comparison and the parity page both see the replaced
+//! text.
+//!
 //! The `[behavior]` table lists the divergences the harness cannot see,
 //! because they are not on the wire (how inbound messages are parsed, how
 //! the child process is placed):
@@ -350,19 +358,106 @@ pub fn parse(text: &str, upstream: &Path) -> Result<Ledger, String> {
     })
 }
 
-/// Reads and parses the ledger file.
-pub fn load(path: &Path, upstream: &Path) -> Result<Ledger, String> {
+/// The token for the workspace version.
+pub const CRATE_VERSION: &str = "{crate_version}";
+/// The token for the version of the upstream package.
+pub const UPSTREAM_VERSION: &str = "{upstream_version}";
+
+/// The `[workspace.package]` version of the manifest at `root`.
+pub fn crate_version(root: &Path) -> Result<String, String> {
+    let path = root.join("Cargo.toml");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let manifest: toml::Table = text
+        .parse()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("version"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| format!("{}: no [workspace.package] version", path.display()))
+}
+
+/// The `version = "..."` of a `pyproject.toml`.
+pub fn pyproject_version(text: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let value = line.trim().strip_prefix("version")?.trim_start();
+        let value = value.strip_prefix('=')?.trim();
+        Some(value.trim_matches('"').to_owned())
+    })
+}
+
+/// Replaces the version tokens of `text`, reading each version only when
+/// its token appears.
+pub fn resolve_tokens(text: &str, upstream: &Path, root: &Path) -> Result<String, String> {
+    let mut text = text.to_owned();
+    if text.contains(CRATE_VERSION) {
+        text = text.replace(CRATE_VERSION, &crate_version(root)?);
+    }
+    if text.contains(UPSTREAM_VERSION) {
+        let manifest = upstream.join("pyproject.toml");
+        let version = std::fs::read_to_string(&manifest)
+            .ok()
+            .as_deref()
+            .and_then(pyproject_version)
+            .ok_or_else(|| format!("no `version = ...` line in {}", manifest.display()))?;
+        text = text.replace(UPSTREAM_VERSION, &version);
+    }
+    Ok(text)
+}
+
+/// Reads and parses the ledger file, with its version tokens replaced.
+/// `root` is the workspace whose manifest gives the crate version.
+pub fn load(path: &Path, upstream: &Path, root: &Path) -> Result<Ledger, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let text = resolve_tokens(&text, upstream, root)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     parse(&text, upstream).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use serde_json::json;
 
     use super::parse;
     use crate::differential::compare::Difference;
+
+    #[test]
+    fn version_tokens_are_replaced_from_the_manifests_before_parsing() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace.package]\nversion = \"7.8.9\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("upstream")).unwrap();
+        std::fs::write(
+            root.join("upstream/pyproject.toml"),
+            "[project]\nname = \"x\"\nversion = \"1.2.3\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("differences.toml"),
+            "[wire.version]\ncase = \"*\"\nlocation = \"env V\"\npython = '\"{upstream_version}\"'\nrust = '\"{crate_version}\"'\ncategory = \"deliberate\"\nreason = \"Own versions.\"\n",
+        )
+        .unwrap();
+        let ledger =
+            super::load(&root.join("differences.toml"), &root.join("upstream"), root).unwrap();
+        assert_eq!(ledger.entries[0].python, Some(json!("1.2.3")));
+        assert_eq!(ledger.entries[0].rust, Some(json!("7.8.9")));
+
+        let untouched =
+            super::resolve_tokens("no token", Path::new("/missing"), Path::new("/missing"));
+        assert_eq!(untouched.unwrap(), "no token");
+        let missing = super::resolve_tokens("{crate_version}", root, Path::new("/missing"));
+        assert!(missing.unwrap_err().contains("Cargo.toml"));
+    }
 
     fn upstream() -> tempfile::TempDir {
         let directory = tempfile::tempdir().unwrap();

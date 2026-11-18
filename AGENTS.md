@@ -4,8 +4,9 @@ A Rust port of the Python Claude Agent SDK, published as the crate `claude-agent
 
 ## Stop for the owner
 
-Edit code, run the gates, and run every offline test without asking. Three actions wait for the owner's explicit go:
+Edit code, run the gates, and run every offline test without asking. Four actions wait for the owner's explicit go:
 
+- **Publishing is permanent.** A pushed `v*` tag starts `release.yml`, which publishes both crates to crates.io, where a version is never overwritten or deleted. `cargo xtask release prepare` and `cargo xtask release tag` only change the local checkout (`release tag` makes the release commit and tag); the push, `cargo publish`, and `cargo yank` are the owner's. `RELEASING.md` gives the procedure.
 - **Real-CLI runs spend API credits.** `cargo xtask e2e` (about 0.80 USD per full run), the `End-to-end` workflow, the `#[ignore]`d real-CLI tests, and every example under `crates/claude-agent-rust-sdk/examples` call the real API. Prove a change with the fake CLI or the mock transport instead.
 - **Anything posted on GitHub** in the owner's name: issue, pull request, comment.
 - **Lowering a floor**: the 91.5% line coverage floor in `.github/workflows/ci.yml` only goes up, and the lint levels in the root `Cargo.toml` and `clippy.toml` stay as they are.
@@ -16,11 +17,13 @@ The owner is the only visible contributor: commits carry no AI attribution and n
 
 | File | Change it with |
 |---|---|
-| `upstream/claude-agent-sdk-python/**` | Read-only. Only the submodule pin moves. |
+| `upstream/claude-agent-sdk-python/**` | Read-only. Only the submodule pin moves, through `cargo xtask upstream-sync <tag>`. |
 | `.github/workflows/actions.lock` | `gh actions-lock` (see GitHub Actions below) |
 | `Cargo.lock` | cargo |
 | The table between the `parity:table` markers in `docs/migration.md` | `cargo xtask migration-table` |
 | The region between the `parity:page` markers in `docs/parity.md` | `cargo xtask parity-page` (rerun after editing `parity/*.toml`, `parity/cases`, or moving the submodule pin) |
+| The workspace version, its copies (the `=` requirement on the macros crate, the README snippets), and the released sections of `CHANGELOG.md` | `cargo xtask release prepare`; write entries by hand under `## Unreleased` only |
+| The copies of `CLI_VERSION`, `UPSTREAM_SDK_VERSION`, and the upstream commit | `cargo xtask upstream-sync <tag>`; a new copy goes in `UPSTREAM_COPIES` of `xtask/src/release/sync.rs` |
 | `docs/research/*.md`, `docs/validation/project-dir-naming.md` | Dated records: write new findings to a new file. |
 | `tasks/prd-claude-agent-rust-sdk.md` and its status file | Certified and closed: leave as is. |
 
@@ -42,6 +45,7 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 | `.github/workflows/*.yml` | `gh actions-lock --verify` (extension: `gh extension install github/gh-actions-lock --pin v0.4.1`) |
 | `.github/scripts/actions-freshness.sh` | `bash .github/scripts/actions-freshness.test.sh` (offline, needs `jq`) |
 | `.github/scripts/upstream-watch.sh` | `bash .github/scripts/upstream-watch.test.sh` (offline, needs `git`) |
+| `.github/scripts/release.sh` | `bash .github/scripts/release.test.sh` (offline, needs `git` and `jq`) |
 | New code paths | Cover them with offline tests: CI fails under 91.5% line coverage, measured on Linux with `fake-claude` and `xtask` left out. |
 
 CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and tests with `cfg`, and keep both the Unix and the Windows branch compiling.
@@ -54,7 +58,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 - **`unsafe` lives only in `src/process/sys.rs`**. An operating-system call that needs it goes there, with a doc comment that justifies the block.
 - **Twelve examples**: the README Examples table and the example files match one to one. Adding an example means adding its row and raising the count in the test.
 - **Every Cargo feature** is described in the crate docs of `src/lib.rs` as ``//! - `name`:``.
-- **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, and the test itself. Move every copy together.
+- **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, `crates/fake-claude`, and the test itself. `cargo xtask upstream-sync` moves every copy together.
 - **README statements**: the authentication, non-affiliation, and license sentences are matched word for word.
 - **The former crate name and the former license** appear in no tracked file outside `docs/research/`, `docs/validation/`, `tasks/`, and `upstream/`. A test that needs either string builds it from parts.
 - **Published packages**: each published crate directory holds copies of `LICENSE-MIT` and `LICENSE-APACHE` (the library also `THIRD_PARTY_NOTICES`) identical to the files at the repository root, so edit the root file and copy it. The `include` lists, the registry metadata, and the exact `=<version>` requirement on the macros crate are pinned, and no file under `src/` loads a file outside its package.
@@ -69,8 +73,9 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 - A test compiled on one platform only takes a ` @windows`, ` @unix`, ` @linux`, or ` @macos` suffix in the ledger.
 - After editing `parity/surface.toml`, run `cargo xtask migration-table`.
 - `parity/differences.toml` also holds `[behavior]` (divergences off the wire, each naming the Rust test that shows it) and `[unclassified]` (audit divergences not yet reviewed). After editing any ledger or case, run `cargo xtask parity-page`; `parity-check` fails on a stale `docs/parity.md`, and on hand-written text there that claims "100%" or "full parity".
-- The `Upstream watch` workflow opens one issue per upstream release newer than the pin, titled `Port upstream release <tag>`. Run it by hand with `dry-run` to print the issue instead.
-- To move to a newer upstream: `cargo xtask upstream-diff <tag>` lists what changed, then move the pin, port the changes, and add or remove ledger entries until `parity-check --deny-pending` passes.
+- The daily `Upstream watch` workflow opens one issue per upstream release newer than the pin, titled `Port upstream release <tag>`, with the verdict and the sync command. Run it by hand with `dry-run` to print the issue instead.
+- To move to a newer upstream: `cargo xtask upstream-sync <tag>` moves the pin and every pinned copy and prints `verdict: cli-only` (nothing left to port) or `verdict: needs-port` with what `upstream-diff` lists; then port the changes and add or remove ledger entries until `parity-check --deny-pending` passes.
+- `parity/differences.toml` writes moving versions as the tokens `{crate_version}` and `{upstream_version}`, so no release edits it.
 
 ## Design invariants
 
@@ -97,6 +102,7 @@ Workflows reference actions by tag, and `.github/workflows/actions.lock` fixes e
 - `docs/research/python-sdk-parity.md`: the measured gaps with upstream that the open PRD closes.
 - `docs/migration.md`: the user-facing Python-to-Rust mapping.
 - `README.md`, Development section: the `cargo xtask` commands.
+- `RELEASING.md`: the release commands, what each job of `release.yml` does, the settings outside the repository, and the recovery from each failure.
 
 ## Reporting
 

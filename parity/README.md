@@ -114,6 +114,7 @@ reason = "Each SDK names itself to the CLI."
 - `python` and `rust` are JSON text; a missing key means that side sent nothing there.
 - `category` is `deliberate` (the port chose to differ), `rust-follows-cli` (Rust matches what the CLI does where Python does not), `rust-more-robust` (Rust keeps going, or keeps the data, where Python fails or drops it), `rust-stricter` (Rust refuses input Python accepts), or `python-defect` (Python is wrong; Rust matches the CLI). A `python-defect` entry must cite the upstream line at fault as `ref = "path:line"` or `ref = "path:first-last"`, relative to the submodule, and loading fails when those lines do not exist. Nothing is reported upstream.
 - `reason` explains why the difference is accepted.
+- A value that moves with every release is written as a token, so no release edits the ledger: `{crate_version}` is the workspace version of the root `Cargo.toml`, and `{upstream_version}` the version of the submodule's `pyproject.toml`. Both are replaced before the file is read, by the comparison and by the parity page alike.
 
 An entry matches a difference when its case, location, and both values agree. A difference no entry matches fails the run; so does an entry that matched nothing in a full run, which keeps the ledger honest when the crate or upstream changes. A new entry needs the same review as a code change: fix the crate first when the difference is a bug.
 

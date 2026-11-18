@@ -4,6 +4,7 @@ mod differential;
 mod gates;
 mod package;
 mod parity;
+mod release;
 
 use std::process::ExitCode;
 
@@ -28,7 +29,23 @@ usage: cargo xtask <command>
                         from the ledgers and the cases (--check only
                         compares)
   upstream-diff <tag>   list what upstream changed between the pinned commit
-                        and <tag>
+                        and <tag>, and whether only versions moved
+                        (verdict: cli-only) or the change needs a port
+                        (verdict: needs-port)
+  upstream-sync <tag>   move the upstream pin to <tag> and every copy of the
+                        pinned SDK version, CLI version, and commit; print
+                        the verdict
+  release prepare <patch|minor|X.Y.Z[-pre]>
+                        move the crate version everywhere, regenerate the
+                        generated pages, and turn `## Unreleased` of
+                        CHANGELOG.md into the new section (--dry-run only
+                        prints the plan); commits nothing
+  release tag           run the gates and the package check, then create the
+                        commit `chore: release v<version>` and the tag
+                        v<version> (--no-gates skips the gates); pushes
+                        nothing
+  changelog-section <version>
+                        print the CHANGELOG.md section of <version>
   parity-diff [cases]   play every case of parity/cases through both SDKs
                         against fake-claude and fail on any difference not
                         in parity/differences.toml (--coverage lists the
@@ -48,6 +65,9 @@ fn main() -> ExitCode {
         Some("migration-table") => parity::run_migration(rest),
         Some("parity-page") => parity::run_page(rest),
         Some("upstream-diff") => parity::run_diff(rest),
+        Some("upstream-sync") => release::run_sync(rest),
+        Some("release") => release::run(rest),
+        Some("changelog-section") => release::run_section(rest),
         Some("parity-diff") => differential::run(rest),
         Some("e2e") => gates::run_e2e(rest),
         _ => {

@@ -48,7 +48,12 @@ if [ -e "$FAKE/diff-fails" ]; then
   echo "xtask: cannot fetch tags" >&2
   exit 1
 fi
-printf 'Upstream 4720d36 -> %s\n\nExported names: +1 -0\n  + NewExport\n' "$3"
+if [ -e "$FAKE/no-verdict" ]; then
+  printf 'upstream-diff: 4720d36 (pinned) -> %s\n\nExported names: +1 -0\n' "$3"
+  exit 0
+fi
+printf 'upstream-diff: 4720d36 (pinned) -> %s\nverdict: %s\n\nExported names: +1 -0\n  + NewExport\n' \
+  "$3" "$(cat "$FAKE/verdict" 2> /dev/null || echo needs-port)"
 EOF
 chmod +x "$root/bin/gh" "$root/bin/cargo"
 
@@ -137,6 +142,9 @@ check "new tag: body holds the changelog section" contains body.md "- A new opti
 check "new tag: body stops at the next section" lacks body.md "- Old change"
 check "new tag: body names the pin" contains body.md "the submodule is pinned to v0.2.182"
 check "new tag: body in the output" contains output "Exported names: +1 -0"
+check "new tag: body carries the verdict" contains body.md 'Verdict: `needs-port`'
+check "new tag: body gives the sync command" contains body.md "cargo xtask upstream-sync v0.2.183"
+check "new tag: body says the ledgers need work" contains body.md "complete the ledgers"
 check "new tag: does not say up to date" lacks stdout "up to date"
 cp "$FAKE/body.md" "$root/body.md"
 
@@ -148,6 +156,26 @@ check "new tag: searches every issue by title" \
 check "new tag: opens one issue titled with the tag" \
   contains calls "gh issue create --repo owner/repo --title Port upstream release v0.2.183 --body-file $root/body.md"
 check "new tag: one creation only" test "$(grep -c 'issue create' "$FAKE/calls")" = 1
+
+# --- A CLI-only release: the body says so ------------------------------------
+new_case
+echo v0.2.183 > "$FAKE/latest"
+echo cli-only > "$FAKE/verdict"
+run detect
+check "cli-only: green" status_is 0
+check "cli-only: body carries the verdict" contains body.md 'Verdict: `cli-only`'
+check "cli-only: body gives the sync command" contains body.md "cargo xtask upstream-sync v0.2.183"
+check "cli-only: body names the next release step" contains body.md "cargo xtask release prepare patch"
+check "cli-only: no ledger work" lacks body.md "complete the ledgers"
+
+# --- A diff without a verdict fails the run ------------------------------------
+new_case
+echo v0.2.183 > "$FAKE/latest"
+touch "$FAKE/no-verdict"
+run detect
+check "no verdict: fails" status_is 1
+check "no verdict: says so" contains stderr "printed no verdict"
+check "no verdict: no tag output" lacks output "tag=v0.2.183"
 
 # --- A release whose changelog has no section yet -------------------------
 new_case

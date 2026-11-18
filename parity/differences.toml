@@ -7,6 +7,10 @@
 # missing key means that side sent nothing there. An entry that matches no
 # difference fails the run, so remove it when the difference goes away.
 #
+# A value that moves with each release is written as a token: {crate_version}
+# is the workspace version and {upstream_version} the version of the upstream
+# checkout, both replaced before the file is read.
+#
 # [behavior]: divergences the harness cannot see. Each entry cites the
 # upstream lines (`ref`) and the Rust test that shows the Rust side (`test`),
 # which `cargo xtask parity-check` requires to exist.
@@ -25,8 +29,8 @@ reason = "Each SDK names itself to the CLI, which reports the entrypoint in its 
 [wire.sdk-version]
 case = "*"
 location = "env CLAUDE_AGENT_SDK_VERSION"
-python = '"0.2.182"'
-rust = '"0.1.0"'
+python = '"{upstream_version}"'
+rust = '"{crate_version}"'
 category = "deliberate"
 reason = "Each SDK sends its own package version (subprocess_cli.py:769 sends __version__)."
 

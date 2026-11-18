@@ -211,7 +211,11 @@ cargo xtask package-check          package both crates and check what the archiv
 cargo xtask parity-check           check the parity ledgers against upstream
 cargo xtask parity-report          print how much of upstream is implemented
 cargo xtask parity-page            regenerate the measured region of docs/parity.md
-cargo xtask upstream-diff <tag>    list what upstream changed up to a tag
+cargo xtask upstream-diff <tag>    list what upstream changed up to a tag, with its verdict
+cargo xtask upstream-sync <tag>    move the upstream pin and every copy of the pinned versions
+cargo xtask release prepare <bump> move the crate version and write the changelog section
+cargo xtask release tag            run the checks, then create the release commit and tag
+cargo xtask changelog-section <v>  print the changelog section of a version
 cargo xtask parity-diff            compare what both SDKs send the CLI, case by case
 cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
@@ -227,9 +231,17 @@ that `parity/differences.toml` does not list with its reason. It needs Python
 3.10 or later with the pinned dependencies of `parity/requirements.txt`; see
 [`parity/README.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/parity/README.md).
 
-Once a week, the `Upstream watch` workflow compares the newest release of the
+Once a day, the `Upstream watch` workflow compares the newest release of the
 Python SDK with the submodule pin and, when the release is newer, opens one
-issue with what `cargo xtask upstream-diff` lists and the release's changelog.
+issue with the verdict (`cli-only` when only versions moved, `needs-port`
+otherwise), the `cargo xtask upstream-sync <tag>` command that starts the port,
+what `cargo xtask upstream-diff` lists, and the release's changelog.
+
+A pushed `v*` tag publishes both crates through crates.io trusted publishing;
+[`RELEASING.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/RELEASING.md)
+gives the procedure and the recovery from each failure, and
+[`SECURITY.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/SECURITY.md)
+says how to report a vulnerability.
 
 The end-to-end suite spends API credits: about 0.80 USD for a full run. It
 needs `ANTHROPIC_API_KEY`, or `CLAUDE_AGENT_RUST_SDK_E2E_AUTH=cli` to use the login

@@ -396,6 +396,7 @@ fn run_corpus(settings: &Settings) -> Result<bool, String> {
     let ledger = ledger::load(
         &settings.parity.join("differences.toml"),
         &settings.upstream,
+        &settings.root,
     )?;
     let all = case::load_all(
         &settings.parity.join("cases"),

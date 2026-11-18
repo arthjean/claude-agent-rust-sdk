@@ -1033,11 +1033,11 @@ fn ci_runs_the_differential_harness_on_every_pull_request_without_secrets() {
 }
 
 #[test]
-fn the_upstream_watch_runs_weekly_and_only_its_issue_job_can_write() {
+fn the_upstream_watch_runs_daily_and_only_its_issue_job_can_write() {
     let workflow = read(".github/workflows/upstream-watch.yml");
     let compacted = compact(&workflow);
     assert!(
-        compacted.contains("on: schedule: - cron: \"41 6 * * 1\" workflow_dispatch:"),
+        compacted.contains("on: schedule: - cron: \"41 6 * * *\" workflow_dispatch:"),
         "{compacted}"
     );
     for forbidden in [
@@ -1089,6 +1089,490 @@ fn the_upstream_watch_runs_weekly_and_only_its_issue_job_can_write() {
         scripts.contains("run: bash .github/scripts/upstream-watch.test.sh"),
         "{scripts}"
     );
+    let script = read(".github/scripts/upstream-watch.sh");
+    assert!(
+        script.contains("cargo xtask upstream-sync"),
+        "the issue gives the sync command"
+    );
+    assert!(
+        script.contains("Verdict: `%s`"),
+        "the issue carries the verdict"
+    );
+    for file in ["README.md", "AGENTS.md"] {
+        let text = read(file);
+        assert!(!text.to_lowercase().contains("weekly"), "{file}");
+        assert!(!text.contains("Once a week"), "{file}");
+    }
+    assert!(read("README.md").contains("Once a day, the `Upstream watch` workflow"));
+}
+
+/// The format problems of a changelog whose workspace version is
+/// `version`, one message each.
+fn changelog_problems(changelog: &str, version: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let titles: Vec<&str> = changelog
+        .lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .collect();
+    if !changelog.starts_with("# Changelog\n\n## Unreleased\n") {
+        problems.push("the file must open with `# Changelog` then `## Unreleased`".to_owned());
+    }
+    let parse = |text: &str| -> Option<Vec<u64>> {
+        let (core, pre) = text
+            .split_once('-')
+            .map_or((text, None), |(a, b)| (a, Some(b)));
+        let mut numbers: Vec<u64> = core
+            .split('.')
+            .map(|part| part.parse().ok())
+            .collect::<Option<_>>()?;
+        if numbers.len() != 3 {
+            return None;
+        }
+        numbers.push(u64::from(pre.is_none()));
+        if let Some(pre) = pre {
+            numbers.extend(pre.split('.').filter_map(|part| part.parse::<u64>().ok()));
+        }
+        Some(numbers)
+    };
+    let mut previous: Option<(String, Vec<u64>)> = None;
+    let mut newest = None;
+    for title in titles.iter().skip(1) {
+        let Some((released, date)) = title.split_once(" - ") else {
+            problems.push(format!("`## {title}` is not `## <version> - <YYYY-MM-DD>`"));
+            continue;
+        };
+        let date_ok = date.len() == 10
+            && date.char_indices().all(|(index, character)| {
+                if index == 4 || index == 7 {
+                    character == '-'
+                } else {
+                    character.is_ascii_digit()
+                }
+            });
+        let Some(order) = parse(released).filter(|_| date_ok) else {
+            problems.push(format!("`## {title}` is not `## <version> - <YYYY-MM-DD>`"));
+            continue;
+        };
+        let body = changelog
+            .split(&format!("\n## {title}\n"))
+            .nth(1)
+            .and_then(|rest| rest.split("\n## ").next())
+            .unwrap_or_default();
+        let opening = body
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or_default();
+        if !(opening.starts_with("Upstream: Python SDK ") && opening.contains(", CLI ")) {
+            problems.push(format!("`## {title}` lacks its `Upstream:` line"));
+        }
+        for group in body.lines().filter_map(|line| line.strip_prefix("### ")) {
+            if !["Breaking changes", "Added", "Changed", "Fixed"].contains(&group) {
+                problems.push(format!("`## {title}` has the group `### {group}`"));
+            }
+        }
+        if let Some((above, above_order)) = &previous
+            && order >= *above_order
+        {
+            problems.push(format!("`## {title}` is not older than `{above}`"));
+        }
+        newest.get_or_insert_with(|| released.to_owned());
+        previous = Some((released.to_owned(), order));
+    }
+    if let Some(newest) = newest
+        && newest != version
+    {
+        problems.push(format!(
+            "the newest released section is {newest}, but the workspace version is {version}"
+        ));
+    }
+    problems
+}
+
+#[test]
+fn the_changelog_follows_its_format_and_its_newest_release_is_the_workspace_version() {
+    let changelog = read("CHANGELOG.md");
+    let problems = changelog_problems(&changelog, &workspace_version());
+    assert!(problems.is_empty(), "{problems:?}");
+    let unreleased = changelog
+        .split("## Unreleased\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .unwrap();
+    let released = changelog.matches("\n## ").count() > 1;
+    assert!(
+        released || unreleased.contains("\n- "),
+        "before the first release, ## Unreleased holds the summary of what it contains"
+    );
+    assert!(!changelog.contains('<'), "the changelog holds no HTML");
+
+    let good = "# Changelog\n\n## Unreleased\n\n## 0.1.1 - 2026-11-20\n\nUpstream: Python SDK 0.2.183 to 0.2.184, CLI 2.1.327\n\n### Fixed\n\n- A fix.\n\n## 0.1.0 - 2026-11-19\n\nUpstream: Python SDK 0.2.182, CLI 2.1.325\n\n### Added\n\n- First.\n";
+    assert!(
+        changelog_problems(good, "0.1.1").is_empty(),
+        "{:?}",
+        changelog_problems(good, "0.1.1")
+    );
+    assert_eq!(
+        changelog_problems(good, "0.1.2"),
+        ["the newest released section is 0.1.1, but the workspace version is 0.1.2"]
+    );
+    let no_upstream = good.replace("Upstream: Python SDK 0.2.182, CLI 2.1.325\n\n", "");
+    assert_eq!(
+        changelog_problems(&no_upstream, "0.1.1"),
+        ["`## 0.1.0 - 2026-11-19` lacks its `Upstream:` line"]
+    );
+    let unordered = good.replace("## 0.1.0 - 2026-11-19", "## 0.1.2 - 2026-11-19");
+    assert_eq!(
+        changelog_problems(&unordered, "0.1.1"),
+        ["`## 0.1.2 - 2026-11-19` is not older than `0.1.1`"]
+    );
+    let candidates = good
+        .replace("## 0.1.1 - ", "## 0.1.0 - ")
+        .replace("## 0.1.0 - 2026-11-19", "## 0.1.0-rc.2 - 2026-11-19");
+    assert!(changelog_problems(&candidates, "0.1.0").is_empty());
+    let malformed = good.replace("## 0.1.0 - 2026-11-19", "## 0.1.0 (2026-11-19)");
+    assert_eq!(
+        changelog_problems(&malformed, "0.1.1"),
+        ["`## 0.1.0 (2026-11-19)` is not `## <version> - <YYYY-MM-DD>`"]
+    );
+    let missing = good.replace("## Unreleased\n\n", "");
+    assert!(!changelog_problems(&missing, "0.1.1").is_empty());
+}
+
+#[test]
+fn the_differences_ledger_stores_the_moving_versions_as_tokens() {
+    let ledger = read("parity/differences.toml");
+    let entry = ledger
+        .split("[wire.sdk-version]\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n[").next())
+        .expect("the ledger has no wire.sdk-version entry");
+    assert!(
+        entry.contains("python = '\"{upstream_version}\"'"),
+        "{entry}"
+    );
+    assert!(entry.contains("rust = '\"{crate_version}\"'"), "{entry}");
+    assert!(!ledger.contains(&format!("'\"{UPSTREAM_SDK_VERSION}\"'")));
+    assert!(!ledger.contains(&format!("'\"{}\"'", workspace_version())));
+}
+
+/// The lines of `workflow` that read a registry token from the stored
+/// secrets.
+fn registry_token_from_secrets(workflow: &str) -> Vec<&str> {
+    workflow
+        .lines()
+        .filter(|line| {
+            let compacted: String = line.split_whitespace().collect();
+            compacted.contains("secrets.CARGO_REGISTRY_TOKEN")
+                || compacted.contains("secrets['CARGO_REGISTRY_TOKEN']")
+                || compacted.contains("secrets[\"CARGO_REGISTRY_TOKEN\"]")
+                || (compacted.starts_with("CARGO_REGISTRY_TOKEN:") && compacted.contains("secrets"))
+        })
+        .collect()
+}
+
+fn workflow_files() -> Vec<(String, String)> {
+    let directory = workspace_root().join(".github/workflows");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "yml"))
+        .map(|path| {
+            let name = format!(
+                ".github/workflows/{}",
+                path.file_name().unwrap().to_string_lossy()
+            );
+            let text = read(&name);
+            (name, text)
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn no_workflow_reads_a_registry_token_from_the_stored_secrets() {
+    for (name, workflow) in workflow_files() {
+        let hits = registry_token_from_secrets(&workflow);
+        assert!(
+            hits.is_empty(),
+            "{name} reads a stored registry token: {hits:?}"
+        );
+    }
+    assert_eq!(
+        registry_token_from_secrets(
+            "env:\n  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}\n  OTHER: ${{ secrets['CARGO_REGISTRY_TOKEN'] }}\n  FINE: ${{ steps.auth.outputs.token }}\n"
+        ),
+        [
+            "  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}",
+            "  OTHER: ${{ secrets['CARGO_REGISTRY_TOKEN'] }}"
+        ]
+    );
+}
+
+/// The job ids of `workflow`, in file order.
+fn job_ids(workflow: &str) -> Vec<String> {
+    workflow
+        .split("\njobs:\n")
+        .nth(1)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let id = line.strip_prefix("  ")?.strip_suffix(':')?;
+            (!id.starts_with(' ') && !id.starts_with('#')).then(|| id.to_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn the_release_workflow_starts_on_a_version_tag_only_and_confines_each_write() {
+    let workflow = read(".github/workflows/release.yml");
+    let header = compact(workflow.split("\njobs:").next().unwrap());
+    assert!(
+        header.contains(
+            "on: push: tags: - \"v[0-9]+.[0-9]+.[0-9]+\" - \"v[0-9]+.[0-9]+.[0-9]+-*\" permissions: contents: read"
+        ),
+        "{header}"
+    );
+    assert!(
+        header.contains("concurrency: group: release cancel-in-progress: false"),
+        "{header}"
+    );
+    for forbidden in [
+        "pull_request",
+        "pull_request_target",
+        "workflow_run",
+        "schedule:",
+        "workflow_dispatch",
+        "branches:",
+    ] {
+        assert!(!workflow.contains(forbidden), "{forbidden}");
+    }
+    for forbidden in ["git commit", "git tag", "git push", "secrets."] {
+        assert!(!workflow.contains(forbidden), "{forbidden}");
+        assert!(
+            !read(".github/scripts/release.sh").contains(forbidden),
+            "{forbidden}"
+        );
+    }
+
+    assert_eq!(
+        job_ids(&workflow),
+        ["verify", "ci", "publish", "attest", "github-release"]
+    );
+    let verify = ci_job(&workflow, "verify");
+    assert!(
+        verify.contains("if: ${{ !github.event.repository.fork }}"),
+        "{verify}"
+    );
+    assert!(verify.contains("fetch-depth: 0"), "{verify}");
+    assert!(
+        verify.contains("run: bash .github/scripts/release.sh verify \"$TAG\""),
+        "{verify}"
+    );
+    assert!(!verify.contains("permissions:"), "{verify}");
+    for job in ["ci", "publish", "attest", "github-release"] {
+        assert!(
+            ci_job(&workflow, job).contains("needs:"),
+            "{job} must wait for verify"
+        );
+    }
+    let ci = ci_job(&workflow, "ci");
+    assert!(
+        ci.contains("needs: verify uses: ./.github/workflows/ci.yml"),
+        "{ci}"
+    );
+    assert!(compact(&read(".github/workflows/ci.yml")).contains("branches: - main # release.yml"));
+    assert!(read(".github/workflows/ci.yml").contains("\n  workflow_call:\n"));
+
+    let publish = ci_job(&workflow, "publish");
+    for step in [
+        "needs: [verify, ci]",
+        "environment: release",
+        "permissions: contents: read id-token: write steps:",
+        "id: missing run: bash .github/scripts/release.sh missing",
+        "id: auth if: steps.missing.outputs.publish == 'true' uses: rust-lang/crates-io-auth-action@",
+        "if: steps.missing.outputs.publish == 'true' run: bash .github/scripts/release.sh publish env: CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}",
+    ] {
+        assert!(publish.contains(step), "{step}: {publish}");
+    }
+    assert!(
+        !publish.contains("rust-cache"),
+        "the publish job restores no cache"
+    );
+    for job in [&publish, &ci_job(&workflow, "attest")] {
+        let actions: Vec<&str> = job
+            .split("uses: ")
+            .skip(1)
+            .filter_map(|rest| rest.split('@').next())
+            .collect();
+        assert!(
+            actions.iter().all(|action| [
+                "actions/checkout",
+                "rust-lang/crates-io-auth-action",
+                "actions/attest",
+                "actions/upload-artifact"
+            ]
+            .contains(action)),
+            "a job holding id-token: write uses {actions:?}"
+        );
+    }
+    assert_eq!(workflow.matches("environment:").count(), 1);
+
+    let attest = ci_job(&workflow, "attest");
+    assert!(attest.contains("needs: publish"), "{attest}");
+    assert!(
+        attest.contains(
+            "permissions: contents: read id-token: write attestations: write artifact-metadata: write steps:"
+        ),
+        "{attest}"
+    );
+    assert!(
+        attest.contains("run: bash .github/scripts/release.sh download dist"),
+        "{attest}"
+    );
+    assert!(attest.contains("uses: actions/attest@"), "{attest}");
+    assert!(attest.contains("subject-path: dist/*.crate"), "{attest}");
+    assert_eq!(
+        workflow.matches("id-token: write").count(),
+        2,
+        "publish and attest only"
+    );
+
+    let release = ci_job(&workflow, "github-release");
+    assert!(release.contains("needs: [verify, attest]"), "{release}");
+    assert!(
+        release.contains("permissions: contents: write steps:"),
+        "{release}"
+    );
+    assert!(
+        release.contains("bash .github/scripts/release.sh github-release \"$TAG\""),
+        "{release}"
+    );
+    assert!(
+        !release.contains("cargo"),
+        "the release job runs no build: {release}"
+    );
+    assert_eq!(workflow.matches("contents: write").count(), 1);
+    for other in ["attestations: write", "artifact-metadata: write"] {
+        assert_eq!(workflow.matches(other).count(), 1, "{other}");
+    }
+
+    let scripts = ci_job(&read(".github/workflows/ci.yml"), "scripts");
+    assert!(
+        scripts.contains("run: bash .github/scripts/release.test.sh"),
+        "{scripts}"
+    );
+}
+
+/// What `RELEASING.md` fails to name: a job of `workflow`, or one of the
+/// release commands.
+fn releasing_omissions(releasing: &str, workflow: &str) -> Vec<String> {
+    let mut missing: Vec<String> = job_ids(workflow)
+        .into_iter()
+        .filter(|job| !releasing.contains(&format!("| `{job}` |")))
+        .map(|job| format!("the job `{job}` of release.yml"))
+        .collect();
+    for command in [
+        "cargo xtask release prepare",
+        "cargo xtask release tag",
+        "cargo xtask upstream-sync",
+    ] {
+        if !releasing.contains(&format!("`{command}")) {
+            missing.push(format!("the command `{command}`"));
+        }
+    }
+    missing
+}
+
+#[test]
+fn releasing_and_security_guides_cover_every_job_command_and_setting() {
+    let releasing = read("RELEASING.md");
+    let workflow = read(".github/workflows/release.yml");
+    let missing = releasing_omissions(&releasing, &workflow);
+    assert!(missing.is_empty(), "RELEASING.md does not name {missing:?}");
+    assert_eq!(
+        releasing_omissions(
+            "| `verify` | x |\n`cargo xtask release prepare`\n",
+            "name: x\njobs:\n  verify:\n    runs-on: x\n  publish:\n    runs-on: x\n"
+        ),
+        [
+            "the job `publish` of release.yml",
+            "the command `cargo xtask release tag`",
+            "the command `cargo xtask upstream-sync`"
+        ]
+    );
+    let compacted = compact(&releasing);
+    for statement in [
+        "## Versioning",
+        "## The routine release",
+        "## A CLI-only release",
+        "## The first publication",
+        "## The end-to-end suite",
+        "## When something fails",
+        "A yank deletes nothing",
+        "cargo yank --version",
+        "gh attestation verify",
+        "--signer-workflow arthjean/claude-agent-rust-sdk/.github/workflows/release.yml",
+        "| `release` |",
+        "Tag ruleset on `v*`",
+        "Release immutability",
+        "Private vulnerability reporting",
+        "Owner `arthjean`, repository `claude-agent-rust-sdk`, workflow `release.yml`, environment `release`",
+        "\"Trusted Publishing Only\"",
+        "Before any crate is published, the tag may be deleted",
+        "never reuse one",
+    ] {
+        assert!(compacted.contains(statement), "{statement}");
+    }
+
+    let security = compact(&read("SECURITY.md"));
+    for statement in [
+        "Fixes ship in the newest release only.",
+        "GitHub private vulnerability reporting",
+        "https://github.com/arthjean/claude-agent-rust-sdk/security/advisories/new",
+        "acknowledged within 7 days",
+        "goes to Anthropic",
+    ] {
+        assert!(security.contains(statement), "{statement}");
+    }
+    for file in ["README.md", "RELEASING.md", "SECURITY.md", "CHANGELOG.md"] {
+        assert!(
+            !read(file).contains("<img") && !read(file).contains("<br"),
+            "{file}"
+        );
+    }
+
+    let readme = read("README.md");
+    for file in ["RELEASING.md", "SECURITY.md", "CHANGELOG.md"] {
+        assert!(
+            readme.contains(&format!("]({REPOSITORY}/blob/main/{file})")),
+            "{file}"
+        );
+        assert!(workspace_root().join(file).is_file(), "{file}");
+    }
+    let agents = read("AGENTS.md");
+    for command in [
+        "cargo xtask release prepare",
+        "cargo xtask release tag",
+        "cargo xtask upstream-sync",
+        "`RELEASING.md`",
+        "A pushed `v*` tag starts `release.yml`",
+    ] {
+        assert!(agents.contains(command), "{command}");
+    }
+    let usage = read("xtask/src/main.rs");
+    for command in [
+        "release prepare",
+        "release tag",
+        "upstream-sync",
+        "changelog-section",
+    ] {
+        assert!(usage.contains(&format!("\n  {command} ")), "{command}");
+        assert!(
+            readme.contains(&format!("\ncargo xtask {command} ")),
+            "{command}"
+        );
+    }
 }
 
 #[test]

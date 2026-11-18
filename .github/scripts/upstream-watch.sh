@@ -6,8 +6,10 @@
 #       Resolves the newest release tag of the upstream repository and
 #       compares it with the version of the submodule pin. When the release
 #       is newer, runs `cargo xtask upstream-diff <tag>` and writes the body
-#       of a tracking issue: that output and the matching section of the
-#       upstream changelog. Writes `tag` (empty when nothing is newer) and
+#       of a tracking issue: its verdict (`cli-only` when only versions
+#       moved, `needs-port` otherwise), the `cargo xtask upstream-sync <tag>`
+#       command that starts the port, that output, and the matching section
+#       of the upstream changelog. Writes `tag` (empty when nothing is newer) and
 #       `body` to $GITHUB_OUTPUT when it is set, and the body to
 #       $WATCH_BODY_FILE when that is set.
 #   upstream-watch.sh report <tag> <body-file> [--dry-run]
@@ -72,7 +74,7 @@ output() {
 }
 
 detect() {
-  local latest pinned version diff section body delimiter
+  local latest pinned version diff verdict section body delimiter
   latest="$(gh api "repos/$upstream_repo/releases/latest" --jq .tag_name)" ||
     fail "cannot read the latest release of $upstream_repo"
   [[ "$latest" =~ $tag_pattern ]] ||
@@ -89,6 +91,8 @@ detect() {
   echo "upstream released $latest; the pin is v$pinned"
   diff="$(cargo xtask upstream-diff "$latest")" ||
     fail "cargo xtask upstream-diff $latest failed"
+  verdict="$(printf '%s\n' "$diff" | sed -n 's/^verdict: \(cli-only\|needs-port\)$/\1/p' | head -n 1)"
+  [ -n "$verdict" ] || fail "cargo xtask upstream-diff $latest printed no verdict"
   section="$(changelog_section "$latest" "$version")"
   if [ -z "$section" ]; then
     section="CHANGELOG.md at $latest has no section for $version."
@@ -96,9 +100,15 @@ detect() {
   body="$(
     printf 'Upstream published [%s](https://github.com/%s/releases/tag/%s); the submodule is pinned to v%s.\n\n' \
       "$latest" "$upstream_repo" "$latest" "$pinned"
+    printf 'Verdict: `%s`\n\n' "$verdict"
+    printf 'Start the port with:\n\n```sh\ncargo xtask upstream-sync %s\n```\n\n' "$latest"
+    if [ "$verdict" = cli-only ]; then
+      printf 'Only versions moved upstream: the command moves every copy, and `cargo xtask release prepare patch` follows.\n\n'
+    else
+      printf 'The release changes more than versions: after the command, port the changes and complete the ledgers until `cargo xtask parity-check --deny-pending` passes.\n\n'
+    fi
     printf '## `cargo xtask upstream-diff %s`\n\n```text\n%s\n```\n\n' "$latest" "$diff"
     printf '## Changelog of %s\n\n%s\n\n' "$version" "$section"
-    printf 'To port it: move the submodule pin to %s, port the changes, and add or remove ledger entries until `cargo xtask parity-check --deny-pending` passes.\n' "$latest"
   )"
   if [ "${#body}" -gt "$body_limit" ]; then
     body="${body:0:$body_limit}
