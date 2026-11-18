@@ -64,13 +64,20 @@ struct Arguments {
     positional: Vec<String>,
 }
 
+/// Parses the options of a parity command. `--root` moves every location
+/// to that workspace, whatever its place among the options, and each of
+/// `--upstream`, `--parity`, `--migration`, and `--page` then overrides
+/// its own location, so `--root` alone never mixes the version of one
+/// workspace with the ledgers of another.
 fn parse(arguments: &[String]) -> Result<Arguments, String> {
-    let mut parsed = Arguments {
-        locations: Locations::of_workspace(),
-        deny_pending: false,
-        write: true,
-        positional: Vec::new(),
-    };
+    let mut root = None;
+    let mut upstream = None;
+    let mut parity = None;
+    let mut migration = None;
+    let mut page = None;
+    let mut deny_pending = false;
+    let mut write = true;
+    let mut positional = Vec::new();
     let mut rest = arguments.iter();
     while let Some(argument) = rest.next() {
         let mut path = |name: &str| {
@@ -79,18 +86,36 @@ fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 .ok_or_else(|| format!("{name} needs a path"))
         };
         match argument.as_str() {
-            "--root" => parsed.locations.root = path("--root")?,
-            "--upstream" => parsed.locations.upstream = path("--upstream")?,
-            "--parity" => parsed.locations.parity = path("--parity")?,
-            "--migration" => parsed.locations.migration = path("--migration")?,
-            "--page" => parsed.locations.page = path("--page")?,
-            "--deny-pending" => parsed.deny_pending = true,
-            "--check" => parsed.write = false,
+            "--root" => root = Some(path("--root")?),
+            "--upstream" => upstream = Some(path("--upstream")?),
+            "--parity" => parity = Some(path("--parity")?),
+            "--migration" => migration = Some(path("--migration")?),
+            "--page" => page = Some(path("--page")?),
+            "--deny-pending" => deny_pending = true,
+            "--check" => write = false,
             option if option.starts_with("--") => return Err(format!("unknown option {option}")),
-            _ => parsed.positional.push(argument.clone()),
+            _ => positional.push(argument.clone()),
         }
     }
-    Ok(parsed)
+    let mut locations = root.map_or_else(Locations::of_workspace, Locations::at);
+    if let Some(path) = upstream {
+        locations.upstream = path;
+    }
+    if let Some(path) = parity {
+        locations.parity = path;
+    }
+    if let Some(path) = migration {
+        locations.migration = path;
+    }
+    if let Some(path) = page {
+        locations.page = path;
+    }
+    Ok(Arguments {
+        locations,
+        deny_pending,
+        write,
+        positional,
+    })
 }
 
 fn read(path: &Path) -> Result<String, String> {
@@ -591,6 +616,42 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         toml::from_str(&table).unwrap()
+    }
+
+    fn arguments(list: &[&str]) -> Vec<String> {
+        list.iter().map(|argument| (*argument).to_owned()).collect()
+    }
+
+    #[test]
+    fn root_alone_moves_every_location_to_that_workspace() {
+        let parsed = parse(&arguments(&["--root", "/elsewhere", "--check"])).unwrap();
+        let expected = Locations::at(PathBuf::from("/elsewhere"));
+        assert_eq!(parsed.locations.root, expected.root);
+        assert_eq!(parsed.locations.upstream, expected.upstream);
+        assert_eq!(parsed.locations.parity, expected.parity);
+        assert_eq!(parsed.locations.migration, expected.migration);
+        assert_eq!(parsed.locations.page, expected.page);
+        assert!(!parsed.write);
+    }
+
+    #[test]
+    fn an_explicit_location_wins_over_root_in_either_order() {
+        for list in [
+            ["--parity", "/ledgers", "--root", "/elsewhere"],
+            ["--root", "/elsewhere", "--parity", "/ledgers"],
+        ] {
+            let parsed = parse(&arguments(&list)).unwrap();
+            assert_eq!(
+                parsed.locations.parity,
+                PathBuf::from("/ledgers"),
+                "{list:?}"
+            );
+            assert_eq!(
+                parsed.locations.page,
+                Locations::at(PathBuf::from("/elsewhere")).page,
+                "{list:?}"
+            );
+        }
     }
 
     fn sample() -> Ledger {
