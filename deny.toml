@@ -15,3 +15,14 @@ allow = [
     "MPL-2.0",
 ]
 confidence-threshold = 0.8
+
+# Read by the `Advisories` workflow (.github/workflows/advisories.yml), which
+# fails on any advisory that affects a crate of Cargo.lock: vulnerabilities,
+# unsound code, unmaintained crates, and yanked versions. An entry of
+# `ignore` names one advisory, with the reason it does not apply or cannot be
+# acted on; remove it once the cause is gone.
+[advisories]
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained with no successor release; it reaches the workspace only through rmcp and schemars, which depend on it, so the fix is their move to another date crate" },
+]

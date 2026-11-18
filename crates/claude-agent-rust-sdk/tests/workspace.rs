@@ -1131,6 +1131,70 @@ fn ci_compares_the_public_api_with_the_newest_release_on_every_pull_request() {
 }
 
 #[test]
+fn the_advisory_check_runs_on_a_schedule_with_read_access_and_never_on_forks() {
+    let workflow = read(".github/workflows/advisories.yml");
+    let compacted = compact(&workflow);
+    assert!(compacted.starts_with("name: Advisories "), "{compacted}");
+    assert!(
+        compacted.contains(
+            "on: schedule: - cron: \"17 5 * * 1\" workflow_dispatch: permissions: contents: read jobs:"
+        ),
+        "{compacted}"
+    );
+    for forbidden in [
+        "pull_request",
+        "push:",
+        "workflow_run:",
+        "secrets.",
+        "write",
+        "git commit",
+        "git push",
+        "gh issue",
+        "continue-on-error",
+        "--disable-fetch",
+        "--offline",
+    ] {
+        assert!(!workflow.contains(forbidden), "{forbidden}");
+    }
+    assert_eq!(job_ids(&workflow), ["advisories"]);
+    let job = ci_job(&workflow, "advisories");
+    for step in [
+        "if: ${{ !github.event.repository.fork }}",
+        "persist-credentials: false",
+        "uses: EmbarkStudios/cargo-deny-action@",
+        "command: check advisories",
+    ] {
+        assert!(job.contains(step), "{step}: {job}");
+    }
+    assert!(!job.contains("permissions:"), "{job}");
+
+    let policy = read("deny.toml");
+    let advisories = policy
+        .split("\n[advisories]\n")
+        .nth(1)
+        .expect("deny.toml has no [advisories] section");
+    assert!(advisories.contains("yanked = \"deny\""), "{advisories}");
+    for level in ["unmaintained", "unsound"] {
+        assert!(
+            !advisories.contains(&format!("{level} = ")),
+            "{level} keeps its failing default"
+        );
+    }
+    for entry in advisories.lines().filter(|line| line.contains("id = ")) {
+        assert!(
+            entry.contains("reason = \""),
+            "an ignored advisory needs a reason: {entry}"
+        );
+    }
+    let releasing = compact(&read("RELEASING.md"));
+    assert!(
+        releasing.contains("| `Advisories` fails, naming a `RUSTSEC-` advisory |"),
+        "RELEASING.md says what to do when the run fails"
+    );
+    assert!(releasing.contains("| `Advisories` fails without naming an advisory |"));
+}
+
+#[test]
 fn the_upstream_watch_runs_daily_and_only_its_issue_job_can_write() {
     let workflow = read(".github/workflows/upstream-watch.yml");
     let compacted = compact(&workflow);

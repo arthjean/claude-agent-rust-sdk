@@ -5,6 +5,7 @@
 ### Added
 
 - Every pull request compares the public API with the newest release on crates.io through `cargo-semver-checks`, so a patch release cannot break a build against the previous release.
+- A scheduled check of `Cargo.lock` against the RustSec advisory database.
 
 ## 0.1.0 - 2026-11-18
 

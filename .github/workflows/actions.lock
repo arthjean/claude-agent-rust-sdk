@@ -5,6 +5,9 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/actions-freshness.yml':
         - 'actions/checkout@v7.0.1'
+    '.github/workflows/advisories.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'embarkstudios/cargo-deny-action@v2.1.1'
     '.github/workflows/ci.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.1.0'

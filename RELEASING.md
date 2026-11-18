@@ -156,6 +156,8 @@ release is the owner's decision, not yet taken.
 | `semver` or `release prepare patch`: "cannot read the rustdoc JSON of Rust" | A new Rust or tool release changed the rustdoc JSON format | Move `TOOL_VERSION` and `TOOLCHAIN` of `xtask/src/semver.rs` together to a tool release that reads the format, and the same two values in the `semver` job of `ci.yml` |
 | `semver`: "crates.io could not be read" | The registry lookup failed; nothing was compared | Rerun once crates.io answers; no pin is at fault |
 | "cargo-semver-checks <version> is pinned" on your machine | Another version, or none, is installed | Run the `cargo install` command the message gives |
+| `Advisories` fails, naming a `RUSTSEC-` advisory | A crate of `Cargo.lock` has a known vulnerability, is unsound, unmaintained, or yanked | Read the advisory. Update the crate (`cargo update -p <crate>`, or a new requirement in `Cargo.toml`), run the gates, and release a patch. When no fixed version exists or the advisory does not apply, add it to `ignore` in `deny.toml` with the reason, and remove that entry once the cause is gone |
+| `Advisories` fails without naming an advisory | The RustSec database could not be fetched | Rerun the workflow; the run is never green without the database |
 | "v0.2.100 is not newer than the pin v0.2.182" | The tag is older than the pin, or unknown | Check the tag name; nothing was changed |
 | `verdict: needs-port` | Upstream changed code | Port the changes and complete the ledgers before `release prepare` |
 | Several upstream releases at once | The pin is several releases behind | Sync once to the newest tag; the changelog line gives the range |
