@@ -130,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "claude-agent-rust-sdk"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "claude-agent-rust-sdk-macros",
  "futures-core",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "claude-agent-rust-sdk-macros"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "fake-claude"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -723,7 +723,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "parity-driver"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "claude-agent-rust-sdk",
  "futures-util",
@@ -1537,7 +1537,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "indexmap",
  "jsonschema",
