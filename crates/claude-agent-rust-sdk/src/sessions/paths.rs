@@ -98,32 +98,57 @@ pub(crate) fn projects_dir(env: Option<&IndexMap<String, String>>) -> PathBuf {
 }
 
 /// Resolves a directory to its canonical form: the real path, normalized
-/// to NFC.
+/// to NFC. An empty path is the current directory, as for `realpath`.
 ///
 /// Like Python's `os.path.realpath`, a path that does not exist yet keeps
 /// its missing tail but has its longest existing ancestor resolved, so
 /// symbolic links (`/var` on macOS) and Windows short names (`RUNNER~1`)
-/// above it give the same key as once it exists. A path with no existing
-/// ancestor is made absolute instead.
+/// above it give the same key as once it exists. In the missing tail `.`
+/// is dropped and `..` removes the segment before it; resolution starts
+/// again from an existing directory a `..` leads back to.
 pub(crate) fn canonicalize_path(directory: &Path) -> String {
+    let directory = if directory.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        directory
+    };
     let absolute = std::path::absolute(directory).unwrap_or_else(|_| directory.to_path_buf());
-    let mut existing = absolute.as_path();
-    let mut missing = Vec::new();
-    let resolved = loop {
-        if let Ok(real) = std::fs::canonicalize(existing) {
-            let mut resolved = strip_verbatim_prefix(real);
-            resolved.extend(missing.iter().rev());
-            break resolved;
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                missing.push(name);
-                existing = parent;
-            }
-            _ => break absolute.clone(),
-        }
+    let resolved = match std::fs::canonicalize(&absolute) {
+        Ok(real) => strip_verbatim_prefix(real),
+        Err(_) => resolve_with_missing_tail(&absolute),
     };
     nfc(&resolved.to_string_lossy())
+}
+
+/// Resolves an absolute path one segment at a time, as `realpath` does
+/// when a segment is missing: each existing prefix is replaced by its real
+/// path, and the segments below a missing one are joined as they are.
+fn resolve_with_missing_tail(absolute: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut resolved = PathBuf::new();
+    let mut missing_depth = 0_usize;
+    for component in absolute.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => resolved.push(component),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+                missing_depth = missing_depth.saturating_sub(1);
+            }
+            Component::Normal(name) => {
+                resolved.push(name);
+                if missing_depth > 0 {
+                    missing_depth += 1;
+                } else if let Ok(real) = std::fs::canonicalize(&resolved) {
+                    resolved = strip_verbatim_prefix(real);
+                } else {
+                    missing_depth = 1;
+                }
+            }
+        }
+    }
+    resolved
 }
 
 /// Windows canonical paths carry the `\\?\` verbatim prefix, which the CLI
@@ -360,6 +385,54 @@ mod tests {
             assert_eq!(
                 PathBuf::from(canonicalize_path(&link.join("missing"))),
                 PathBuf::from(&real).join("target").join("missing")
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_path_is_the_current_directory() {
+        let current = canonicalize_path(&std::env::current_dir().unwrap());
+        assert_eq!(canonicalize_path(Path::new("")), current);
+        assert_eq!(
+            project_key_for_directory(Some(Path::new(""))),
+            sanitize_path(&current)
+        );
+        assert_eq!(
+            project_key_for_directory(Some(Path::new(""))),
+            project_key_for_directory(None)
+        );
+    }
+
+    #[test]
+    fn dot_segments_in_a_missing_tail_are_resolved() {
+        let root = tempfile::tempdir().unwrap();
+        let real = PathBuf::from(canonicalize_path(root.path()));
+        let missing = root.path().join("nope-x");
+        assert_eq!(
+            PathBuf::from(canonicalize_path(&missing.join("..").join("other"))),
+            real.join("other")
+        );
+        assert_eq!(
+            PathBuf::from(canonicalize_path(&missing.join(".").join("deeper"))),
+            real.join("nope-x").join("deeper")
+        );
+        assert_eq!(
+            PathBuf::from(canonicalize_path(
+                &missing.join("a").join("..").join("..").join("b")
+            )),
+            real.join("b")
+        );
+        #[cfg(unix)]
+        {
+            let target = root.path().join("target");
+            std::fs::create_dir(&target).unwrap();
+            std::os::unix::fs::symlink(&target, root.path().join("link")).unwrap();
+            assert_eq!(
+                PathBuf::from(canonicalize_path(
+                    &missing.join("..").join("link").join("missing")
+                )),
+                real.join("target").join("missing"),
+                "a link reached again through `..` is resolved"
             );
         }
     }
