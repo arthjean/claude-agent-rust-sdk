@@ -316,19 +316,24 @@ fn the_process_dies_when_its_parent_dies_abruptly() {
 }
 
 /// The wrapper only ends through its `TERM` trap, or by being killed: it
-/// does not wait on the CLI, whose death by the same signal could let a
-/// shell such as the bash of macOS leave before it runs the pending trap.
+/// does not wait on the CLI. It writes its pid once the trap is set, and
+/// the runtime is dropped only then, because `connect` returns as soon as
+/// the process is spawned: a `SIGTERM` that arrived before the trap would
+/// end the shell by its default action, which the test would take for a
+/// kill.
 #[cfg(unix)]
 #[test]
 fn dropping_the_runtime_lets_the_process_handle_termination() {
     let fake = Fake::new(json!({"read_stdin": false, "steps": [{"sleep_ms": 120_000}]}));
     let marker = fake.directory.path().join("terminated");
+    let shell_pid = fake.directory.path().join("shell-pid");
     let wrapper = fake.directory.path().join("claude-handling-sigterm");
     std::fs::write(
         &wrapper,
         format!(
-            "#!/bin/sh\ntrap 'echo flushed > \"{}\"; exit 0' TERM\n\"{}\" \"$@\" &\nwhile :; do sleep 1 & wait $!; done\n",
+            "#!/bin/sh\ntrap 'echo flushed > \"{}\"; exit 0' TERM\necho $$ > \"{}\"\n\"{}\" \"$@\" &\nwhile :; do sleep 1 & wait $!; done\n",
             marker.display(),
+            shell_pid.display(),
             fake_claude().display()
         ),
     )
@@ -344,6 +349,11 @@ fn dropping_the_runtime_lets_the_process_handle_termination() {
         .unwrap();
     let options = fake.options().cli_path(&wrapper).build().unwrap();
     let (transport, pid) = runtime.block_on(connected(options));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(&shell_pid).is_ok_and(|pid| pid.ends_with('\n')) {
+        assert!(Instant::now() < deadline, "the wrapper never set its trap");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     drop(runtime);
 
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -360,10 +370,21 @@ fn dropping_the_runtime_lets_the_process_handle_termination() {
     {
         std::thread::sleep(Duration::from_millis(20));
     }
+    let shell = std::fs::read_to_string(&shell_pid)
+        .ok()
+        .and_then(|pid| pid.trim().parse::<u32>().ok());
+    let shell_state = shell.map(|pid| {
+        let output = std::process::Command::new("ps")
+            .args(["-o", "stat=,command=", "-p", &pid.to_string()])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    });
     assert_eq!(
         std::fs::read_to_string(&marker).ok().as_deref(),
         Some("flushed\n"),
-        "the process got SIGTERM and ran its handler, instead of being killed"
+        "the process got SIGTERM and ran its handler, instead of being killed \
+         (wrapper shell {shell:?}, its state now: {shell_state:?})"
     );
     drop(transport);
 }
