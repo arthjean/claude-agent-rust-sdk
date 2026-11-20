@@ -6,9 +6,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use claude_agent_rust_sdk::{
-    InMemorySessionStore, SdkSessionInfo, SessionKey, SessionStore, SessionStoreCapabilities,
-    SessionStoreEntry, SessionStoreError, SessionStoreListEntry, SessionSummaryEntry,
-    UnsupportedStoreOperation, fold_session_summary, list_sessions_from_store,
+    InMemorySessionStore, ListSessionsOptions, SdkSessionInfo, SessionKey, SessionStore,
+    SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
+    SessionSummaryEntry, UnsupportedStoreOperation, fold_session_summary, list_sessions_from_store,
     project_key_for_directory,
 };
 use serde_json::{Value, json};
@@ -59,9 +59,11 @@ async fn list(
     limit: Option<usize>,
     offset: usize,
 ) -> Vec<SdkSessionInfo> {
-    list_sessions_from_store(store, Some(directory()), limit, offset)
-        .await
-        .unwrap()
+    let mut options = ListSessionsOptions::new()
+        .directory(directory())
+        .offset(offset);
+    options.limit = limit;
+    list_sessions_from_store(store, options).await.unwrap()
 }
 
 enum Summaries {

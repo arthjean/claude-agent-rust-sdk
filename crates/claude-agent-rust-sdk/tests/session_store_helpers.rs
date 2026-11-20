@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    Error, InMemorySessionStore, SdkSessionInfo, SessionKey, SessionListSubkeysKey, SessionStore,
+    Error, ForkSessionOptions, ImportSessionOptions, InMemorySessionStore, ListSessionsOptions,
+    SdkSessionInfo, SessionKey, SessionListSubkeysKey, SessionMessagesOptions, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
     SessionSummaryEntry, UnsupportedStoreOperation, delete_session_via_store, fold_session_summary,
     fork_session_via_store, get_session_info, get_session_info_from_store, get_session_messages,
@@ -75,17 +76,30 @@ async fn store_readers_match_the_disk_readers_for_the_same_content() {
     project.write(&second, &conversation(&second, "another", json!({})));
     let store = InMemorySessionStore::new();
     let directory = Some(project.path());
-    import_session_to_store(&id, &store, directory, true, 0)
-        .await
-        .unwrap();
-    import_session_to_store(&second, &store, directory, true, 0)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
+    import_session_to_store(
+        &second,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
 
-    let disk = list_sessions(directory, None, 0, false);
-    let stored = list_sessions_from_store(&store, directory, None, 0)
-        .await
-        .unwrap();
+    let disk = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
+    let stored =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
     let mut disk: Vec<Value> = disk.iter().map(comparable).collect();
     let mut stored: Vec<Value> = stored.iter().map(comparable).collect();
     disk.sort_by_key(|info| info["session_id"].to_string());
@@ -102,16 +116,33 @@ async fn store_readers_match_the_disk_readers_for_the_same_content() {
     assert_eq!(store_info.tag.as_deref(), Some("docs"));
 
     assert_eq!(
-        get_session_messages(&id, directory, None, 0),
-        get_session_messages_from_store(&store, &id, directory, None, 0)
-            .await
-            .unwrap()
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path())),
+        get_session_messages_from_store(
+            &store,
+            &id,
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .await
+        .unwrap()
     );
     assert_eq!(
-        get_session_messages(&id, directory, Some(1), 1),
-        get_session_messages_from_store(&store, &id, directory, Some(1), 1)
-            .await
-            .unwrap()
+        get_session_messages(
+            &id,
+            SessionMessagesOptions::new()
+                .directory(project.path())
+                .limit(1)
+                .offset(1)
+        ),
+        get_session_messages_from_store(
+            &store,
+            &id,
+            SessionMessagesOptions::new()
+                .directory(project.path())
+                .limit(1)
+                .offset(1)
+        )
+        .await
+        .unwrap()
     );
     assert_eq!(
         list_subagents(&id, directory),
@@ -121,16 +152,30 @@ async fn store_readers_match_the_disk_readers_for_the_same_content() {
     );
     for agent in ["alpha", "beta"] {
         assert_eq!(
-            get_subagent_messages(&id, agent, directory, None, 0),
-            get_subagent_messages_from_store(&store, &id, agent, directory, None, 0)
-                .await
-                .unwrap(),
+            get_subagent_messages(
+                &id,
+                agent,
+                SessionMessagesOptions::new().directory(project.path())
+            ),
+            get_subagent_messages_from_store(
+                &store,
+                &id,
+                agent,
+                SessionMessagesOptions::new().directory(project.path())
+            )
+            .await
+            .unwrap(),
             "{agent}"
         );
     }
-    let alpha = get_subagent_messages_from_store(&store, &id, "alpha", directory, None, 0)
-        .await
-        .unwrap();
+    let alpha = get_subagent_messages_from_store(
+        &store,
+        &id,
+        "alpha",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(alpha[0].parent_tool_use_id.as_deref(), Some("toolu_9"));
     assert_eq!(alpha[0].parent_agent_id.as_deref(), Some("root"));
 
@@ -147,16 +192,25 @@ async fn store_readers_match_the_disk_readers_for_the_same_content() {
             .is_none()
     );
     assert!(
-        get_session_messages_from_store(&store, &new_id(), directory, None, 0)
-            .await
-            .unwrap()
-            .is_empty()
+        get_session_messages_from_store(
+            &store,
+            &new_id(),
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .await
+        .unwrap()
+        .is_empty()
     );
     assert!(
-        get_subagent_messages_from_store(&store, &id, "missing", directory, None, 0)
-            .await
-            .unwrap()
-            .is_empty()
+        get_subagent_messages_from_store(
+            &store,
+            &id,
+            "missing",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .await
+        .unwrap()
+        .is_empty()
     );
 }
 
@@ -176,9 +230,15 @@ async fn import_appends_the_transcript_in_one_call_per_batch() {
         .collect();
     project.write(&id, &lines);
     let store = CountingStore::new(SessionStoreCapabilities::all(), None);
-    import_session_to_store(&id, &store, Some(project.path()), true, 2)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .batch_size(2),
+    )
+    .await
+    .unwrap();
 
     let key = SessionKey::new(project_key_for_directory(Some(project.path())), id.as_str());
     let entries: Vec<SessionStoreEntry> = lines.iter().cloned().map(entry).collect();
@@ -199,9 +259,15 @@ async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
     let project = Project::new();
     let id = rich_session(&project);
     let counting = CountingStore::new(SessionStoreCapabilities::all(), None);
-    import_session_to_store(&id, &counting, Some(project.path()), true, 2)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &counting,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .batch_size(2),
+    )
+    .await
+    .unwrap();
     let key = SessionKey::new(project_key_for_directory(Some(project.path())), id.as_str());
     assert_eq!(counting.inner.get_entries(&key).len(), 5);
     let alpha = counting
@@ -216,9 +282,13 @@ async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
     assert_eq!(counting.appends.load(Ordering::SeqCst), 3 + 1 + 1 + 1);
 
     let without_subagents = InMemorySessionStore::new();
-    import_session_to_store(&id, &without_subagents, None, false, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &without_subagents,
+        ImportSessionOptions::new().include_subagents(false),
+    )
+    .await
+    .unwrap();
     assert!(
         without_subagents
             .list_subkeys(&SessionListSubkeysKey::new(
@@ -230,7 +300,7 @@ async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
             .is_empty()
     );
     assert_eq!(
-        import_session_to_store("bad", &without_subagents, None, true, 0)
+        import_session_to_store("bad", &without_subagents, ImportSessionOptions::new())
             .await
             .as_ref()
             .err()
@@ -238,11 +308,15 @@ async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
         Some(ErrorKind::Config)
     );
     assert_eq!(
-        import_session_to_store(&new_id(), &without_subagents, Some(project.path()), true, 0)
-            .await
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        import_session_to_store(
+            &new_id(),
+            &without_subagents,
+            ImportSessionOptions::new().directory(project.path())
+        )
+        .await
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::SessionNotFound)
     );
 }
@@ -421,9 +495,10 @@ async fn listing_methods_a_store_implements_are_called_without_being_declared() 
         .await
         .unwrap();
 
-    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let listed =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
     assert_eq!(listed.len(), 2);
 
     assert_eq!(
@@ -432,10 +507,14 @@ async fn listing_methods_a_store_implements_are_called_without_being_declared() 
             .unwrap(),
         ["n1"]
     );
-    let messages =
-        get_subagent_messages_from_store(&store, &ids[0], "n1", Some(project.path()), None, 0)
-            .await
-            .unwrap();
+    let messages = get_subagent_messages_from_store(
+        &store,
+        &ids[0],
+        "n1",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 1, "found through list_subkeys");
 }
 
@@ -517,7 +596,7 @@ async fn store_listing_loads_at_most_16_sessions_at_once() {
         open.send(true).unwrap();
     };
     let (listed, ()) = tokio::join!(
-        list_sessions_from_store(&store, Some(project.path()), None, 0),
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path())),
         opener
     );
     let listed = listed.unwrap();
@@ -525,9 +604,15 @@ async fn store_listing_loads_at_most_16_sessions_at_once() {
     assert_eq!(store.loads.load(Ordering::SeqCst), 48);
     assert_eq!(store.peak.load(Ordering::SeqCst), 16);
     assert_eq!(listed[0].session_id, ids[47], "newest first");
-    let page = list_sessions_from_store(&store, Some(project.path()), Some(5), 2)
-        .await
-        .unwrap();
+    let page = list_sessions_from_store(
+        &store,
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .limit(5)
+            .offset(2),
+    )
+    .await
+    .unwrap();
     let expected: Vec<&String> = ids.iter().rev().skip(2).take(5).collect();
     assert_eq!(
         page.iter().map(|info| &info.session_id).collect::<Vec<_>>(),
@@ -542,9 +627,10 @@ async fn a_failed_load_gives_an_empty_row_and_the_others_are_listed() {
     let store = CountingStore::new(SessionStoreCapabilities::none().with_list_sessions(), None);
     let ids = fill(&store, &key, 3).await;
     store.failing.lock().unwrap().push(ids[1].clone());
-    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let listed =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
     assert_eq!(listed.len(), 3);
     let failed = listed
         .iter()
@@ -590,9 +676,10 @@ async fn fresh_summaries_are_used_and_stale_or_missing_ones_are_refilled_after_p
     }
     *store.summaries.lock().unwrap() = Some(summaries);
 
-    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let listed =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
     assert_eq!(
         store.loads.load(Ordering::SeqCst),
         2,
@@ -612,9 +699,14 @@ async fn fresh_summaries_are_used_and_stale_or_missing_ones_are_refilled_after_p
     assert_eq!(summary_of(&ids[3]), "prompt 3");
 
     store.loads.store(0, Ordering::SeqCst);
-    let page = list_sessions_from_store(&store, Some(project.path()), Some(2), 0)
-        .await
-        .unwrap();
+    let page = list_sessions_from_store(
+        &store,
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .limit(2),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         page.iter()
             .map(|info| info.session_id.clone())
@@ -631,7 +723,7 @@ async fn fresh_summaries_are_used_and_stale_or_missing_ones_are_refilled_after_p
 #[tokio::test]
 async fn listing_requires_list_sessions_or_summaries() {
     let store = CountingStore::new(SessionStoreCapabilities::none(), None);
-    let error = list_sessions_from_store(&store, None, None, 0)
+    let error = list_sessions_from_store(&store, ListSessionsOptions::new())
         .await
         .unwrap_err();
     assert!(
@@ -670,10 +762,14 @@ async fn agent_metadata_without_ids_is_filtered_out_and_sets_no_parent_ids() {
         )
         .await
         .unwrap();
-    let messages =
-        get_subagent_messages_from_store(&store, &id, "x", Some(project.path()), None, 0)
-            .await
-            .unwrap();
+    let messages = get_subagent_messages_from_store(
+        &store,
+        &id,
+        "x",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].uuid, "x1");
     assert_eq!(messages[0].parent_tool_use_id, None);
@@ -694,9 +790,13 @@ async fn store_session_messages_never_carry_parent_ids() {
         .append(&SessionKey::new(key.as_str(), id.as_str()), &entries)
         .await
         .unwrap();
-    let messages = get_session_messages_from_store(&store, &id, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let messages = get_session_messages_from_store(
+        &store,
+        &id,
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 2);
     assert!(messages.iter().all(|message| {
         message.parent_tool_use_id.is_none() && message.parent_agent_id.is_none()
@@ -721,10 +821,14 @@ async fn subagents_are_read_at_the_direct_path_without_list_subkeys() {
         )
         .await
         .unwrap();
-    let messages =
-        get_subagent_messages_from_store(&store, &id, "x", Some(project.path()), None, 0)
-            .await
-            .unwrap();
+    let messages = get_subagent_messages_from_store(
+        &store,
+        &id,
+        "x",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].parent_tool_use_id.as_deref(), Some("new"));
 }
@@ -807,9 +911,13 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
         Some(ErrorKind::Config)
     );
 
-    let fork = fork_session_via_store(&store, &id, directory, None, None)
-        .await
-        .unwrap();
+    let fork = fork_session_via_store(
+        &store,
+        &id,
+        ForkSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     let forked = store.get_entries(&SessionKey::new(
         key_text.as_str(),
         fork.session_id.as_str(),
@@ -818,19 +926,29 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
     assert_eq!(forked[0]["forkedFrom"]["sessionId"], id.as_str());
     assert_eq!(forked[1]["customTitle"], "Renamed (fork)");
     assert_eq!(
-        fork_session_via_store(&store, &new_id(), directory, None, None)
-            .await
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session_via_store(
+            &store,
+            &new_id(),
+            ForkSessionOptions::new().directory(project.path())
+        )
+        .await
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::SessionNotFound)
     );
     assert_eq!(
-        fork_session_via_store(&store, &id, directory, Some(&new_id()), None)
-            .await
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session_via_store(
+            &store,
+            &id,
+            ForkSessionOptions::new()
+                .directory(project.path())
+                .up_to_message_id(new_id())
+        )
+        .await
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::Config)
     );
 
@@ -887,9 +1005,12 @@ async fn shared_stores_work_with_the_helpers() {
     let shared = claude_agent_rust_sdk::SharedSessionStore::new(InMemorySessionStore::new());
     let project = Project::new();
     let ids = fill(&shared, &project_key_for_directory(Some(project.path())), 2).await;
-    let listed = list_sessions_from_store(&shared, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let listed = list_sessions_from_store(
+        &shared,
+        ListSessionsOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(listed.len(), 2);
     assert!(listed.iter().all(|info| ids.contains(&info.session_id)));
 }
@@ -911,15 +1032,25 @@ async fn an_agent_id_that_is_not_one_segment_loads_nothing() {
         .await
         .unwrap();
     for agent in ["", ".", "..", "x/../../secret", r"x\..\secret", "a\0b"] {
-        let messages = get_subagent_messages_from_store(&store, &id, agent, directory, None, 0)
-            .await
-            .unwrap();
+        let messages = get_subagent_messages_from_store(
+            &store,
+            &id,
+            agent,
+            SessionMessagesOptions::new().directory(project.path()),
+        )
+        .await
+        .unwrap();
         assert!(messages.is_empty(), "{agent:?}");
     }
     assert_eq!(store.loads.load(Ordering::SeqCst), 0);
-    let messages = get_subagent_messages_from_store(&store, &id, "ok", directory, None, 0)
-        .await
-        .unwrap();
+    let messages = get_subagent_messages_from_store(
+        &store,
+        &id,
+        "ok",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(store.loads.load(Ordering::SeqCst), 1);
 }
@@ -957,9 +1088,10 @@ async fn sidechain_sessions_are_omitted_from_a_store_listing() {
         .await
         .unwrap();
 
-    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
-        .await
-        .unwrap();
+    let listed =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
     let ids: Vec<&str> = listed.iter().map(|info| info.session_id.as_str()).collect();
     assert_eq!(ids, [normal.as_str()]);
     assert!(listed.iter().all(|info| !info.summary.is_empty()));
@@ -982,16 +1114,27 @@ async fn the_per_session_load_path_drops_sidechains_before_it_paginates() {
             .unwrap();
     }
 
-    let page = list_sessions_from_store(&store, Some(project.path()), Some(5), 0)
-        .await
-        .unwrap();
+    let page = list_sessions_from_store(
+        &store,
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .limit(5),
+    )
+    .await
+    .unwrap();
     assert_eq!(page.len(), 5, "sidechains take no slot of the page");
     let listed: HashSet<String> = page.into_iter().map(|info| info.session_id).collect();
     assert_eq!(listed, valid);
 
-    let second = list_sessions_from_store(&store, Some(project.path()), Some(5), 2)
-        .await
-        .unwrap();
+    let second = list_sessions_from_store(
+        &store,
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .limit(5)
+            .offset(2),
+    )
+    .await
+    .unwrap();
     assert_eq!(second.len(), 3);
     assert!(second.iter().all(|info| valid.contains(&info.session_id)));
 }
@@ -999,7 +1142,6 @@ async fn the_per_session_load_path_drops_sidechains_before_it_paginates() {
 #[tokio::test]
 async fn agent_metadata_values_that_are_not_strings_give_no_parent_ids() {
     let project = Project::new();
-    let directory = Some(project.path());
     let store = InMemorySessionStore::new();
     let id = new_id();
     store
@@ -1012,9 +1154,14 @@ async fn agent_metadata_values_that_are_not_strings_give_no_parent_ids() {
         )
         .await
         .unwrap();
-    let messages = get_subagent_messages_from_store(&store, &id, "x", directory, None, 0)
-        .await
-        .unwrap();
+    let messages = get_subagent_messages_from_store(
+        &store,
+        &id,
+        "x",
+        SessionMessagesOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].parent_tool_use_id, None);
     assert_eq!(messages[0].parent_agent_id, None);
@@ -1056,10 +1203,15 @@ async fn subagent_helpers_return_nothing_for_a_session_id_that_is_not_a_uuid() {
             .is_empty()
     );
     assert!(
-        get_subagent_messages_from_store(&store, "not-a-uuid", "x", directory, None, 0)
-            .await
-            .unwrap()
-            .is_empty()
+        get_subagent_messages_from_store(
+            &store,
+            "not-a-uuid",
+            "x",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .await
+        .unwrap()
+        .is_empty()
     );
 }
 
@@ -1139,15 +1291,12 @@ impl Source {
         up_to_message_id: Option<&str>,
         title: Option<&str>,
     ) -> (String, Vec<SessionStoreEntry>) {
-        let fork = fork_session_via_store(
-            &self.store,
-            &self.id,
-            Some(self.project.path()),
-            up_to_message_id,
-            title,
-        )
-        .await
-        .unwrap();
+        let mut options = ForkSessionOptions::new().directory(self.project.path());
+        options.up_to_message_id = up_to_message_id.map(str::to_owned);
+        options.title = title.map(str::to_owned);
+        let fork = fork_session_via_store(&self.store, &self.id, options)
+            .await
+            .unwrap();
         let entries = self.store.get_entries(&self.key_of(&fork.session_id));
         (fork.session_id, entries)
     }
@@ -1206,9 +1355,7 @@ async fn a_store_fork_is_read_back_with_every_source_message() {
     let messages = get_session_messages_from_store(
         &source.store,
         &fork_id,
-        Some(source.project.path()),
-        None,
-        0,
+        SessionMessagesOptions::new().directory(source.project.path()),
     )
     .await
     .unwrap();
@@ -1218,17 +1365,20 @@ async fn a_store_fork_is_read_back_with_every_source_message() {
 #[tokio::test]
 async fn a_store_fork_rejects_a_session_id_or_a_cut_message_id_that_is_not_a_uuid() {
     let source = Source::new();
-    let directory = Some(source.project.path());
-    let bad_session =
-        fork_session_via_store(&source.store, "not-a-uuid", directory, None, None).await;
+    let bad_session = fork_session_via_store(
+        &source.store,
+        "not-a-uuid",
+        ForkSessionOptions::new().directory(source.project.path()),
+    )
+    .await;
     assert!(config_message(bad_session).contains("Invalid session_id"));
     source.seed_chain(2).await;
     let bad_cut = fork_session_via_store(
         &source.store,
         &source.id,
-        directory,
-        Some("not-a-uuid"),
-        None,
+        ForkSessionOptions::new()
+            .directory(source.project.path())
+            .up_to_message_id("not-a-uuid"),
     )
     .await;
     assert!(config_message(bad_cut).contains("Invalid up_to_message_id"));
@@ -1302,9 +1452,13 @@ async fn import_skips_the_blank_lines_of_a_transcript() {
     )
     .unwrap();
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
         plain_entries([0, 1])
@@ -1321,9 +1475,13 @@ async fn import_skips_a_transcript_line_that_is_not_a_json_object() {
     )
     .unwrap();
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
         plain_entries([0, 1])
@@ -1339,9 +1497,13 @@ async fn import_leaves_out_a_subagent_file_named_only_jsonl() {
     write_lines(&subagents.join(".jsonl"), &[plain(5)]);
     write_lines(&subagents.join("agent-a.jsonl"), &[plain(6)]);
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store
             .list_subkeys(&SessionListSubkeysKey::new(
@@ -1380,17 +1542,26 @@ async fn transcripts_that_are_not_utf8_are_read_and_imported_with_replacement_ch
     )
     .unwrap();
 
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message["content"], "ab\u{fffd}cd");
-    let messages = get_subagent_messages(&id, "a", Some(project.path()), None, 0);
+    let messages = get_subagent_messages(
+        &id,
+        "a",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message["content"], "ab\u{fffd}cd");
 
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     let imported = store.get_entries(&SessionKey::new(project_key(&project), id.as_str()));
     assert_eq!(imported[0]["message"]["content"], "ab\u{fffd}cd");
 }
@@ -1408,9 +1579,15 @@ async fn the_import_byte_limit_counts_utf8_bytes() {
         .collect();
     project.write(&id, &lines);
     let store = CountingStore::new(SessionStoreCapabilities::all(), None);
-    import_session_to_store(&id, &store, Some(project.path()), false, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .include_subagents(false),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store.appends.load(Ordering::SeqCst),
         2,
@@ -1427,9 +1604,15 @@ async fn a_store_session_has_the_size_of_the_transcript_the_cli_writes() {
         &conversation(&id, "caf\u{e9} \u{4f60}\u{597d} \u{1f600}", json!({})),
     );
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), false, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .include_subagents(false),
+    )
+    .await
+    .unwrap();
     let on_disk = std::fs::metadata(&path).unwrap().len();
     let stored = get_session_info_from_store(&store, &id, Some(project.path()))
         .await
@@ -1450,9 +1633,15 @@ async fn a_batch_size_of_zero_imports_in_batches_of_500_entries() {
     let small = new_id();
     project.write(&small, &[plain(0), plain(1), plain(2)]);
     let store = CountingStore::new(SessionStoreCapabilities::all(), None);
-    import_session_to_store(&small, &store, Some(project.path()), true, 0)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &small,
+        &store,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .batch_size(0),
+    )
+    .await
+    .unwrap();
     assert_eq!(store.appends.load(Ordering::SeqCst), 1);
     assert_eq!(
         store
@@ -1464,9 +1653,15 @@ async fn a_batch_size_of_zero_imports_in_batches_of_500_entries() {
     let large = new_id();
     project.write(&large, &(0..501).map(plain).collect::<Vec<_>>());
     store.appends.store(0, Ordering::SeqCst);
-    import_session_to_store(&large, &store, Some(project.path()), true, 0)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &large,
+        &store,
+        ImportSessionOptions::new()
+            .directory(project.path())
+            .batch_size(0),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store.appends.load(Ordering::SeqCst),
         2,
@@ -1493,9 +1688,13 @@ async fn a_type_key_in_a_sidecar_cannot_replace_the_agent_metadata_marker() {
         &json!({"type": "something-else", "toolUseId": "toolu_1"}).to_string(),
     );
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         store.get_entries(&key),
         [
@@ -1517,9 +1716,13 @@ async fn an_unreadable_sidecar_fails_the_import() {
     std::fs::remove_file(&sidecar).unwrap();
     std::fs::create_dir(&sidecar).unwrap();
     let store = InMemorySessionStore::new();
-    let error = import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap_err();
+    let error = import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Io, "{error:?}");
     assert!(error.to_string().contains("agent-abc.meta.json"), "{error}");
 }
@@ -1538,9 +1741,13 @@ async fn a_sidecar_that_is_not_utf8_is_imported_as_if_it_were_absent() {
     )
     .unwrap();
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, Some(project.path()), true, 500)
-        .await
-        .unwrap();
+    import_session_to_store(
+        &id,
+        &store,
+        ImportSessionOptions::new().directory(project.path()),
+    )
+    .await
+    .unwrap();
     assert_eq!(store.get_entries(&key), plain_entries([10]));
 }
 
@@ -1550,9 +1757,13 @@ async fn a_corrupt_or_non_object_sidecar_is_imported_as_if_it_were_absent() {
     for sidecar in ["not json {", "[1, 2]", "42"] {
         let (id, key) = subagent_with_sidecar(&project, sidecar);
         let store = InMemorySessionStore::new();
-        import_session_to_store(&id, &store, Some(project.path()), true, 500)
-            .await
-            .unwrap();
+        import_session_to_store(
+            &id,
+            &store,
+            ImportSessionOptions::new().directory(project.path()),
+        )
+        .await
+        .unwrap();
         assert_eq!(store.get_entries(&key), plain_entries([10]), "{sidecar}");
         assert_eq!(
             store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
@@ -1573,7 +1784,7 @@ async fn import_without_a_directory_keys_the_session_by_the_project_it_was_found
         "the current directory is another project"
     );
     let store = InMemorySessionStore::new();
-    import_session_to_store(&id, &store, None, true, 500)
+    import_session_to_store(&id, &store, ImportSessionOptions::new())
         .await
         .unwrap();
     assert_eq!(

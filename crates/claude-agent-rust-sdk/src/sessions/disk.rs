@@ -14,7 +14,9 @@ use super::paths::{
     MAX_SANITIZED_LENGTH, canonicalize_path, find_project_dir, projects_dir, sanitize_path,
     subdirectories, worktree_paths,
 };
-use super::{SdkSessionInfo, SessionMessage, validate_uuid};
+use super::{
+    ListSessionsOptions, SdkSessionInfo, SessionMessage, SessionMessagesOptions, validate_uuid,
+};
 
 const TRANSCRIPT_SUFFIX: &str = ".jsonl";
 
@@ -149,12 +151,13 @@ fn list_all_sessions(limit: Option<usize>, offset: usize) -> Vec<SdkSessionInfo>
 /// each transcript.
 ///
 /// With a `directory`, lists the sessions of that project, and with
-/// `include_worktrees` of every git worktree of its repository, found
-/// through `git worktree list` (an unavailable `git` lists the project
-/// alone). Without one, lists the sessions of every project. Results are
-/// sorted by modification time, newest first; `offset` entries are skipped,
-/// then at most `limit` are kept when it is positive. Sidechain transcripts
-/// and transcripts without a title, summary, or prompt are left out.
+/// `include_worktrees` (the default) of every git worktree of its
+/// repository, found through `git worktree list` (an unavailable `git`
+/// lists the project alone). Without one, lists the sessions of every
+/// project. Results are sorted by modification time, newest first; `offset`
+/// entries are skipped, then at most `limit` are kept when it is positive.
+/// Sidechain transcripts and transcripts without a title, summary, or
+/// prompt are left out.
 ///
 /// The config directory is `CLAUDE_CONFIG_DIR` when set, otherwise
 /// `~/.claude`.
@@ -163,21 +166,24 @@ fn list_all_sessions(limit: Option<usize>, offset: usize) -> Vec<SdkSessionInfo>
 /// call it inside `tokio::task::spawn_blocking`.
 ///
 /// ```no_run
-/// let recent = claude_agent_rust_sdk::list_sessions(Some("/path/to/project".as_ref()), Some(20), 0, true);
+/// use claude_agent_rust_sdk::{ListSessionsOptions, list_sessions};
+///
+/// let recent = list_sessions(ListSessionsOptions::new().directory("/path/to/project").limit(20));
 /// for session in recent {
 ///     println!("{} {}", session.session_id, session.summary);
 /// }
 /// ```
 #[must_use]
-pub fn list_sessions(
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
-    include_worktrees: bool,
-) -> Vec<SdkSessionInfo> {
+pub fn list_sessions(options: ListSessionsOptions) -> Vec<SdkSessionInfo> {
+    let ListSessionsOptions {
+        directory,
+        limit,
+        offset,
+        include_worktrees,
+    } = options;
     match directory {
         Some(directory) if !directory.as_os_str().is_empty() => {
-            list_sessions_for_project(directory, limit, offset, include_worktrees)
+            list_sessions_for_project(&directory, limit, offset, include_worktrees)
         }
         _ => list_all_sessions(limit, offset),
     }
@@ -271,20 +277,30 @@ pub(crate) fn resolve_session_file_path(
 ///
 /// Empty when the id is not a UUID or the transcript is missing. This
 /// function blocks on filesystem reads.
+///
+/// ```no_run
+/// use claude_agent_rust_sdk::{SessionMessagesOptions, get_session_messages};
+///
+/// let session_id = "550e8400-e29b-41d4-a716-446655440000";
+/// let first_ten = get_session_messages(session_id, SessionMessagesOptions::new().limit(10));
+/// # let _ = first_ten;
+/// ```
 #[must_use]
 pub fn get_session_messages(
     session_id: &str,
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
+    options: SessionMessagesOptions,
 ) -> Vec<SessionMessage> {
     let Some(session_id) = validate_uuid(session_id) else {
         return Vec::new();
     };
-    let Some(content) = read_session_file(session_id, directory) else {
+    let Some(content) = read_session_file(session_id, options.directory.as_deref()) else {
         return Vec::new();
     };
-    entries_to_session_messages(&parse_transcript_entries(&content), limit, offset)
+    entries_to_session_messages(
+        &parse_transcript_entries(&content),
+        options.limit,
+        options.offset,
+    )
 }
 
 fn subagents_dir(session_id: &str, directory: Option<&Path>) -> Option<PathBuf> {
@@ -385,17 +401,20 @@ pub fn list_subagents(session_id: &str, directory: Option<&Path>) -> Vec<String>
 pub fn get_subagent_messages(
     session_id: &str,
     agent_id: &str,
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
+    options: SessionMessagesOptions,
 ) -> Vec<SessionMessage> {
+    let SessionMessagesOptions {
+        directory,
+        limit,
+        offset,
+    } = options;
     let Some(session_id) = validate_uuid(session_id) else {
         return Vec::new();
     };
     if agent_id.is_empty() {
         return Vec::new();
     }
-    let Some(subagents) = subagents_dir(session_id, directory) else {
+    let Some(subagents) = subagents_dir(session_id, directory.as_deref()) else {
         return Vec::new();
     };
     let Some((_, transcript)) = collect_agent_files(&subagents)

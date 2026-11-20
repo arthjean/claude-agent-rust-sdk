@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use claude_agent_rust_sdk::{Message, SessionMessageType, get_session_messages};
+use claude_agent_rust_sdk::{
+    Message, SessionMessageType, SessionMessagesOptions, get_session_messages,
+};
 
 use crate::suite;
 
@@ -39,7 +41,7 @@ async fn two_turn_session(cwd: &Path) -> Session {
     assert!(!last.is_error);
     let id = last.session_id.clone();
 
-    let chain = get_session_messages(&id, Some(cwd), None, 0);
+    let chain = get_session_messages(&id, SessionMessagesOptions::new().directory(cwd));
     let shape: Vec<_> = chain
         .iter()
         .map(|message| (message.r#type, message.uuid.as_str()))
@@ -67,7 +69,7 @@ async fn two_turn_session(cwd: &Path) -> Session {
 }
 
 fn prompts(session_id: &str, cwd: &Path) -> Vec<String> {
-    get_session_messages(session_id, Some(cwd), None, 0)
+    get_session_messages(session_id, SessionMessagesOptions::new().directory(cwd))
         .into_iter()
         .filter(|message| message.r#type == SessionMessageType::User)
         .filter_map(|message| message.message["content"].as_str().map(str::to_owned))

@@ -21,7 +21,10 @@ use super::mutations::require_uuid;
 use super::paths::{canonicalize_path, sanitize_path};
 use super::summary::summary_entry_to_sdk_info;
 use super::timestamp::{now_millis, parse_iso_millis};
-use super::{SdkSessionInfo, SessionMessage, validate_uuid};
+use super::{
+    ImportSessionOptions, ListSessionsOptions, SdkSessionInfo, SessionMessage,
+    SessionMessagesOptions, validate_uuid,
+};
 use crate::error::{Error, Result};
 use crate::session_store::{
     SessionKey, SessionListSubkeysKey, SessionStore, SessionStoreEntry, SessionStoreError,
@@ -147,7 +150,9 @@ impl Slot {
 /// its listing time is loaded and read again, after pagination, so at most
 /// one page of loads runs. Without summaries, every session is loaded, at
 /// most 16 at once. A session whose load fails is listed with an empty
-/// summary. Worktrees are a filesystem notion and are not searched.
+/// summary. Worktrees are a filesystem notion and are not searched:
+/// `include_worktrees` has no effect here, since store keys hold no
+/// worktree layout (upstream's store function has no such parameter).
 ///
 /// # Errors
 ///
@@ -156,11 +161,15 @@ impl Slot {
 /// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when a listing call fails.
 pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
     store: &S,
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
+    options: ListSessionsOptions,
 ) -> Result<Vec<SdkSessionInfo>> {
-    let project_path = project_path_of(directory);
+    let ListSessionsOptions {
+        directory,
+        limit,
+        offset,
+        include_worktrees: _,
+    } = options;
+    let project_path = project_path_of(directory.as_deref());
     let project_key = sanitize_path(&project_path);
     match store.list_session_summaries(&project_key).await {
         Err(error) if is_unsupported(&error) => {}
@@ -292,14 +301,20 @@ pub async fn get_session_info_from_store<S: SessionStore + ?Sized>(
 pub async fn get_session_messages_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
+    options: SessionMessagesOptions,
 ) -> Result<Vec<SessionMessage>> {
+    let SessionMessagesOptions {
+        directory,
+        limit,
+        offset,
+    } = options;
     let Some(session_id) = validate_uuid(session_id) else {
         return Ok(Vec::new());
     };
-    let key = SessionKey::new(sanitize_path(&project_path_of(directory)), session_id);
+    let key = SessionKey::new(
+        sanitize_path(&project_path_of(directory.as_deref())),
+        session_id,
+    );
     let entries = store
         .load(&key)
         .await
@@ -375,17 +390,20 @@ pub async fn get_subagent_messages_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
     agent_id: &str,
-    directory: Option<&Path>,
-    limit: Option<usize>,
-    offset: usize,
+    options: SessionMessagesOptions,
 ) -> Result<Vec<SessionMessage>> {
+    let SessionMessagesOptions {
+        directory,
+        limit,
+        offset,
+    } = options;
     let Some(session_id) = validate_uuid(session_id) else {
         return Ok(Vec::new());
     };
     if !is_single_segment(agent_id) {
         return Ok(Vec::new());
     }
-    let project_key = sanitize_path(&project_path_of(directory));
+    let project_key = sanitize_path(&project_path_of(directory.as_deref()));
     let mut subpath = format!("subagents/agent-{agent_id}");
     match store
         .list_subkeys(&SessionListSubkeysKey::new(project_key.clone(), session_id))
@@ -507,8 +525,8 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
 /// Copies a local session into a store, so it can be read or resumed from
 /// the store.
 ///
-/// The transcript is appended in batches of `batch_size` entries (500 when
-/// 0) or 1 MiB of lines, whichever comes first. The key is named after the
+/// The transcript is appended in batches of `batch_size` entries (500 by
+/// default, and when 0) or 1 MiB of lines, whichever comes first. The key is named after the
 /// project directory the transcript was found in, as the live mirror names
 /// it. With `include_subagents`, every transcript under
 /// `<session>/subagents/` is copied under its subpath, followed by its
@@ -529,16 +547,18 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
 pub async fn import_session_to_store<S: SessionStore + ?Sized>(
     session_id: &str,
     store: &S,
-    directory: Option<&Path>,
-    include_subagents: bool,
-    batch_size: usize,
+    options: ImportSessionOptions,
 ) -> Result<()> {
+    let ImportSessionOptions {
+        directory,
+        include_subagents,
+        batch_size,
+    } = options;
     let session_id = require_uuid(session_id, "session_id")?;
-    let (owned_id, owned_directory) = (session_id.to_owned(), directory.map(Path::to_path_buf));
-    let resolved = crate::blocking::run(move || {
-        resolve_session_file_path(&owned_id, owned_directory.as_deref())
-    })
-    .await?;
+    let owned_id = session_id.to_owned();
+    let resolved =
+        crate::blocking::run(move || resolve_session_file_path(&owned_id, directory.as_deref()))
+            .await?;
     let Some(transcript) = resolved else {
         return Err(Error::session_not_found(format!(
             "Session {session_id} not found"

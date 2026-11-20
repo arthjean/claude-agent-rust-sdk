@@ -8,8 +8,9 @@ use std::collections::HashSet;
 
 use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    Error, delete_session, fork_session, get_session_info, get_session_messages, list_sessions,
-    rename_session, tag_session,
+    Error, ForkSessionOptions, ListSessionsOptions, SessionMessagesOptions, delete_session,
+    fork_session, get_session_info, get_session_messages, list_sessions, rename_session,
+    tag_session,
 };
 use serde_json::{Value, json};
 
@@ -358,7 +359,14 @@ fn delete_removes_the_transcript_and_the_subagent_directory() {
     delete_session(&id, Some(project.path())).unwrap();
     assert!(!project.transcript(&id).exists());
     assert!(!project.dir.join(&id).exists());
-    assert!(list_sessions(Some(project.path()), None, 0, false).is_empty());
+    assert!(
+        list_sessions(
+            ListSessionsOptions::new()
+                .directory(project.path())
+                .include_worktrees(false)
+        )
+        .is_empty()
+    );
     assert_eq!(
         delete_session(&id, Some(project.path()))
             .as_ref()
@@ -395,7 +403,7 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
     );
     project.write(&id, &source);
 
-    let fork = fork_session(&id, Some(project.path()), None, None).unwrap();
+    let fork = fork_session(&id, ForkSessionOptions::new().directory(project.path())).unwrap();
     assert_ne!(fork.session_id, id);
     let path = project.transcript(&fork.session_id);
     let lines = read_lines(&path);
@@ -436,7 +444,11 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
         "first prompt (fork)"
     );
     assert_eq!(
-        get_session_messages(&fork.session_id, Some(project.path()), None, 0).len(),
+        get_session_messages(
+            &fork.session_id,
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .len(),
         3
     );
 
@@ -473,7 +485,7 @@ fn fork_keeps_the_key_order_of_each_entry_as_upstream_does() {
     std::fs::create_dir_all(source.parent().unwrap()).unwrap();
     std::fs::write(&source, format!("{entry}\n")).unwrap();
 
-    let fork = fork_session(&id, Some(project.path()), None, None).unwrap();
+    let fork = fork_session(&id, ForkSessionOptions::new().directory(project.path())).unwrap();
     let text = std::fs::read_to_string(project.transcript(&fork.session_id)).unwrap();
     let first_line = text.lines().next().unwrap();
     let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, Value>>(first_line)
@@ -528,8 +540,11 @@ fn fork_splits_lines_on_newlines_only_and_keeps_an_entry_holding_a_line_separato
     let raw = std::fs::read_to_string(project.transcript(&id)).unwrap();
     assert!(raw.contains('\u{2028}'), "the separator is written raw");
 
-    let fork = fork_session(&id, Some(project.path()), None, None).unwrap();
-    let messages = get_session_messages(&fork.session_id, Some(project.path()), None, 0);
+    let fork = fork_session(&id, ForkSessionOptions::new().directory(project.path())).unwrap();
+    let messages = get_session_messages(
+        &fork.session_id,
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(messages.len(), 3);
     assert_eq!(
         messages[2].message["content"],
@@ -544,13 +559,20 @@ fn fork_cuts_inclusively_and_honors_titles() {
     let source = transcript(&project, &id);
     rename_session(&id, "Original", Some(project.path())).unwrap();
     let cut = source[1]["uuid"].as_str().unwrap();
-    let fork = fork_session(&id, Some(project.path()), Some(cut), Some("  Branch ")).unwrap();
+    let fork = fork_session(
+        &id,
+        ForkSessionOptions::new()
+            .directory(project.path())
+            .up_to_message_id(cut)
+            .title(" Branch "),
+    )
+    .unwrap();
     let lines = read_lines(&project.transcript(&fork.session_id));
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[1]["forkedFrom"]["messageUuid"], cut);
     assert_eq!(lines[2]["customTitle"], "Branch");
 
-    let derived = fork_session(&id, None, None, None).unwrap();
+    let derived = fork_session(&id, ForkSessionOptions::new()).unwrap();
     let lines = read_lines(&project.transcript(&derived.session_id));
     assert_eq!(lines.last().unwrap()["customTitle"], "Original (fork)");
 }
@@ -562,28 +584,41 @@ fn fork_errors_create_no_file() {
     transcript(&project, &id);
     let before = std::fs::read_dir(&project.dir).unwrap().count();
     assert_eq!(
-        fork_session(&id, Some(project.path()), Some(&new_id()), None)
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session(
+            &id,
+            ForkSessionOptions::new()
+                .directory(project.path())
+                .up_to_message_id(new_id())
+        )
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::Config)
     );
     assert_eq!(
-        fork_session(&id, Some(project.path()), Some("bad"), None)
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session(
+            &id,
+            ForkSessionOptions::new()
+                .directory(project.path())
+                .up_to_message_id("bad")
+        )
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::Config)
     );
     assert_eq!(
-        fork_session(&new_id(), Some(project.path()), None, None)
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session(
+            &new_id(),
+            ForkSessionOptions::new().directory(project.path())
+        )
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::SessionNotFound)
     );
     assert_eq!(
-        fork_session("bad", None, None, None)
+        fork_session("bad", ForkSessionOptions::new())
             .as_ref()
             .err()
             .map(Error::kind),
@@ -595,10 +630,13 @@ fn fork_errors_create_no_file() {
         &[json!({"type": "custom-title", "customTitle": "t"})],
     );
     assert_eq!(
-        fork_session(&only_meta, Some(project.path()), None, None)
-            .as_ref()
-            .err()
-            .map(Error::kind),
+        fork_session(
+            &only_meta,
+            ForkSessionOptions::new().directory(project.path())
+        )
+        .as_ref()
+        .err()
+        .map(Error::kind),
         Some(ErrorKind::Config)
     );
     assert_eq!(std::fs::read_dir(&project.dir).unwrap().count(), before + 1);

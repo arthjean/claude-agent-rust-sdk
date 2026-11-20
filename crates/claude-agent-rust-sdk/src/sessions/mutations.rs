@@ -22,7 +22,7 @@ use super::lite::{
 };
 use super::paths::{project_key_for_directory, projects_dir};
 use super::timestamp::now_iso;
-use super::validate_uuid;
+use super::{ForkSessionOptions, validate_uuid};
 use crate::error::{Error, Result};
 use crate::session_store::{SessionKey, SessionStore, SessionStoreEntry, is_unsupported};
 
@@ -487,12 +487,10 @@ fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
 /// message, or an `up_to_message_id` absent from the transcript (no file is
 /// created then), [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when the source is missing,
 /// and [`ErrorKind::Io`](crate::ErrorKind::Io) when a read or write fails.
-pub fn fork_session(
-    session_id: &str,
-    directory: Option<&Path>,
-    up_to_message_id: Option<&str>,
-    title: Option<&str>,
-) -> Result<ForkSessionResult> {
+pub fn fork_session(session_id: &str, options: ForkSessionOptions) -> Result<ForkSessionResult> {
+    let directory = options.directory.as_deref();
+    let up_to_message_id = options.up_to_message_id.as_deref();
+    let title = options.title.as_deref();
     let session_id = require_uuid(session_id, "session_id")?;
     if let Some(cutoff) = up_to_message_id.filter(|id| !id.is_empty()) {
         require_uuid(cutoff, "up_to_message_id")?;
@@ -634,10 +632,11 @@ pub async fn delete_session_via_store<S: SessionStore + ?Sized>(
 pub async fn fork_session_via_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
-    directory: Option<&Path>,
-    up_to_message_id: Option<&str>,
-    title: Option<&str>,
+    options: ForkSessionOptions,
 ) -> Result<ForkSessionResult> {
+    let directory = options.directory.as_deref();
+    let up_to_message_id = options.up_to_message_id.as_deref();
+    let title = options.title.as_deref();
     let session_id = require_uuid(session_id, "session_id")?;
     if let Some(cutoff) = up_to_message_id.filter(|id| !id.is_empty()) {
         require_uuid(cutoff, "up_to_message_id")?;

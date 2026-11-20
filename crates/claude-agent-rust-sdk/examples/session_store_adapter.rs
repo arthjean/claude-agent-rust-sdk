@@ -34,10 +34,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::UNIX_EPOCH;
 
 use claude_agent_rust_sdk::{
-    BoxError, ClaudeAgentOptions, Message, SessionKey, SessionListSubkeysKey, SessionStore,
-    SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
-    SessionSummaryEntry, SystemMessage, fold_session_summary, get_session_info_from_store,
-    get_session_messages_from_store, list_sessions_from_store, query,
+    BoxError, ClaudeAgentOptions, ListSessionsOptions, Message, SessionKey, SessionListSubkeysKey,
+    SessionMessagesOptions, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
+    SessionStoreError, SessionStoreListEntry, SessionSummaryEntry, SystemMessage,
+    fold_session_summary, get_session_info_from_store, get_session_messages_from_store,
+    list_sessions_from_store, query,
 };
 use futures_util::StreamExt;
 
@@ -389,7 +390,7 @@ async fn main() -> Result<(), BoxError> {
     println!("Session: {session_id}\n");
 
     println!("=== The session, read back from the store ===");
-    let sessions = list_sessions_from_store(&store, None, Some(5), 0).await?;
+    let sessions = list_sessions_from_store(&store, ListSessionsOptions::new().limit(5)).await?;
     println!("Latest sessions of this project in the store:");
     for session in &sessions {
         println!("  {}  {}", session.session_id, session.summary);
@@ -398,7 +399,8 @@ async fn main() -> Result<(), BoxError> {
         println!("First prompt: {:?}", info.first_prompt);
         println!("Working directory: {:?}", info.cwd);
     }
-    let stored = get_session_messages_from_store(&store, &session_id, None, None, 0).await?;
+    let stored =
+        get_session_messages_from_store(&store, &session_id, SessionMessagesOptions::new()).await?;
     println!("Messages in the store: {}", stored.len());
     for message in &stored {
         println!("  {:?}: {}", message.r#type, message.message["content"]);
@@ -414,7 +416,8 @@ async fn main() -> Result<(), BoxError> {
     let resumed_session_id = run("Which word did I ask you to remember?", options).await?;
     println!("Session: {resumed_session_id}");
 
-    let stored = get_session_messages_from_store(&store, &session_id, None, None, 0).await?;
+    let stored =
+        get_session_messages_from_store(&store, &session_id, SessionMessagesOptions::new()).await?;
     println!("Messages in the store after the resume: {}", stored.len());
     Ok(())
 }

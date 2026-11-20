@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use claude_agent_rust_sdk::{
     ContentBlock, InMemorySessionStore, SdkMcpTool, SessionKey, SessionMessage, SessionMessageType,
-    ToolResult, create_sdk_mcp_server, get_session_messages, get_session_messages_from_store,
-    project_key_for_directory,
+    SessionMessagesOptions, ToolResult, create_sdk_mcp_server, get_session_messages,
+    get_session_messages_from_store, project_key_for_directory,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -151,11 +151,17 @@ async fn parallel_tool_calls_are_read_back_whole() {
     );
     let expected: Vec<String> = turn.calls.iter().cloned().collect();
 
-    let local = get_session_messages(&turn.session_id, Some(&cwd), None, 0);
-    let mirrored =
-        get_session_messages_from_store(&turn.store, &turn.session_id, Some(&cwd), None, 0)
-            .await
-            .unwrap();
+    let local = get_session_messages(
+        &turn.session_id,
+        SessionMessagesOptions::new().directory(&cwd),
+    );
+    let mirrored = get_session_messages_from_store(
+        &turn.store,
+        &turn.session_id,
+        SessionMessagesOptions::new().directory(&cwd),
+    )
+    .await
+    .unwrap();
     suite::forget(&cwd);
 
     for (reader, messages) in [("local", &local), ("store", &mirrored)] {

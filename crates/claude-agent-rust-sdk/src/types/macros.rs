@@ -101,6 +101,15 @@ macro_rules! setters {
         }
         setters!($($rest)*);
     };
+    (plain $field:ident: $ty:ty; $($rest:tt)*) => {
+        #[doc = concat!("Sets `", stringify!($field), "`.")]
+        #[must_use]
+        pub fn $field(mut self, value: $ty) -> Self {
+            self.$field = value;
+            self
+        }
+        setters!($($rest)*);
+    };
     (list $field:ident: $ty:ty; $($rest:tt)*) => {
         #[doc = concat!("Sets `", stringify!($field), "`.")]
         #[must_use]

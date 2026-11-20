@@ -42,6 +42,7 @@ mod disk;
 mod jsonl;
 mod lite;
 mod mutations;
+mod options;
 mod paths;
 mod store;
 mod summary;
@@ -60,6 +61,9 @@ pub use mutations::{
     ForkSessionResult, delete_session, delete_session_via_store, fork_session,
     fork_session_via_store, rename_session, rename_session_via_store, tag_session,
     tag_session_via_store,
+};
+pub use options::{
+    ForkSessionOptions, ImportSessionOptions, ListSessionsOptions, SessionMessagesOptions,
 };
 pub use paths::project_key_for_directory;
 #[cfg(target_os = "macos")]

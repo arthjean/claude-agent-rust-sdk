@@ -9,7 +9,8 @@ use std::process::Command;
 use std::time::{Duration, UNIX_EPOCH};
 
 use claude_agent_rust_sdk::{
-    SdkSessionInfo, SessionMessage, SessionMessageType, get_session_info, get_session_messages,
+    ForkSessionOptions, ImportSessionOptions, ListSessionsOptions, SdkSessionInfo, SessionMessage,
+    SessionMessageType, SessionMessagesOptions, get_session_info, get_session_messages,
     get_subagent_messages, list_sessions, list_subagents, project_key_for_directory,
 };
 use serde_json::{Value, json};
@@ -52,7 +53,11 @@ fn config_dir_comes_from_the_environment() {
     assert!(project.dir.starts_with(config_dir()));
     let id = new_id();
     project.write(&id, &conversation(&id, "hello", json!({})));
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(ids(&listed), [id]);
 }
 
@@ -66,7 +71,11 @@ fn a_single_session_is_listed_with_its_metadata() {
     first["cwd"] = Value::from(cwd.as_str());
     project.write(&id, &[first, assistant("a1", Some("u1"), &id, "4")]);
 
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(ids(&listed), [id]);
     let session = &listed[0];
     assert_eq!(session.first_prompt.as_deref(), Some("What is 2+2?"));
@@ -86,7 +95,11 @@ fn a_custom_title_wins_over_the_summary_and_the_first_prompt() {
     lines.push(json!({"type": "summary", "summary": "auto summary"}));
     lines.push(json!({"type": "custom-title", "customTitle": "My Custom Title", "sessionId": id}));
     project.write(&id, &lines);
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].summary, "My Custom Title");
     assert_eq!(listed[0].custom_title.as_deref(), Some("My Custom Title"));
@@ -194,19 +207,40 @@ fn listing_sorts_newest_first_and_paginates() {
     expected.sort();
     let expected: Vec<String> = expected.into_iter().map(|(_, id)| id).collect();
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), None, 0, false)),
+        ids(&list_sessions(
+            ListSessionsOptions::new()
+                .directory(project.path())
+                .include_worktrees(false)
+        )),
         expected
     );
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), Some(2), 0, false)),
+        ids(&list_sessions(
+            ListSessionsOptions::new()
+                .directory(project.path())
+                .limit(2)
+                .include_worktrees(false)
+        )),
         expected[..2]
     );
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), Some(2), 1, false)),
+        ids(&list_sessions(
+            ListSessionsOptions::new()
+                .directory(project.path())
+                .limit(2)
+                .offset(1)
+                .include_worktrees(false)
+        )),
         expected[1..3]
     );
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), Some(0), 3, false)),
+        ids(&list_sessions(
+            ListSessionsOptions::new()
+                .directory(project.path())
+                .limit(0)
+                .offset(3)
+                .include_worktrees(false)
+        )),
         expected[3..]
     );
 }
@@ -235,7 +269,9 @@ fn sidechain_empty_metadata_only_and_misnamed_files_are_skipped() {
     std::fs::write(project.dir.join(format!("{}.txt", new_id())), "{}\n").unwrap();
 
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), None, 0, true)),
+        ids(&list_sessions(
+            ListSessionsOptions::new().directory(project.path())
+        )),
         [kept]
     );
     assert!(get_session_info(&sidechain, Some(project.path())).is_none());
@@ -276,7 +312,7 @@ fn all_projects_are_listed_and_searched_without_a_directory() {
     let alone = new_id();
     second.write(&alone, &conversation(&alone, "alone", json!({})));
 
-    let all = list_sessions(None, None, 0, true);
+    let all = list_sessions(ListSessionsOptions::new());
     let matching: Vec<_> = all
         .iter()
         .filter(|session| session.session_id == shared)
@@ -291,7 +327,7 @@ fn all_projects_are_listed_and_searched_without_a_directory() {
         &conversation(&older_alone, "from one", json!({})),
     );
     set_mtime(&path, 50);
-    let ours: Vec<String> = list_sessions(None, None, 0, true)
+    let ours: Vec<String> = list_sessions(ListSessionsOptions::new())
         .into_iter()
         .map(|session| session.session_id)
         .filter(|id| [&alone, &older_alone].contains(&id))
@@ -302,8 +338,14 @@ fn all_projects_are_listed_and_searched_without_a_directory() {
 #[test]
 fn missing_project_directory_lists_nothing() {
     let cwd = tempfile::tempdir().unwrap();
-    assert!(list_sessions(Some(cwd.path()), None, 0, true).is_empty());
-    assert!(get_session_messages(&new_id(), Some(cwd.path()), None, 0).is_empty());
+    assert!(list_sessions(ListSessionsOptions::new().directory(cwd.path())).is_empty());
+    assert!(
+        get_session_messages(
+            &new_id(),
+            SessionMessagesOptions::new().directory(cwd.path())
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -323,10 +365,17 @@ fn long_paths_fall_back_to_the_prefix_lookup() {
         &conversation(&id, "long", json!({})),
     );
     assert_eq!(
-        ids(&list_sessions(Some(&long), None, 0, false)),
+        ids(&list_sessions(
+            ListSessionsOptions::new()
+                .directory(&long)
+                .include_worktrees(false)
+        )),
         std::slice::from_ref(&id)
     );
-    assert_eq!(get_session_messages(&id, Some(&long), None, 0).len(), 2);
+    assert_eq!(
+        get_session_messages(&id, SessionMessagesOptions::new().directory(&long)).len(),
+        2
+    );
 }
 
 fn git(directory: &Path, args: &[&str]) {
@@ -373,7 +422,7 @@ fn worktrees_are_listed_together_and_deduplicated() {
         &conversation(&both, "fresh copy", json!({})),
     );
 
-    let listed = list_sessions(Some(&main), None, 0, true);
+    let listed = list_sessions(ListSessionsOptions::new().directory(&main));
     let mut found = ids(&listed);
     found.sort();
     let mut expected = vec![in_main.clone(), in_linked.clone(), both.clone()];
@@ -385,7 +434,11 @@ fn worktrees_are_listed_together_and_deduplicated() {
         .unwrap();
     assert_eq!(deduplicated.summary, "fresh copy");
 
-    let mut own_only = ids(&list_sessions(Some(&main), None, 0, false));
+    let mut own_only = ids(&list_sessions(
+        ListSessionsOptions::new()
+            .directory(&main)
+            .include_worktrees(false),
+    ));
     own_only.sort();
     let mut expected = vec![in_main, both];
     expected.sort();
@@ -402,7 +455,9 @@ fn a_directory_outside_git_lists_only_its_own_project() {
     let id = new_id();
     project.write(&id, &conversation(&id, "no git", json!({})));
     assert_eq!(
-        ids(&list_sessions(Some(project.path()), None, 0, true)),
+        ids(&list_sessions(
+            ListSessionsOptions::new().directory(project.path())
+        )),
         [id]
     );
 }
@@ -430,7 +485,8 @@ fn messages_follow_the_chain_and_skip_corrupt_and_hidden_entries() {
     text.insert_str(0, "{not json\n");
     std::fs::write(&path, text).unwrap();
 
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     let uuids: Vec<&str> = messages
         .iter()
         .map(|message| message.uuid.as_str())
@@ -446,12 +502,21 @@ fn messages_follow_the_chain_and_skip_corrupt_and_hidden_entries() {
             .all(|message| message.parent_tool_use_id.is_none())
     );
 
-    let page: Vec<String> = get_session_messages(&id, Some(project.path()), Some(2), 1)
-        .into_iter()
-        .map(|message| message.uuid)
-        .collect();
+    let page: Vec<String> = get_session_messages(
+        &id,
+        SessionMessagesOptions::new()
+            .directory(project.path())
+            .limit(2)
+            .offset(1),
+    )
+    .into_iter()
+    .map(|message| message.uuid)
+    .collect();
     assert_eq!(page, ["a1", "c1"]);
-    assert_eq!(get_session_messages(&id, None, None, 0).len(), 4);
+    assert_eq!(
+        get_session_messages(&id, SessionMessagesOptions::new()).len(),
+        4
+    );
 }
 
 #[test]
@@ -466,7 +531,8 @@ fn a_parent_cycle_returns_without_looping() {
             user("z", Some("y"), &id, Value::from("three")),
         ],
     );
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(messages.len(), 3);
 }
 
@@ -481,17 +547,38 @@ fn two_entries_that_are_each_other_s_parent_give_no_messages() {
             assistant("a1", Some("u1"), &id, "hello"),
         ],
     );
-    assert!(get_session_messages(&id, Some(project.path()), None, 0).is_empty());
+    assert!(
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()))
+            .is_empty()
+    );
 }
 
 #[test]
 fn missing_or_invalid_sessions_give_empty_lists() {
     let project = Project::new();
-    assert!(get_session_messages(&new_id(), Some(project.path()), None, 0).is_empty());
-    assert!(get_session_messages("bad", Some(project.path()), None, 0).is_empty());
+    assert!(
+        get_session_messages(
+            &new_id(),
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
+    assert!(
+        get_session_messages(
+            "bad",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
     let empty = new_id();
     std::fs::write(project.transcript(&empty), "").unwrap();
-    assert!(get_session_messages(&empty, Some(project.path()), None, 0).is_empty());
+    assert!(
+        get_session_messages(
+            &empty,
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -509,7 +596,11 @@ fn a_subagent_chain_is_read_root_first_with_every_field() {
             assistant("a2", Some("u2"), &id, "done"),
         ],
     );
-    let messages = get_subagent_messages(&id, "abc", Some(project.path()), None, 0);
+    let messages = get_subagent_messages(
+        &id,
+        "abc",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(uuids(&messages), ["u1", "a1", "u2", "a2"]);
     assert_eq!(messages[0].r#type, SessionMessageType::User);
     assert_eq!(messages[0].session_id, id);
@@ -545,7 +636,11 @@ fn the_sidecar_parent_ids_are_set_on_every_subagent_message() {
         .to_string(),
     )
     .unwrap();
-    let messages = get_subagent_messages(&id, "abc", Some(project.path()), None, 0);
+    let messages = get_subagent_messages(
+        &id,
+        "abc",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(messages.len(), 2);
     assert!(messages.iter().all(|message| {
         message.parent_tool_use_id.as_deref() == Some("toolu_01ABC")
@@ -595,19 +690,48 @@ fn subagents_are_listed_and_read_with_their_parent_ids() {
     );
     assert_eq!(list_subagents(&id, None), ["alpha", "gamma", "beta"]);
 
-    let alpha = get_subagent_messages(&id, "alpha", Some(project.path()), None, 0);
+    let alpha = get_subagent_messages(
+        &id,
+        "alpha",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(alpha.len(), 2);
     assert_eq!(alpha[0].parent_tool_use_id.as_deref(), Some("toolu_1"));
     assert_eq!(alpha[0].parent_agent_id, None);
-    let beta = get_subagent_messages(&id, "beta", Some(project.path()), Some(1), 1);
+    let beta = get_subagent_messages(
+        &id,
+        "beta",
+        SessionMessagesOptions::new()
+            .directory(project.path())
+            .limit(1)
+            .offset(1),
+    );
     assert_eq!(beta.len(), 1);
     assert_eq!(beta[0].uuid, "beta-a");
     assert_eq!(beta[0].parent_agent_id.as_deref(), Some("alpha"));
-    let gamma = get_subagent_messages(&id, "gamma", Some(project.path()), None, 0);
+    let gamma = get_subagent_messages(
+        &id,
+        "gamma",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(gamma[0].parent_tool_use_id, None);
 
-    assert!(get_subagent_messages(&id, "missing", Some(project.path()), None, 0).is_empty());
-    assert!(get_subagent_messages(&id, "", Some(project.path()), None, 0).is_empty());
+    assert!(
+        get_subagent_messages(
+            &id,
+            "missing",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
+    assert!(
+        get_subagent_messages(
+            &id,
+            "",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
     assert!(list_subagents(&new_id(), Some(project.path())).is_empty());
     assert!(list_subagents("bad", Some(project.path())).is_empty());
 }
@@ -621,9 +745,9 @@ fn host_process_for_the_config_dir_tests() {
         return;
     };
     let report = json!({
-        "listed": ids(&list_sessions(None, None, 0, true)),
+        "listed": ids(&list_sessions(ListSessionsOptions::new())),
         "info": get_session_info(&session_id, None).is_some(),
-        "messages": get_session_messages(&session_id, None, None, 0).len(),
+        "messages": get_session_messages(&session_id, SessionMessagesOptions::new()).len(),
     });
     println!("{CONFIG_DIR_REPORT}{report}");
 }
@@ -704,7 +828,8 @@ fn a_progress_entry_inside_the_chain_is_walked_through_and_left_out() {
             assistant("a1", Some("p1"), &id, "hi"),
         ],
     );
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(uuids(&messages), ["u1", "a1"]);
 }
 
@@ -720,7 +845,8 @@ fn the_chain_ends_at_the_leaf_written_last_in_the_file() {
             assistant("new-leaf", Some("root"), &id, "new"),
         ],
     );
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(uuids(&messages), ["root", "new-leaf"]);
 }
 
@@ -736,7 +862,8 @@ fn a_transcript_ending_on_a_progress_entry_is_walked_back_to_its_last_message() 
             json!({"type": "progress", "uuid": "p1", "parentUuid": "a1", "sessionId": id}),
         ],
     );
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(uuids(&messages), ["u1", "a1"]);
 }
 
@@ -748,7 +875,8 @@ fn a_single_user_entry_is_returned_alone() {
         &id,
         &[json!({"type": "user", "uuid": "a", "parentUuid": null})],
     );
-    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    let messages =
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
     assert_eq!(uuids(&messages), ["a"]);
     assert_eq!(messages[0].r#type, SessionMessageType::User);
 }
@@ -809,7 +937,8 @@ fn parallel_tool_calls_keep_every_call_and_result_whatever_the_result_order() {
         lines.push(assistant("answer", Some(&last_result), &id, "done"));
         project.write(&id, &lines);
 
-        let messages = get_session_messages(&id, Some(project.path()), None, 0);
+        let messages =
+            get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
         let mut result_ids = block_ids(&messages, "tool_result", "tool_use_id");
         result_ids.sort();
         let context = format!("result order {result_order:?}");
@@ -850,7 +979,10 @@ fn parallel_tool_calls_that_end_the_transcript_keep_every_result() {
     lines.extend(parallel_tool_turn(&id, "prompt", 2, &[1, 0]));
     project.write(&id, &lines);
     assert_eq!(
-        uuids(&get_session_messages(&id, Some(project.path()), None, 0)),
+        uuids(&get_session_messages(
+            &id,
+            SessionMessagesOptions::new().directory(project.path())
+        )),
         ["prompt", "call-0", "call-1", "result-1", "result-0"]
     );
 }
@@ -864,10 +996,16 @@ fn pagination_counts_the_recovered_parallel_tool_calls_and_results() {
     lines.push(assistant("answer", Some("result-2"), &id, "k"));
     project.write(&id, &lines);
 
-    let page = get_session_messages(&id, Some(project.path()), Some(3), 4);
+    let page = get_session_messages(
+        &id,
+        SessionMessagesOptions::new()
+            .directory(project.path())
+            .limit(3)
+            .offset(4),
+    );
     assert_eq!(uuids(&page), ["result-0", "result-1", "result-2"]);
     assert_eq!(
-        get_session_messages(&id, Some(project.path()), None, 0).len(),
+        get_session_messages(&id, SessionMessagesOptions::new().directory(project.path())).len(),
         8
     );
 }
@@ -876,7 +1014,11 @@ fn pagination_counts_the_recovered_parallel_tool_calls_and_results() {
 fn a_transcript_without_a_tag_entry_or_timestamps_has_no_tag_and_no_creation_time() {
     let project = Project::new();
     let id = plain_session(&project, "hello");
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(ids(&listed), [id]);
     assert_eq!(listed[0].tag, None);
     assert_eq!(listed[0].created_at, None);
@@ -908,7 +1050,11 @@ fn a_tag_key_inside_a_tool_use_input_is_never_read_as_the_tag() {
         ],
     );
 
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(listed.len(), 2);
     let tag_of = |id: &str| {
         listed
@@ -941,7 +1087,11 @@ fn created_at_is_read_in_milliseconds_and_does_not_exceed_a_later_modification_t
         .set_modified(UNIX_EPOCH + Duration::from_secs(1_769_904_000))
         .unwrap();
 
-    let listed = list_sessions(Some(project.path()), None, 0, false);
+    let listed = list_sessions(
+        ListSessionsOptions::new()
+            .directory(project.path())
+            .include_worktrees(false),
+    );
     assert_eq!(ids(&listed), [id]);
     assert_eq!(listed[0].created_at, Some(1_767_225_600_000));
     assert_eq!(listed[0].last_modified, 1_769_904_000_000);
@@ -991,10 +1141,17 @@ fn a_session_without_subagents_lists_none() {
 #[test]
 fn subagent_messages_are_empty_for_an_invalid_or_unknown_session() {
     let project = Project::new();
-    assert!(get_subagent_messages("not-a-uuid", "abc", None, None, 0).is_empty());
-    assert!(get_subagent_messages("", "abc", None, None, 0).is_empty());
-    assert!(get_subagent_messages(&new_id(), "abc", None, None, 0).is_empty());
-    assert!(get_subagent_messages(&new_id(), "abc", Some(project.path()), None, 0).is_empty());
+    assert!(get_subagent_messages("not-a-uuid", "abc", SessionMessagesOptions::new()).is_empty());
+    assert!(get_subagent_messages("", "abc", SessionMessagesOptions::new()).is_empty());
+    assert!(get_subagent_messages(&new_id(), "abc", SessionMessagesOptions::new()).is_empty());
+    assert!(
+        get_subagent_messages(
+            &new_id(),
+            "abc",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -1021,7 +1178,11 @@ fn parent_ids_are_absent_when_the_sidecar_is_missing_or_unusable() {
         if let Some(sidecar) = sidecar {
             std::fs::write(subagents.join(format!("agent-{agent}.meta.json")), sidecar).unwrap();
         }
-        let messages = get_subagent_messages(&id, agent, Some(project.path()), None, 0);
+        let messages = get_subagent_messages(
+            &id,
+            agent,
+            SessionMessagesOptions::new().directory(project.path()),
+        );
         assert_eq!(messages.len(), 2, "{agent}");
         assert!(have_no_parent_ids(&messages), "{agent}");
     }
@@ -1034,7 +1195,11 @@ fn a_sidecar_that_is_a_directory_leaves_the_parent_ids_absent() {
     write_lines(&subagents.join("agent-x.jsonl"), &agent_transcript(&id));
     std::fs::create_dir(subagents.join("agent-x.meta.json")).unwrap();
 
-    let messages = get_subagent_messages(&id, "x", Some(project.path()), None, 0);
+    let messages = get_subagent_messages(
+        &id,
+        "x",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(messages.len(), 2);
     assert!(have_no_parent_ids(&messages));
 }
@@ -1051,7 +1216,11 @@ fn corrupt_and_blank_lines_of_a_subagent_transcript_are_skipped() {
     ];
     std::fs::write(subagents.join("agent-x.jsonl"), lines.join("\n") + "\n").unwrap();
 
-    let messages = get_subagent_messages(&id, "x", Some(project.path()), None, 0);
+    let messages = get_subagent_messages(
+        &id,
+        "x",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
     assert_eq!(uuids(&messages), ["u1", "a1"]);
 }
 
@@ -1060,5 +1229,87 @@ fn an_empty_subagent_transcript_gives_no_messages() {
     let project = Project::new();
     let (id, subagents) = session_with_subagents_dir(&project);
     std::fs::write(subagents.join("agent-empty.jsonl"), "").unwrap();
-    assert!(get_subagent_messages(&id, "empty", Some(project.path()), None, 0).is_empty());
+    assert!(
+        get_subagent_messages(
+            &id,
+            "empty",
+            SessionMessagesOptions::new().directory(project.path())
+        )
+        .is_empty()
+    );
+}
+
+/// Python: `list_sessions(directory=None, limit=None, offset=0,
+/// include_worktrees=True)`.
+#[test]
+fn list_sessions_options_default_to_upstream_keyword_defaults() {
+    let options = ListSessionsOptions::new();
+    assert_eq!(options, ListSessionsOptions::default());
+    assert_eq!(options.directory, None);
+    assert_eq!(options.limit, None);
+    assert_eq!(options.offset, 0);
+    assert!(options.include_worktrees);
+    let set = options
+        .directory("/project")
+        .limit(5)
+        .offset(2)
+        .include_worktrees(false);
+    assert_eq!(set.directory.as_deref(), Some(Path::new("/project")));
+    assert_eq!(
+        (set.limit, set.offset, set.include_worktrees),
+        (Some(5), 2, false)
+    );
+}
+
+/// Python: `get_session_messages(session_id, directory=None, limit=None,
+/// offset=0)`, and the same for the subagent and store readers.
+#[test]
+fn session_messages_options_default_to_upstream_keyword_defaults() {
+    let options = SessionMessagesOptions::new();
+    assert_eq!(options, SessionMessagesOptions::default());
+    assert_eq!(options.directory, None);
+    assert_eq!(options.limit, None);
+    assert_eq!(options.offset, 0);
+    let set = options.directory("/project").limit(5).offset(2);
+    assert_eq!(set.directory.as_deref(), Some(Path::new("/project")));
+    assert_eq!((set.limit, set.offset), (Some(5), 2));
+}
+
+/// Python: `fork_session(session_id, directory=None, up_to_message_id=None,
+/// title=None)`.
+#[test]
+fn fork_session_options_default_to_upstream_keyword_defaults() {
+    let options = ForkSessionOptions::new();
+    assert_eq!(options, ForkSessionOptions::default());
+    assert_eq!(options.directory, None);
+    assert_eq!(options.up_to_message_id, None);
+    assert_eq!(options.title, None);
+    let set = options
+        .directory("/project")
+        .up_to_message_id("550e8400-e29b-41d4-a716-446655440000")
+        .title("Branch");
+    assert_eq!(set.directory.as_deref(), Some(Path::new("/project")));
+    assert_eq!(
+        set.up_to_message_id.as_deref(),
+        Some("550e8400-e29b-41d4-a716-446655440000")
+    );
+    assert_eq!(set.title.as_deref(), Some("Branch"));
+}
+
+/// Python: `import_session_to_store(session_id, store, *, directory=None,
+/// include_subagents=True, batch_size=MAX_PENDING_ENTRIES)`, where
+/// `MAX_PENDING_ENTRIES` is 500.
+#[test]
+fn import_session_options_default_to_upstream_keyword_defaults() {
+    let options = ImportSessionOptions::new();
+    assert_eq!(options, ImportSessionOptions::default());
+    assert_eq!(options.directory, None);
+    assert!(options.include_subagents);
+    assert_eq!(options.batch_size, 500);
+    let set = options
+        .directory("/project")
+        .include_subagents(false)
+        .batch_size(2);
+    assert_eq!(set.directory.as_deref(), Some(Path::new("/project")));
+    assert_eq!((set.include_subagents, set.batch_size), (false, 2));
 }

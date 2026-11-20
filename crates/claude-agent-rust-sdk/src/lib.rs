@@ -283,7 +283,8 @@ pub use session_store::{
     file_path_to_session_key,
 };
 pub use sessions::{
-    ForkSessionResult, SdkSessionInfo, SessionMessage, SessionMessageType, delete_session,
+    ForkSessionOptions, ForkSessionResult, ImportSessionOptions, ListSessionsOptions,
+    SdkSessionInfo, SessionMessage, SessionMessageType, SessionMessagesOptions, delete_session,
     delete_session_via_store, fold_session_summary, fork_session, fork_session_via_store,
     get_session_info, get_session_info_from_store, get_session_messages,
     get_session_messages_from_store, get_subagent_messages, get_subagent_messages_from_store,

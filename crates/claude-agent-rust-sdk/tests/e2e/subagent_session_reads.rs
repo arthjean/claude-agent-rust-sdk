@@ -4,8 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use claude_agent_rust_sdk::{
-    AgentDefinition, ContentBlock, InMemorySessionStore, SessionMessage, get_subagent_messages,
-    get_subagent_messages_from_store, list_subagents, list_subagents_from_store,
+    AgentDefinition, ContentBlock, InMemorySessionStore, SessionMessage, SessionMessagesOptions,
+    get_subagent_messages, get_subagent_messages_from_store, list_subagents,
+    list_subagents_from_store,
 };
 
 use crate::suite::{self, AGENT_TOOLS};
@@ -90,7 +91,11 @@ async fn subagent_messages_carry_the_id_of_the_tool_call_that_spawned_them() {
     let local: BTreeMap<String, Vec<SessionMessage>> = list_subagents(session_id, Some(&cwd))
         .into_iter()
         .map(|agent_id| {
-            let messages = get_subagent_messages(session_id, &agent_id, Some(&cwd), None, 0);
+            let messages = get_subagent_messages(
+                session_id,
+                &agent_id,
+                SessionMessagesOptions::new().directory(&cwd),
+            );
             (agent_id, messages)
         })
         .collect();
@@ -99,10 +104,14 @@ async fn subagent_messages_carry_the_id_of_the_tool_call_that_spawned_them() {
         .await
         .unwrap()
     {
-        let messages =
-            get_subagent_messages_from_store(&store, session_id, &agent_id, Some(&cwd), None, 0)
-                .await
-                .unwrap();
+        let messages = get_subagent_messages_from_store(
+            &store,
+            session_id,
+            &agent_id,
+            SessionMessagesOptions::new().directory(&cwd),
+        )
+        .await
+        .unwrap();
         mirrored.insert(agent_id, messages);
     }
     suite::forget(&cwd);

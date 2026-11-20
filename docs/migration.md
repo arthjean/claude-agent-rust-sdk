@@ -153,9 +153,22 @@ Python returns a `{"content": [...]}` dictionary.
 
 The session functions keep their names (`list_sessions`, `get_session_messages`,
 `rename_session`, `tag_session`, `fork_session`, and the `*_from_store` and
-`*_via_store` variants). Keyword arguments with defaults become plain
-parameters: `directory` is an `Option<&Path>`, `limit` an `Option<usize>`, and
-`offset` a `usize`.
+`*_via_store` variants). Where Python takes more than a session id and a
+directory, the keyword arguments become an options struct with the same
+defaults, built with `new()` and one setter per argument:
+
+| Python keyword arguments | Rust options |
+|---|---|
+| `list_sessions`: `directory`, `limit`, `offset`, `include_worktrees`; `list_sessions_from_store`: the same but `include_worktrees`, which has no effect on a store | `ListSessionsOptions` |
+| `get_session_messages`, `get_subagent_messages`, and their `_from_store` variants: `directory`, `limit`, `offset` | `SessionMessagesOptions` |
+| `fork_session` and `fork_session_via_store`: `directory`, `up_to_message_id`, `title` | `ForkSessionOptions` |
+| `import_session_to_store`: `directory`, `include_subagents`, `batch_size` | `ImportSessionOptions` |
+
+So `list_sessions(directory="/repo", limit=20)` becomes
+`list_sessions(ListSessionsOptions::new().directory("/repo").limit(20))`. The
+other functions (`get_session_info`, `list_subagents`, `rename_session`,
+`tag_session`, `delete_session`, their store variants, and
+`project_key_for_directory`) take `directory` as an `Option<&Path>` parameter.
 
 `SessionStore` is a trait. `InMemorySessionStore` ships with the crate; the
 `session_store_adapter` example shows how to write your own. The Postgres,

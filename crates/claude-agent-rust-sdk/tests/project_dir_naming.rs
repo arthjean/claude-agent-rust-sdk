@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use claude_agent_rust_sdk::cli::find_cli;
-use claude_agent_rust_sdk::{list_sessions, project_key_for_directory};
+use claude_agent_rust_sdk::{ListSessionsOptions, list_sessions, project_key_for_directory};
 
 fn projects_dir() -> PathBuf {
     match std::env::var("CLAUDE_CONFIG_DIR") {
@@ -72,7 +72,12 @@ fn run_case(cli: &Path, label: &str, cwd: &Path) -> bool {
     );
     let created: Vec<String> = names(&projects).difference(&before).cloned().collect();
     let key = project_key_for_directory(Some(cwd));
-    let found = !list_sessions(Some(cwd), None, 0, false).is_empty();
+    let found = !list_sessions(
+        ListSessionsOptions::new()
+            .directory(cwd)
+            .include_worktrees(false),
+    )
+    .is_empty();
     let exact = created.contains(&key);
     println!("case: {label}");
     println!("  cwd units: {}", units(&cwd.to_string_lossy()));
