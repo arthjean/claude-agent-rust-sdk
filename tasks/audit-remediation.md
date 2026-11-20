@@ -36,11 +36,11 @@ difference, recorded), `blocked` (waiting on the owner).
 | A19 | minor | No `format` validation for draft-04/06/07 | todo | |
 | A20 | minor | Typed tool schemas: enums, integral floats, shape | todo | |
 | A21 | minor | Tool ergonomics: direct call, stateful `#[tool]` | todo | |
-| A22 | minor | Optional store methods are not silently skipped | todo | |
-| A23 | minor | Empty project paths or paths with `..` | todo | |
-| A24 | minor | Import fails on an unreadable sidecar | todo | |
-| A25 | minor | macOS keychain account when USER is unset | todo | |
-| A26 | minor | Record Rust-only session behaviors | todo | |
+| A22 | minor | Optional store methods are not silently skipped | done | Every optional store method is called; `UnsupportedStoreOperation` means absent; `capabilities()` is only read by the build-time `continue_conversation` check (`[behavior.store-declaration-for-continue]`). Four tests red on the old code (`delete_via_store_deletes_from_a_store_that_implements_delete_without_declaring_it`, ...). |
+| A23 | minor | Empty project paths or paths with `..` | done | `canonicalize_path` treats `""` as `.` and resolves `.`/`..` segment by segment like `realpath`; probed against Python on five cases. Tests `an_empty_path_is_the_current_directory`, `dot_segments_in_a_missing_tail_are_resolved` (red before). |
+| A24 | minor | Import fails on an unreadable sidecar | done | Strict sidecar read on import (`ErrorKind::Io` on a read error, absent on missing/invalid); reader stays tolerant as upstream. Test `an_unreadable_sidecar_fails_the_import` (red before). |
+| A25 | minor | macOS keychain account when USER is unset | done | `sys::current_user_name()` (`getpwuid_r`) and the upstream lookup order USER, LOGNAME, LNAME, USERNAME, user database, `claude-code-user`. Not runnable on macOS here; unit tests on Linux. |
+| A26 | minor | Record Rust-only session behaviors | done | Seven `[behavior]` entries with tests (invalid UTF-8, fork line separators, non-object import lines, agent id segment, canonical projects dir, bare `.jsonl` name, mirror timeout message), each probed against Python. |
 | A27 | minor | Reconnect with a supplied SubprocessTransport | todo | |
 | A28 | minor | Control responses stuck behind unread messages | todo | |
 | A29 | minor | Errors: repeated source, placeholder stderr | done | Display no longer repeats the source (`error.rs` test `the_text_does_not_repeat_the_source...`); sources shared by `Arc`, no `duplicate()`; `Error::stderr()` holds an 8 KiB tail when captured (`transport.rs::a_failed_process_keeps_the_last_lines_of_its_captured_error_output`, `[behavior.process-error-stderr]`). |
@@ -54,7 +54,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A37 | cosmetic | MCP wire and macro details | todo | |
 | A38 | cosmetic | Extra blocks parsed in user messages | todo | |
 | A39 | cosmetic | Empty `cwd` | todo | |
-| A40 | cosmetic | Size measures, Unicode version, subpaths | todo | |
+| A40 | cosmetic | Size measures, Unicode version, subpaths | done | Trailing-separator subkey fixed (red before); sizes in UTF-8 bytes, lite serialization, and Unicode version recorded as four `[behavior]` entries with tests. |
 | A41 | cosmetic | Ledger inconsistencies | todo | |
 | A42 | cosmetic | Idiomatic naming | todo | |
 | A43 | cosmetic | Cargo warning on every build (`homepage`) | done | `homepage` removed from the manifests; `published_manifests_carry_the_registry_metadata` now forbids it. |

@@ -44,6 +44,11 @@
 - A session store whose `append` panics no longer stops the session: the panic counts as a failed append, so it is retried and then reported as a `mirror_error` message, and the result is still delivered. A panic anywhere in the task that reads the CLI output now fails the pending control requests at once and ends the message stream with an `ErrorKind::ConnectionClosed` error, where the stream used to end with no result and the requests waited for their timeout.
 - When a program returns from `main` with a session still open, the CLI process group gets `SIGTERM` on Unix, as upstream sends at interpreter exit, instead of `SIGKILL`: the CLI writes the end of its transcript before it exits.
 - A hook input without `tool_response`, with a fractional `duration_ms`, or with `effort` as a bare string stays typed instead of becoming `HookInput::Unknown`, and an input that still does not match its event is logged at debug level.
+- The session store functions, resume, and the conformance suite call an optional store method a store implements even when `capabilities()` does not declare it; previously `delete_session_via_store` returned without deleting and a resume skipped subagent transcripts.
+- `project_key_for_directory` and the store readers give an empty directory the key of the current directory, and resolve `.` and `..` in the part of a path that does not exist yet, as upstream.
+- `import_session_to_store` fails with `ErrorKind::Io` when a subagent's `.meta.json` sidecar exists but cannot be read, instead of importing the transcript without its metadata.
+- On macOS, resuming from a session store finds the Keychain credentials of a process started without `USER` or `LOGNAME`, such as a launchd daemon, by reading the user database as upstream does.
+- Resuming from a store writes a subagent subkey that ends with a separator to the same transcript file as the subkey without it, as upstream.
 
 ## 0.1.0 - 2026-11-18
 
