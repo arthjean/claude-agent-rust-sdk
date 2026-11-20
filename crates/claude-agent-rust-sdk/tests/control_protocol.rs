@@ -232,6 +232,11 @@ async fn error_responses_fail_the_request_with_the_text_of_the_cli() {
                 "type": "control_response",
                 "response": {"subtype": "error", "request_id": frame["request_id"]},
             })]
+        } else if is_control_request(frame, "mcp_toggle") {
+            vec![json!({
+                "type": "control_response",
+                "response": {"subtype": "error", "request_id": frame["request_id"], "error": null},
+            })]
         } else {
             Vec::new()
         }
@@ -245,6 +250,13 @@ async fn error_responses_fail_the_request_with_the_text_of_the_cli() {
     let error = client.stop_task("task-1").await.unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Control);
     assert_eq!(error.to_string(), "Unknown error");
+
+    let error = client.toggle_mcp_server("files", true).await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Unknown error",
+        "a null error reads as a missing one"
+    );
 
     client.interrupt().await.unwrap();
 }
@@ -1019,6 +1031,25 @@ async fn block_on_failure_is_accepted_when_the_cli_honors_it() {
     let client =
         ClaudeSdkClient::with_transport(blocking_options(HookFailureMode::Continue), lenient);
     client.connect().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn hook_on_failure_supported_is_read_as_python_truthiness() {
+    for (value, honored) in [
+        (json!(1), true),
+        (json!("yes"), true),
+        (json!({"v": 1}), true),
+        (json!(0), false),
+        (json!(""), false),
+        (json!([]), false),
+        (json!(false), false),
+        (Value::Null, false),
+    ] {
+        let transport = initialize_answering(json!({"hook_on_failure_supported": value}));
+        let client =
+            ClaudeSdkClient::with_transport(blocking_options(HookFailureMode::Block), transport);
+        assert_eq!(client.connect().await.is_ok(), honored, "{value}");
+    }
 }
 
 fn permission_request(request_id: &str) -> Value {

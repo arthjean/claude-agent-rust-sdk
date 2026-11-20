@@ -45,7 +45,10 @@
 //!   mirror frame are ignored instead of stopping the reader;
 //! - a `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that Python's `int()` rejects
 //!   leaves the initialize timeout at 60 s, with a warning, where upstream
-//!   fails the connect.
+//!   fails the connect;
+//! - a control error response whose `error` is `null` reads as
+//!   `Unknown error` and one that is not a string as its JSON text, where
+//!   upstream gives the Python text `None` or the `repr` of the value.
 //!
 //! Where it behaves as upstream, through other means:
 //!
@@ -63,6 +66,20 @@
 mod handlers;
 mod initialize;
 mod run_end;
+/// Whether a JSON value is true as Python's `bool()` reads it: `null`,
+/// `false`, zero, and an empty string, array, or object are false, as
+/// upstream tests `response.get(...)` in an `if`.
+fn truthy(value: Option<&Value>) -> bool {
+    match value {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(flag)) => *flag,
+        Some(Value::Number(number)) => number.as_f64().is_some_and(|number| number != 0.0),
+        Some(Value::String(text)) => !text.is_empty(),
+        Some(Value::Array(items)) => !items.is_empty(),
+        Some(Value::Object(members)) => !members.is_empty(),
+    }
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -766,11 +783,7 @@ impl ControlSession {
             .send_control_request(config.initialize_request.clone(), config.initialize_timeout)
             .await?;
         if config.blocks_on_failure {
-            let supported = response
-                .get("hook_on_failure_supported")
-                .and_then(Value::as_bool)
-                == Some(true);
-            if !supported {
+            if !truthy(response.get("hook_on_failure_supported")) {
                 return Err(Error::unsupported(
                     "The process answering initialize does not honor on_failure on hook \
                      matchers, so a hook that fails would not block. Update Claude Code if it \
