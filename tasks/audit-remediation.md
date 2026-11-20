@@ -230,6 +230,33 @@ Listed, not changed, with the reason:
 - `ResultErrorData::errors()` allocates: it trims and drops blank entries.
 - Not covered by the counter-audit: the Windows branches, a `CLAUDE_CONFIG_DIR` that is not UTF-8, JSON integers above `u64` in a fork or import.
 
+### Confirmation recheck
+
+After the merge of pull request #7, five more fresh agents went over the same scopes on `main` (`3c380f3`). Each finding was checked again here by a test that fails before the fix, and each agent then checked the fix of its own findings.
+
+| Scope | Finding | Severity | Outcome |
+|---|---|---|---|
+| surface | The README said the crate never stores or forwards credentials, while a resume from a store copies the CLI's access token into a temporary configuration directory | blocker | Reworded: the README says what is copied (the access token, not the refresh token), where, and when it is removed |
+| surface | The `Debug` form of an `Error` printed the CLI's captured stderr, which the docs said was never logged | blocker | Fixed (`fc0cc24`): `stderr: <N bytes>`; `error::tests::neither_the_text_nor_the_debug_form_shows_the_error_output_of_the_cli` |
+| surface | The crate docs listed three crates of the public API; `futures_core`, `serde`, and `serde_json` were missing | major | Six listed, measured with rustdoc JSON; `futures_core` re-exported |
+| sessions | A transcript line nested more than 512 levels deep cut the history before it, broke the fork chain, and failed the import | major | Fixed (`a3437f9`, `152c0bd`, `1bd4882`, `5c5fb00`): each container at depth 512 is kept as its JSON text, in one linear pass; probed to 500000 levels on a 2 MiB stack; a deep line whose brackets do not pair or close is refused, with a test that aborted before |
+| MCP | A typed tool of no arguments, `()` or a unit struct, was listed but every call failed | major | Fixed (`f3ea0b8`): `{}` is read as `null` for such a type; red before |
+| MCP | The float coercion, forced by another field, could still pick the wrong variant of an untagged enum | minor | Fixed (`f3ea0b8`): coerced only through the alternatives that state every key; red before |
+| types | `HookEffort`, `BackgroundTaskSummary`, `SessionCronSummary`, `RateLimitEvent`, `ConversationResetMessage` dropped unmodeled keys | minor | Fixed (`106e705`), with tests |
+| types | A permission suggestion sends back keys upstream drops, not in the ledger | minor | Recorded `[behavior.permission-update-unmodeled-keys]` with its test |
+| surface | The CHANGELOG did not list the removed `Error` constructors; `docs/parity.md` still said "flat error enum" | minor | Fixed |
+| protocol, types | No blocker, no major; the `is_retryable` fix and the permission-update shape hold | none | |
+
+Listed, not changed, with the reason:
+
+- protocol: a read error on the CLI's stdout ends the stream and the exit code decides, where upstream raises; the exit code still reports a failed CLI, and a pipe error without one is not reproducible offline.
+- protocol: `hook_on_failure_supported` must be the boolean `true` (upstream takes any truthy value), `"error": null` reads as "Unknown error" (upstream "None"), the result is noted before the mirror flush ends, a `connect()` dropped during spawn leaves the child to exit on its closed pipes, and the group SIGKILL after the reap: none has an observable effect with the pinned CLI.
+- protocol: `ConnectionClosed` is always retryable, documented; a closed connection is the case a new session fixes.
+- types: a malformed list entry makes the whole hook input `Unknown` (recorded, `behavior.hook-input-shape`, raw data kept); a fractional or null number in a status response fails that call with the raw response kept in the error (upstream types those fields `int` and `str`); a non-object `usage` of a task notification reads as zero.
+- MCP: a `()` tool called with stray keys returns a validation error the model can correct; reading any object as `null` would also hide invalid arguments. An untagged enum whose variants have the same keys can pick the integer variant when another field forces the coercion; no data is lost.
+- sessions: two `agent-<id>.jsonl` with the same random id, a sidecar `.meta.json` with a lone surrogate, a timestamp without a zone (the CLI always writes `Z`); the deep subtree is written back as a string by fork and import (recorded, better than losing the line).
+- surface: the temporary configuration directory is user-only on Unix; on Windows it relies on the ACL of `%TEMP%`. `UnsupportedStoreOperation.operation` and the public fields of `ClaudeAgentOptions` are kept as they are for 0.2.0, to be reviewed before 1.0.
+
 ## Checks on the final code
 
 On `ee1062a`: `cargo xtask gates`, `parity-check --deny-pending` (159 exports, 1178 tests), `parity-diff` (43 cases match), `parity-diff --coverage`, line coverage 92.33% (floor 91.5%), `package-check`, `cargo deny check licenses advisories`, `cargo +1.88.0 check --workspace --all-features --locked`, `gh actions-lock --verify`, and a full `cargo xtask e2e` (55 of 55) all pass.

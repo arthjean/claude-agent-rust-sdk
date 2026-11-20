@@ -394,6 +394,16 @@ category = "deliberate"
 reason = "The fields are typed; a value of another type cannot be held in them, and failing the whole message over an optional field would lose the rest of it."
 test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::an_optional_field_of_the_wrong_type_reads_as_absent_and_a_list_keeps_its_strings"
 
+[behavior.permission-update-unmodeled-keys]
+summary = "A key of a permission suggestion this version does not model"
+python = "Dropped: `PermissionUpdate.from_dict` reads the known fields only, so a suggestion sent back loses it."
+rust = "Kept in `PermissionUpdate::extra` and sent back as it came; a key that shadows a modeled field is never sent."
+ref = "src/claude_agent_sdk/types.py:237-255"
+anchor = 'rule_content=r.get("ruleContent"),'
+category = "deliberate"
+reason = "Unknown wire data is kept: a suggestion a newer CLI extends goes back whole when the application accepts it, instead of losing what the CLI added."
+test = "crates/claude-agent-rust-sdk/tests/types.rs::a_permission_suggestion_keeps_the_keys_a_newer_cli_adds_when_it_is_sent_back"
+
 [behavior.integer-fields-coerced]
 summary = "A fractional or negative number in an integer field"
 python = "Kept as sent."

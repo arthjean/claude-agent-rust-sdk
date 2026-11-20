@@ -1,4 +1,9 @@
 //! Permission modes, permission updates, and the tool-permission callback.
+//!
+//! Differs from upstream in one deliberate way: a key of a permission
+//! suggestion this version does not model is kept in
+//! [`PermissionUpdate::extra`] and sent back with the suggestion, where
+//! upstream's `from_dict` drops it.
 
 use std::fmt;
 use std::future::Future;
