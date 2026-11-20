@@ -238,7 +238,9 @@ On `ee1062a`: `cargo xtask gates`, `parity-check --deny-pending` (159 exports, 1
 
 Cross-checked here without running: `cargo clippy --workspace --all-targets --all-features --target <t> -- -D warnings` passes for `x86_64-pc-windows-msvc` and `aarch64-apple-darwin` on the default toolchain, so the Windows and macOS branches of the library and of every test compile clean. The counter-audit commits cited above are all ancestors of HEAD.
 
-Left to CI, with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
+CI on pull request #7 (draft, opened with the owner's approval). The first run found three faults the local checks could not: the minimal-versions job (schemars 1.2.0 ordered the tag of a merged enum schema after the fields; fixed in `f7bc95c`, reproduced red and green on a local minimal-versions resolution), the macOS parity job (a ledger path compiled on Linux and Windows only, and an ignored Keychain test the macOS job runs explicitly; fixed in `4669242`), and the macOS gates (an intermittent `dropping_the_runtime_lets_the_process_handle_termination`: the runtime could be dropped before the wrapper shell set its trap; fixed in `2d35f6c`, the race reproduced on Linux with a pause before the trap). On `2d35f6c` every job passes but `API compatibility`, which reports the five intended breaking changes and stays red until `release prepare minor`, as `RELEASING.md` says.
+
+Before the PR, left to CI with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
 
 ## Upstream releases during the run
 
