@@ -41,19 +41,20 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ### The differential harness
 
-`cargo xtask parity-diff` plays 33 cases through both SDKs against `fake-claude` and compares what each sent the CLI: the command line, the environment, and every frame. The cases set 47 of the 50 fields of `ClaudeAgentOptions`; 3 are excluded with a reason in `parity/cases/coverage.toml`, and 0 are neither.
+`cargo xtask parity-diff` plays 34 cases through both SDKs against `fake-claude` and compares what each sent the CLI: the command line, the environment, and every frame. The cases set 47 of the 50 fields of `ClaudeAgentOptions`; 3 are excluded with a reason in `parity/cases/coverage.toml`, and 0 are neither.
 
 ## Deliberately different
 
-55 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 48 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+56 differences are reviewed and accepted: 8 on the wire, found by `cargo xtask parity-diff`, and 48 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
-### Deliberate choices (28)
+### Deliberate choices (29)
 
 Rust chose another form on purpose; the CLI accepts both.
 
 | Difference | Python | Rust | Reason | Shown by |
 |---|---|---|---|---|
-| `arg --max-budget-usd` on the wire | `"1e-05"` | `"1e-5"` | Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for ordinary amounts and differ only in exponent form, which the CLI parses to the same number. | differential case `budget-in-exponent-form` |
+| `arg --max-budget-usd` on the wire | `"1e-05"` | `"1e-5"` | Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for fractional amounts and differ in exponent form and for a whole number (next entry); the CLI parses each spelling to the same number. | differential case `budget-in-exponent-form` |
+| `arg --max-budget-usd` on the wire | `"5"` | `"5.0"` | Rust types the budget as `f64`, so a whole-dollar amount is written as a float, where Python writes the `int` it was given with str(). The CLI parses both to the same number. | differential case `budget-as-integer` |
 | `env CLAUDE_CODE_ENTRYPOINT` on the wire | `"sdk-py"` | `"sdk-rs"` | Each SDK names itself to the CLI, which reports the entrypoint in its telemetry (subprocess_cli.py:767 sets sdk-py). | every differential case |
 | `frame control_response:hook-1 /response/response (key order)` on the wire | `["decision","reason","systemMessage","hookSpecificOutput"]` | `["decision","systemMessage","reason","hookSpecificOutput"]` | Python sends the dict the callback built, in the order it wrote the keys (query.py:704-709); the typed Rust SyncHookOutput writes its fields in the order upstream SyncHookJSONOutput declares them (types.py:815-852). The CLI reads the object by key. | differential case `hook-callback` |
 | `frame control_response:hook-2 /response/response (key order)` on the wire | `["continue","stopReason","suppressOutput"]` | `["continue","suppressOutput","stopReason"]` | Same cause as hook-output-key-order: field declaration order of SyncHookJSONOutput on the Rust side, the callback's own order on the Python side. | differential case `hook-callback` |
@@ -151,22 +152,21 @@ Every upstream export has a Rust counterpart.
 | `example-store-adapters` | 48 | Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal). |
 | `no-sdk-code` | 2 | Asserts only on literals defined in the test file and calls no SDK code. |
 | `packaging` | 78 | Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine. |
-| `python-aliasing` | 3 | Checks defensive copies of shared mutable objects, which Rust ownership rules out. |
+| `python-aliasing` | 4 | Checks defensive copies of shared mutable objects, which Rust ownership rules out. |
 | `python-atexit-registry` | 2 | Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry. |
 | `python-mcp-library` | 5 | Tests the bridge to the Python `mcp` package; the native dispatcher and the `rmcp` bridge have their own tests. |
 | `python-pickle` | 1 | Checks pickling and copying of exception objects. |
 | `python-runtime` | 24 | Exercises anyio or trio backends, the asyncio event loop, cancel scopes, task groups, thread affinity, or garbage collection, which have no tokio counterpart. |
-| `python-typing` | 37 | Checks Python typing, dataclass, TypedDict, import, or runtime type-validation behavior that the Rust compiler enforces. |
+| `python-typing` | 36 | Checks Python typing, dataclass, TypedDict, import, or runtime type-validation behavior that the Rust compiler enforces. |
 | `python-warnings` | 2 | Checks the filter and deduplication mechanics of the Python `warnings` module. |
 | `upstream-repository` | 6 | Checks files of the upstream repository itself. |
 
-## Not yet classified (5)
+## Not yet classified (4)
 
 Divergences the parity audit (`docs/research/python-sdk-parity.md`) found that are neither reviewed above nor closed. Each is listed in the `[unclassified]` table of `parity/differences.toml` until it is.
 
 | Audit section | Divergence |
 |---|---|
-| 4.4 item 10, `--max-budget-usd` | Python writes an integer budget as `5`, Rust as `5.0`. Rust types the budget as `f64`, so the integer case cannot be expressed in a differential case. |
 | 4.1, stricter conformance check | Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet. |
 | 4.4 item 10, `PATH` unset on Unix | Rust skips the search in `PATH` when it is not set; Python falls back to the default search path. No test shows it yet. |
 | 4.2, bytes written by rename, tag, and fork | Rust writes non-ASCII text as raw UTF-8, Python escapes it. That the CLI writes raw UTF-8 is inferred, not checked, and no test shows the Rust side yet. |

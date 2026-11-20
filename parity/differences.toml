@@ -40,7 +40,15 @@ location = "arg --max-budget-usd"
 python = '"1e-05"'
 rust = '"1e-5"'
 category = "deliberate"
-reason = "Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for ordinary amounts and differ only in exponent form, which the CLI parses to the same number."
+reason = "Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for fractional amounts and differ in exponent form and for a whole number (next entry); the CLI parses each spelling to the same number."
+
+[wire.budget-integer-spelling]
+case = "budget-as-integer"
+location = "arg --max-budget-usd"
+python = '"5"'
+rust = '"5.0"'
+category = "deliberate"
+reason = "Rust types the budget as `f64`, so a whole-dollar amount is written as a float, where Python writes the `int` it was given with str(). The CLI parses both to the same number."
 
 [wire.stdio-server-type-key]
 case = "every-cli-option"
@@ -554,10 +562,6 @@ summary = "Rust writes non-ASCII text as raw UTF-8, Python escapes it. That the 
 [unclassified.store-key-paths]
 source = "4.3, path to store key"
 summary = "Converting a path to a store key refuses `..` segments Python normalizes away and compares case-sensitively on Windows. The existing test covers a case both SDKs refuse."
-
-[unclassified.budget-integer-spelling]
-source = "4.4 item 10, `--max-budget-usd`"
-summary = "Python writes an integer budget as `5`, Rust as `5.0`. Rust types the budget as `f64`, so the integer case cannot be expressed in a differential case."
 
 [unclassified.path-unset]
 source = "4.4 item 10, `PATH` unset on Unix"

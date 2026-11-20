@@ -1,0 +1,7 @@
+{
+  "name": "budget-as-integer",
+  "description": "A whole-dollar budget, which Python receives as an int and Rust as an f64.",
+  "scenario": "one-shot",
+  "options": {"max_budget_usd": 5},
+  "prompt": "Say hello"
+}

@@ -1272,7 +1272,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestClaudeSDKClient::test_connect_with_streamed_prompt" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::connect_with_a_streamed_prompt_marks_every_frame_only_when_verbatim_prompts_is_on" }
 "TestClaudeSDKClient::test_query_with_string_prompt" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::verbatim_prompts_mark_every_frame_the_client_writes" }
 "TestClaudeSDKClient::test_query_with_streamed_prompt" = { rust = ["crates/claude-agent-rust-sdk/tests/client.rs::verbatim_prompts_mark_every_frame_the_client_writes", "crates/claude-agent-rust-sdk/src/lib.rs::prompt::tests::stamping_overwrites_the_caller_value_only_when_enabled"] }
-"TestClaudeSDKClient::test_option_is_captured_at_connect" = { excluded = "python-typing", note = "The client owns its options and gives no mutable access to them, so they cannot be toggled during a session." }
+"TestClaudeSDKClient::test_option_is_captured_at_connect" = { excluded = "python-aliasing", note = "The client owns its options and gives no mutable access to them, so they cannot be toggled during a session." }
 "TestOlderCliWarning::test_warns_when_cli_predates_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
 "TestOlderCliWarning::test_no_warning_when_cli_supports_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
 "TestOlderCliWarning::test_no_warning_when_option_is_off" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once" }
