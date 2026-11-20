@@ -249,9 +249,10 @@ impl ClaudeSdkClient {
     /// Returns every message of the session, as they arrive.
     ///
     /// The stream ends when the session ends. Several streams of one client
-    /// share the same queue: each message goes to one of them. A message
-    /// that cannot be parsed is yielded as an error and the stream
-    /// continues. Before [`connect`](Self::connect) the stream yields one
+    /// share the same queue: each message goes to one of them. An error,
+    /// such as a message that cannot be parsed, is yielded and ends the
+    /// stream, as upstream's iterator raises; a new call resumes with the
+    /// next message. Before [`connect`](Self::connect) the stream yields one
     /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
     pub fn receive_messages(&self) -> Messages<'_> {
         self.messages(false)
@@ -277,7 +278,8 @@ impl ClaudeSdkClient {
                 let connection = connection?;
                 let frame = connection.inbox.lock().await.recv().await?;
                 let message = frame.and_then(parse_message);
-                let ends = until_result && matches!(message, Ok(Message::Result(_)));
+                let ends =
+                    message.is_err() || (until_result && matches!(message, Ok(Message::Result(_))));
                 Some((message, (!ends).then_some(connection)))
             },
         ))

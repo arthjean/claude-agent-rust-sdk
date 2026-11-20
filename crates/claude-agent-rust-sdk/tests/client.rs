@@ -299,7 +299,7 @@ async fn receive_response_ends_after_the_first_result_message() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn receive_messages_yields_everything_and_survives_a_message_that_does_not_parse() {
+async fn receive_messages_ends_at_a_message_that_does_not_parse_and_a_new_call_resumes() {
     let transport = cli_answering(|frame| {
         if frame["type"] == "user" {
             vec![
@@ -316,19 +316,25 @@ async fn receive_messages_yields_everything_and_survives_a_message_that_does_not
     let client = connected(&transport, default_options()).await;
     client.query("go").await.unwrap();
 
+    let texts = |messages: Vec<Result<Message, claude_agent_rust_sdk::Error>>| {
+        messages
+            .into_iter()
+            .map(|message| match message {
+                Ok(message) => text_of(&message),
+                Err(error) if error.kind() == ErrorKind::MessageParse => "<unparsable>".to_owned(),
+                Err(other) => panic!("unexpected error {other}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let first: Vec<_> = client.receive_messages().collect().await;
+    assert_eq!(texts(first), ["first", "first", "<unparsable>"]);
+
     let mut messages = client.receive_messages();
-    let mut texts = Vec::new();
-    for _ in 0..5 {
-        texts.push(match messages.next().await.unwrap() {
-            Ok(message) => text_of(&message),
-            Err(error) if error.kind() == ErrorKind::MessageParse => "<unparsable>".to_owned(),
-            Err(other) => panic!("unexpected error {other}"),
-        });
+    let mut rest = Vec::new();
+    for _ in 0..2 {
+        rest.push(messages.next().await.unwrap());
     }
-    assert_eq!(
-        texts,
-        ["first", "first", "<unparsable>", "second", "second"]
-    );
+    assert_eq!(texts(rest), ["second", "second"]);
 
     let end = async {
         settle().await;
