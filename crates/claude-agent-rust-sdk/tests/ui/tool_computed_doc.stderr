@@ -1,0 +1,5 @@
+error: `echo` has a doc attribute #[tool] cannot read, such as one built with `include_str!`: add `description = "..."` to #[tool]
+ --> tests/ui/tool_computed_doc.rs:8:10
+  |
+8 | async fn echo(args: Args) -> Result<claude_agent_rust_sdk::ToolResult, String> {
+  |          ^^^^

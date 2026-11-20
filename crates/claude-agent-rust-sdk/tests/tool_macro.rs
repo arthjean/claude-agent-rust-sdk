@@ -273,3 +273,27 @@ fn misuse_of_the_attribute_is_a_compile_error() {
     let cases = trybuild::TestCases::new();
     cases.compile_fail("tests/ui/tool_*.rs");
 }
+
+/// Count the entries of the ledger the tool is named after.
+#[tool]
+async fn ledger(ledger: &Ledger, args: Entry) -> Result<ToolResult, String> {
+    let entries = ledger.entries.lock().unwrap();
+    Ok(ToolResult::text(format!("{} {}", args.text, entries.len())))
+}
+
+/// A tool whose function name is a keyword.
+#[tool]
+async fn r#type(args: Entry) -> Result<ToolResult, String> {
+    Ok(ToolResult::text(args.text))
+}
+
+#[tokio::test]
+async fn a_state_named_like_its_tool_and_a_raw_function_name_both_build_a_tool() {
+    let shared = std::sync::Arc::new(Ledger::default());
+    shared.entries.lock().unwrap().push("x".to_owned());
+    assert_eq!(
+        ledger(shared).call(json!({"text": "count"})).await,
+        ToolResult::text("count 1")
+    );
+    assert_eq!(r#type().name(), "type");
+}

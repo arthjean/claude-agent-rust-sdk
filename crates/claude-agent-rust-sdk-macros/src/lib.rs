@@ -9,6 +9,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, quote};
+use syn::ext::IdentExt;
 use syn::parse::Parser;
 use syn::{
     Attribute, Error, Expr, FnArg, Ident, ItemFn, Lit, LitBool, LitInt, LitStr, Meta, Pat, PatType,
@@ -259,18 +260,36 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
     let name = settings
         .name
         .clone()
-        .unwrap_or_else(|| LitStr::new(&ident.to_string(), ident.span()));
+        .unwrap_or_else(|| LitStr::new(&ident.unraw().to_string(), ident.span()));
     let description = match (&settings.description, doc_comment(&function.attrs)) {
         (Some(description), _) => description.to_token_stream(),
         (None, Some(documentation)) => LitStr::new(&documentation, ident.span()).to_token_stream(),
         (None, None) => {
-            return Err(Error::new_spanned(
-                ident,
+            let computed = function
+                .attrs
+                .iter()
+                .filter(|attribute| attribute.path().is_ident("doc"))
+                .any(|attribute| {
+                    !matches!(
+                        &attribute.meta,
+                        Meta::NameValue(pair) if matches!(
+                            &pair.value,
+                            Expr::Lit(literal) if matches!(literal.lit, Lit::Str(_))
+                        )
+                    )
+                });
+            let message = if computed {
+                format!(
+                    "`{ident}` has a doc attribute #[tool] cannot read, such as one built with \
+                     `include_str!`: add `description = \"...\"` to #[tool]"
+                )
+            } else {
                 format!(
                     "`{ident}` needs a description: add a doc comment or \
                      `description = \"...\"` to #[tool]"
-                ),
-            ));
+                )
+            };
+            return Err(Error::new_spanned(ident, message));
         }
     };
     let annotations = settings.annotations();
@@ -278,20 +297,22 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
 
     let attributes = &function.attrs;
     let visibility = &function.vis;
-    let signature = &function.sig;
+    let implementation = quote::format_ident!("__claude_agent_rust_sdk_tool", span = ident.span());
+    let mut signature = function.sig.clone();
+    signature.ident = implementation.clone();
     let block = &function.block;
     let arguments = quote!(__claude_agent_rust_sdk_arguments);
     let (parameter, prepare, call) = match &state {
-        None => (quote!(), quote!(), quote!(#ident(#arguments))),
+        None => (quote!(), quote!(), quote!(#implementation(#arguments))),
         Some(State::Shared { name, inner }) => (
             quote!(#name: ::std::sync::Arc<#inner>),
             quote!(let #name = ::std::sync::Arc::clone(&#name);),
-            quote!(#ident(&#name, #arguments)),
+            quote!(#implementation(&#name, #arguments)),
         ),
         Some(State::Owned { name, ty }) => (
             quote!(#name: #ty),
             quote!(let #name = ::std::clone::Clone::clone(&#name);),
-            quote!(#ident(#name, #arguments)),
+            quote!(#implementation(#name, #arguments)),
         ),
     };
     Ok(quote! {

@@ -74,6 +74,7 @@
 - The temporary config directory of a store-backed resume is created readable by its owner only (0700) on Unix, as upstream, since it holds the credentials.
 - Two control requests that share an id are both answered, as upstream; before, neither was.
 - `Error::is_retryable()` is true for a CLI killed by a signal, as documented: the exit code the SDK records for it is negative on Unix (`-9` for `SIGKILL`), which the check now reads.
+- `#[tool]` compiles when the state argument has the name of the function, names a tool `type` for `fn r#type`, and says when a doc attribute it cannot read (such as one built with `include_str!`) is the reason a description is missing.
 
 ## 0.1.0 - 2026-11-18
 
