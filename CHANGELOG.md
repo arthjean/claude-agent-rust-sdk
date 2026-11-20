@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-20
+
+Upstream: Python SDK 0.2.183 to 0.2.186, CLI 2.1.329
+
 0.2.0 brings the crate to the behavior of the Python Claude Agent SDK 0.2.186 and Claude Code 2.1.329, the versions it is tested against, and reshapes the public API into the one meant to carry on to 1.0. Most programs need a few mechanical edits: read "Breaking changes" first, each entry gives the old code, the new code, and the Python it corresponds to.
 
 ### Breaking changes

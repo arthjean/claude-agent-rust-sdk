@@ -63,7 +63,7 @@ Or in `Cargo.toml`, with the crates the examples below also use (`serde` and
 
 ```toml
 [dependencies]
-claude-agent-rust-sdk = "0.1"
+claude-agent-rust-sdk = "0.2"
 futures-util = "0.3"
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
