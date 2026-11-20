@@ -44,9 +44,17 @@ pub(crate) fn run_end_ceiling_ms(options_env: &IndexMap<String, String>) -> u64 
 }
 
 pub(crate) fn parse_ceiling_ms(raw: Option<&str>) -> u64 {
-    let Some(raw) = raw else {
-        return DEFAULT_RUN_END_CEILING_MS;
-    };
+    match raw.and_then(parse_python_int) {
+        Some(value) if value >= 0 => u64::try_from(value).unwrap_or(u64::MAX),
+        _ => DEFAULT_RUN_END_CEILING_MS,
+    }
+}
+
+/// Reads an integer with the grammar of Python's `int()` on a string:
+/// surrounding whitespace, an optional sign, then ASCII digits with single
+/// underscores between them. Returns `None` where `int()` raises. The
+/// magnitude saturates at `u64::MAX`.
+pub(crate) fn parse_python_int(raw: &str) -> Option<i128> {
     let text = raw.trim();
     let (negative, digits) = match text.strip_prefix('-') {
         Some(digits) => (true, digits),
@@ -59,7 +67,7 @@ pub(crate) fn parse_ceiling_ms(raw: Option<&str>) -> u64 {
             .chars()
             .all(|character| character.is_ascii_digit() || character == '_');
     if !well_formed {
-        return DEFAULT_RUN_END_CEILING_MS;
+        return None;
     }
     let magnitude = digits
         .chars()
@@ -67,10 +75,8 @@ pub(crate) fn parse_ceiling_ms(raw: Option<&str>) -> u64 {
         .fold(0_u64, |total, digit| {
             total.saturating_mul(10).saturating_add(u64::from(digit))
         });
-    if negative && magnitude != 0 {
-        return DEFAULT_RUN_END_CEILING_MS;
-    }
-    magnitude
+    let magnitude = i128::from(magnitude);
+    Some(if negative { -magnitude } else { magnitude })
 }
 
 struct Event(watch::Sender<bool>);

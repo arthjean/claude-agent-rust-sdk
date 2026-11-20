@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 
 use super::TranscriptMirror;
-use super::run_end::run_end_ceiling_ms;
+use super::run_end::{parse_python_int, run_end_ceiling_ms};
 use crate::error::Result;
 use crate::mcp::McpBridges;
 use crate::mirror::TranscriptMirrorBatcher;
@@ -73,9 +73,23 @@ impl SessionConfig {
 /// The initialize timeout: the stream close timeout of the environment, in
 /// milliseconds, and never less than 60 s. MCP servers may take time to
 /// start.
+///
+/// The value is read as Python's `int()` reads it, so `120_000` is two
+/// minutes. Where `int()` raises, upstream fails the connect; this gives
+/// 60 s and logs a warning.
 pub(crate) fn initialize_timeout(raw: Option<&str>) -> Duration {
-    raw.and_then(|raw| raw.trim().parse().ok())
-        .map_or(MINIMUM_INITIALIZE_TIMEOUT, Duration::from_millis)
+    let Some(raw) = raw else {
+        return MINIMUM_INITIALIZE_TIMEOUT;
+    };
+    let Some(milliseconds) = parse_python_int(raw) else {
+        tracing::warn!(
+            "Ignoring {STREAM_CLOSE_TIMEOUT_VARIABLE}={raw:?}, which is not an integer; \
+             the initialize timeout stays at 60 s"
+        );
+        return MINIMUM_INITIALIZE_TIMEOUT;
+    };
+    u64::try_from(milliseconds)
+        .map_or(Duration::ZERO, Duration::from_millis)
         .max(MINIMUM_INITIALIZE_TIMEOUT)
 }
 
@@ -174,18 +188,37 @@ mod tests {
 
     #[test]
     fn initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable() {
-        let cases: [(Option<&str>, u64); 7] = [
+        let cases: [(Option<&str>, u64); 8] = [
             (None, 60_000),
             (Some("120000"), 120_000),
             (Some(" 90000 "), 90_000),
             (Some("60001"), 60_001),
             (Some("5000"), 60_000),
             (Some("0"), 60_000),
+            (Some("-90000"), 60_000),
             (Some("soon"), 60_000),
         ];
         for (raw, expected) in cases {
             assert_eq!(
                 initialize_timeout(raw),
+                Duration::from_millis(expected),
+                "raw {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_stream_close_timeout_is_read_with_the_grammar_of_python_int() {
+        let cases: [(&str, u64); 5] = [
+            ("120_000", 120_000),
+            ("+90000", 90_000),
+            ("\t75000\n", 75_000),
+            ("1__000000", 60_000),
+            ("90000_", 60_000),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                initialize_timeout(Some(raw)),
                 Duration::from_millis(expected),
                 "raw {raw:?}"
             );

@@ -273,6 +273,15 @@ category = "rust-stricter"
 reason = "The identifier becomes a file name; a newline in it names a file the CLI never wrote."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::tests::a_session_id_followed_by_a_newline_is_refused"
 
+[behavior.malformed-stream-close-timeout]
+summary = "A `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that is not an integer"
+python = "`int()` raises `ValueError`, so the connect fails."
+rust = "The initialize timeout stays at 60 s and a warning is logged. A value `int()` accepts, such as `120_000`, is read the same way on both sides."
+ref = "src/claude_agent_sdk/client.py:178-181"
+category = "rust-more-robust"
+reason = "The variable only lengthens a timeout; a typo in it should not stop the session."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::control::initialize::tests::initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable"
+
 [behavior.read-messages-once-per-connection]
 summary = "A second `read_messages` on one connection"
 python = "Each call returns a new iterator over the same output stream, so two readers split the messages between them."

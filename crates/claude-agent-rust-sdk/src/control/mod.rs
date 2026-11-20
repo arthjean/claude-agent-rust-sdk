@@ -12,7 +12,10 @@
 //! - when the output of the CLI ends, pending control requests fail at once
 //!   instead of waiting for their timeout;
 //! - a control request without a request id and a malformed transcript
-//!   mirror frame are ignored instead of stopping the reader.
+//!   mirror frame are ignored instead of stopping the reader;
+//! - a `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that Python's `int()` rejects
+//!   leaves the initialize timeout at 60 s, with a warning, where upstream
+//!   fails the connect.
 //!
 //! Where it behaves as upstream, through other means:
 //!
