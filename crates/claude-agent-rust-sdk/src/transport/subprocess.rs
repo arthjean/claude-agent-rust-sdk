@@ -84,18 +84,36 @@ type SharedClose = Shared<BoxFuture<'static, ()>>;
 /// through one task that finishes every frame it starts, so their own
 /// futures can be dropped at any point.
 ///
-/// A transport serves one connection: it cannot connect again once closed.
+/// # Reconnection
+///
+/// [`connect`](Self::connect) after [`close`](Self::close) waits for the
+/// shutdown of the previous process, then starts a new one, as the upstream
+/// transport does. So a [`ClaudeSdkClient`](crate::ClaudeSdkClient) built
+/// over this transport connects again after a disconnect. Each connection
+/// has its own state: [`process_id`](Self::process_id) names the current
+/// process and [`read_messages`](Self::read_messages) hands out its output.
 pub struct SubprocessTransport {
     options: ClaudeAgentOptions,
     skip_version_check: bool,
-    inner: Arc<Inner>,
+    connecting: tokio::sync::Mutex<()>,
+    inner: Mutex<Arc<Inner>>,
 }
 
+/// The state of one connection. A reconnect replaces it whole.
 struct Inner {
     shared: Arc<SharedState>,
-    connecting: tokio::sync::Mutex<()>,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     state: Mutex<State>,
+}
+
+impl Inner {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            shared: Arc::new(SharedState::default()),
+            stdin: tokio::sync::Mutex::new(None),
+            state: Mutex::new(State::Idle),
+        })
+    }
 }
 
 #[derive(Default)]
@@ -140,13 +158,14 @@ impl SubprocessTransport {
         Self {
             options,
             skip_version_check,
-            inner: Arc::new(Inner {
-                shared: Arc::new(SharedState::default()),
-                connecting: tokio::sync::Mutex::new(()),
-                stdin: tokio::sync::Mutex::new(None),
-                state: Mutex::new(State::Idle),
-            }),
+            connecting: tokio::sync::Mutex::new(()),
+            inner: Mutex::new(Inner::new()),
         }
+    }
+
+    /// The state of the current connection.
+    fn inner(&self) -> Arc<Inner> {
+        Arc::clone(&lock(&self.inner))
     }
 
     /// Builds the arguments [`connect`](Self::connect) passes to the CLI,
@@ -165,27 +184,33 @@ impl SubprocessTransport {
     /// Identifier of the CLI process, once connected.
     #[must_use]
     pub fn process_id(&self) -> Option<u32> {
-        self.inner.shared.process_id.get().copied()
+        self.inner().shared.process_id.get().copied()
     }
 
-    /// Starts the CLI process. Connecting twice is a no-op.
+    /// Starts the CLI process. Connecting twice is a no-op; connecting
+    /// after [`close`](Self::close) waits for the previous process to end,
+    /// then starts a new one.
     ///
     /// # Errors
     ///
     /// Returns [`ErrorKind::CliNotFound`](crate::ErrorKind::CliNotFound) when the executable is missing,
     /// [`ErrorKind::Spawn`](crate::ErrorKind::Spawn) when it is a batch script on Windows, when the working
     /// directory does not exist, when the `user` option names an unknown
-    /// user or is set on Windows, or when the process cannot start,
-    /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the transport is already closed, and the
+    /// user or is set on Windows, or when the process cannot start, and the
     /// errors of
     /// [`command_arguments`](Self::command_arguments).
     pub async fn connect(&self) -> Result<()> {
-        let _connecting = self.inner.connecting.lock().await;
-        match &*lock(&self.inner.state) {
-            State::Idle => {}
+        let _connecting = self.connecting.lock().await;
+        let previous = match &*lock(&self.inner().state) {
+            State::Idle => None,
             State::Connected(_) => return Ok(()),
-            State::Closed(_) => return Err(Error::not_connected("Transport is closed")),
+            State::Closed(closing) => Some(closing.clone()),
+        };
+        if let Some(closing) = previous {
+            closing.await;
+            *lock(&self.inner) = Inner::new();
         }
+        let inner = self.inner();
 
         let cli_path = match &self.options.cli_path {
             Some(path) => path.clone(),
@@ -226,7 +251,7 @@ impl SubprocessTransport {
             .await
             .map_err(|error| self.spawn_error(&cli_path, error))?;
         let process::Spawned { streams, handle } = spawned;
-        let shared = &self.inner.shared;
+        let shared = &inner.shared;
         let _ = shared.exit.set(handle.exit());
         if let Some(id) = handle.id() {
             let _ = shared.process_id.set(id);
@@ -268,8 +293,8 @@ impl SubprocessTransport {
                 StderrTask { stop, task }
             });
 
-        *self.inner.stdin.lock().await = streams.stdin;
-        *lock(&self.inner.state) = State::Connected(Box::new(Connection {
+        *inner.stdin.lock().await = streams.stdin;
+        *lock(&inner.state) = State::Connected(Box::new(Connection {
             process: handle,
             messages: Some(messages),
             reader,
@@ -289,8 +314,9 @@ impl SubprocessTransport {
     /// [`ErrorKind::ConnectionClosed`](crate::ErrorKind::ConnectionClosed) when the process has exited or the write
     /// fails.
     pub async fn write(&self, data: &str) -> Result<()> {
-        let mut stdin = self.inner.stdin.lock().await;
-        let shared = &self.inner.shared;
+        let inner = self.inner();
+        let mut stdin = inner.stdin.lock().await;
+        let shared = &inner.shared;
         let Some(pipe) = stdin
             .as_mut()
             .filter(|_| shared.ready.load(Ordering::SeqCst))
@@ -325,13 +351,13 @@ impl SubprocessTransport {
 
     /// Returns the stream of messages read from the standard output.
     ///
-    /// The stream is handed out once. It yields [`ErrorKind::JsonDecode`](crate::ErrorKind::JsonDecode) for a
+    /// The stream is handed out once per connection. It yields [`ErrorKind::JsonDecode`](crate::ErrorKind::JsonDecode) for a
     /// corrupt or oversize message and [`ErrorKind::Process`](crate::ErrorKind::Process) when the CLI
     /// exits with a non-zero code, and ends after either. Before
     /// [`connect`](Self::connect), or on a second call, the stream yields
     /// one [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
     pub fn read_messages(&self) -> MessageStream {
-        let messages = match &mut *lock(&self.inner.state) {
+        let messages = match &mut *lock(&self.inner().state) {
             State::Connected(connection) => connection.messages.take(),
             State::Idle | State::Closed(_) => None,
         };
@@ -356,11 +382,12 @@ impl SubprocessTransport {
     ///
     /// This implementation never fails.
     pub async fn close(&self) -> Result<()> {
+        let inner = self.inner();
         let closing = {
-            let mut state = lock(&self.inner.state);
+            let mut state = lock(&inner.state);
             match std::mem::replace(&mut *state, State::Idle) {
                 State::Idle => {
-                    self.inner.shared.ready.store(false, Ordering::SeqCst);
+                    inner.shared.ready.store(false, Ordering::SeqCst);
                     return Ok(());
                 }
                 State::Closed(closing) => {
@@ -368,7 +395,7 @@ impl SubprocessTransport {
                     closing
                 }
                 State::Connected(connection) => {
-                    let shutdown = tokio::spawn(shut_down(Arc::clone(&self.inner), *connection));
+                    let shutdown = tokio::spawn(shut_down(Arc::clone(&inner), *connection));
                     let closing: BoxFuture<'static, ()> = Box::pin(async move {
                         let _ = shutdown.await;
                     });
@@ -385,7 +412,7 @@ impl SubprocessTransport {
     /// Whether the process is running and accepts writes.
     #[must_use]
     pub fn is_ready(&self) -> bool {
-        self.inner.shared.ready.load(Ordering::SeqCst)
+        self.inner().shared.ready.load(Ordering::SeqCst)
     }
 
     /// Closes the standard input of the CLI.
@@ -394,7 +421,8 @@ impl SubprocessTransport {
     ///
     /// This implementation never fails.
     pub async fn end_input(&self) -> Result<()> {
-        let mut stdin = self.inner.stdin.lock().await;
+        let inner = self.inner();
+        let mut stdin = inner.stdin.lock().await;
         if let Some(mut pipe) = stdin.take() {
             let _ = pipe.shutdown().await;
         }

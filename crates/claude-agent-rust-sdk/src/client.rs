@@ -109,6 +109,11 @@ impl ClaudeSdkClient {
     /// The options that become CLI arguments are not applied to a custom
     /// transport; hooks, agents, and the other initialize settings are
     /// still sent on the control channel.
+    ///
+    /// Every [`connect`](Self::connect) reuses this transport: it closes
+    /// the previous session, which closes the transport, then connects the
+    /// transport again. A [`SubprocessTransport`](crate::SubprocessTransport)
+    /// starts a new process each time.
     #[must_use]
     pub fn with_transport(
         options: ClaudeAgentOptions,

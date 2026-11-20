@@ -48,8 +48,46 @@ async fn connect_read_and_close() {
     assert!(next(&mut stream).await.is_none());
     assert!(wait_until_gone(pid, Duration::from_secs(5)).await);
 
-    let reconnect = transport.connect().await.unwrap_err();
-    assert_eq!(connection_error(reconnect), "Transport is closed");
+    let second = transport.read_messages();
+    let error = collect(second).await.pop().unwrap().unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::NotConnected);
+}
+
+#[tokio::test]
+async fn connect_after_close_starts_a_new_process() {
+    let transport = SubprocessTransport::new(stand_in_options().build().unwrap());
+    transport.connect().await.unwrap();
+    let first = transport.process_id().unwrap();
+    transport.close().await.unwrap();
+
+    transport.connect().await.unwrap();
+    assert!(transport.is_ready());
+    let second = transport.process_id().unwrap();
+    assert_ne!(second, first);
+    let mut stream = transport.read_messages();
+    let init = next_message(&mut stream).await;
+    assert_eq!(init["subtype"], "init");
+    assert_eq!(init["fake_pid"], json!(second));
+
+    transport.close().await.unwrap();
+    assert!(next(&mut stream).await.is_none());
+    assert!(wait_until_gone(second, Duration::from_secs(5)).await);
+}
+
+#[tokio::test]
+async fn a_client_over_a_supplied_subprocess_transport_connects_again() {
+    let fake = Fake::new(json!({"auto_reply": true}));
+    let options = fake.build();
+    let transport = SubprocessTransport::new(options.clone());
+    let client = ClaudeSdkClient::with_transport(options, transport);
+    client.connect().await.unwrap();
+    client.connect().await.unwrap();
+    client.interrupt().await.unwrap();
+    client.disconnect().await.unwrap();
+
+    client.connect().await.unwrap();
+    client.interrupt().await.unwrap();
+    client.disconnect().await.unwrap();
 }
 
 #[tokio::test]

@@ -273,14 +273,14 @@ category = "rust-stricter"
 reason = "The identifier becomes a file name; a newline in it names a file the CLI never wrote."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::tests::a_session_id_followed_by_a_newline_is_refused"
 
-[behavior.transport-single-use]
-summary = "A transport after `close`"
-python = "`connect` starts a new process on the same transport."
-rust = "`connect` fails with `Transport is closed`, and `read_messages` can be called once."
-ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:746-749"
-anchor = "if self._process:"
+[behavior.read-messages-once-per-connection]
+summary = "A second `read_messages` on one connection"
+python = "Each call returns a new iterator over the same output stream, so two readers split the messages between them."
+rust = "The stream is handed out once per connection; a second call yields one `NotConnected` error. A connect after `close` starts a new process with a new stream, as upstream does."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1052-1059"
+anchor = "return self._read_messages_impl()"
 category = "rust-stricter"
-reason = "A transport owns one process; `ClaudeSdkClient` creates a new transport for each connect."
+reason = "Two readers of one output would each miss messages the other took."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::connect_read_and_close"
 
 [behavior.message-limit-in-bytes]

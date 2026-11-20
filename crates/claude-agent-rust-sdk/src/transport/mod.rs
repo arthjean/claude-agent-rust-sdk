@@ -39,6 +39,10 @@ pub type MessageStream = Pin<Box<dyn Stream<Item = Result<Value>> + Send>>;
 /// it.
 pub trait Transport: Send + Sync + 'static {
     /// Connects the transport. A subprocess transport starts its process.
+    ///
+    /// A [`ClaudeSdkClient`](crate::ClaudeSdkClient) that connects again
+    /// calls `connect` on the same transport after [`close`](Self::close),
+    /// so a transport that can serve one connection only should fail here.
     fn connect(&self) -> impl Future<Output = Result<()>> + Send;
 
     /// Writes raw data, usually one JSON message followed by a line feed.
