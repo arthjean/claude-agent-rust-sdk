@@ -585,6 +585,58 @@ impl SessionStore for SharedSessionStore {
     }
 }
 
+/// A store shared with `Arc` is a store, so the application can keep a
+/// handle on the store it hands to the options.
+impl<S: SessionStore> SessionStore for std::sync::Arc<S> {
+    fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> impl Future<Output = Result<(), SessionStoreError>> + Send {
+        S::append(self, key, entries)
+    }
+
+    fn load(
+        &self,
+        key: &SessionKey,
+    ) -> impl Future<Output = Result<Option<Vec<SessionStoreEntry>>, SessionStoreError>> + Send
+    {
+        S::load(self, key)
+    }
+
+    fn capabilities(&self) -> SessionStoreCapabilities {
+        S::capabilities(self)
+    }
+
+    fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> impl Future<Output = Result<Vec<SessionStoreListEntry>, SessionStoreError>> + Send {
+        S::list_sessions(self, project_key)
+    }
+
+    fn list_session_summaries(
+        &self,
+        project_key: &str,
+    ) -> impl Future<Output = Result<Vec<SessionSummaryEntry>, SessionStoreError>> + Send {
+        S::list_session_summaries(self, project_key)
+    }
+
+    fn delete(
+        &self,
+        key: &SessionKey,
+    ) -> impl Future<Output = Result<(), SessionStoreError>> + Send {
+        S::delete(self, key)
+    }
+
+    fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> impl Future<Output = Result<Vec<String>, SessionStoreError>> + Send {
+        S::list_subkeys(self, key)
+    }
+}
+
 impl fmt::Debug for SharedSessionStore {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter

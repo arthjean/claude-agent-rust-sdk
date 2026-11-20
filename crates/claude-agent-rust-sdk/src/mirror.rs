@@ -130,6 +130,10 @@ impl TranscriptMirrorBatcher {
     /// buffer, so whichever drain holds the flush lock sends them in that
     /// order, and a drain returns only once everything taken before it has
     /// been sent, even when tasks on other threads interleave.
+    ///
+    /// The sending runs in a task of its own, so a drain dropped while it
+    /// waits (a `close` under a timeout) still delivers what it took, as
+    /// upstream shields the final flush from cancellation.
     async fn drain(&self) {
         {
             let mut buffer = self.buffer();
@@ -140,6 +144,20 @@ impl TranscriptMirrorBatcher {
                 buffer.taken.push_back(items);
             }
         }
+        if let Some(this) = self.this.upgrade()
+            && let Ok(runtime) = tokio::runtime::Handle::try_current()
+        {
+            let sending = runtime.spawn(crate::caller_context::in_current_context(async move {
+                this.send_taken().await;
+            }));
+            let _ = sending.await;
+        } else {
+            self.send_taken().await;
+        }
+    }
+
+    /// Sends every batch taken so far, after the flush in progress.
+    async fn send_taken(&self) {
         let errors = {
             let _serialized = self.flushing.lock().await;
             let items: Vec<Pending> = self.buffer().taken.drain(..).flatten().collect();
@@ -264,7 +282,6 @@ impl TranscriptMirror for TranscriptMirrorBatcher {
 
 #[cfg(test)]
 mod tests {
-    use std::future::Future;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use serde_json::json;
@@ -294,7 +311,7 @@ mod tests {
     async fn entries_of_one_file_are_flushed_in_a_single_append() {
         let counting = Arc::new(FlakyStore::new(0, None));
         let batcher = TranscriptMirrorBatcher::new(
-            SharedSessionStore::new(Shared(Arc::clone(&counting))),
+            SharedSessionStore::new(Arc::clone(&counting)),
             projects(),
             &SessionStoreFlushMode::Batched,
         );
@@ -502,37 +519,31 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
-    struct Shared(Arc<FlakyStore>);
-
-    impl SessionStore for Shared {
-        fn append(
-            &self,
-            key: &SessionKey,
-            entries: &[SessionStoreEntry],
-        ) -> impl Future<Output = Result<(), SessionStoreError>> + Send {
-            let store = Arc::clone(&self.0);
-            let key = key.clone();
-            let entries = entries.to_vec();
-            async move { store.append(&key, &entries).await }
-        }
-
-        fn load(
-            &self,
-            key: &SessionKey,
-        ) -> impl Future<Output = Result<Option<Vec<SessionStoreEntry>>, SessionStoreError>> + Send
-        {
-            let store = Arc::clone(&self.0);
-            let key = key.clone();
-            async move { store.load(&key).await }
-        }
+    #[tokio::test(start_paused = true)]
+    async fn a_close_dropped_during_a_slow_append_still_delivers_its_batch() {
+        let slow = Arc::new(FlakyStore::new(0, Some(Duration::from_secs(5))));
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(Arc::clone(&slow)),
+            projects(),
+            &SessionStoreFlushMode::Batched,
+        );
+        batcher.enqueue(path("s"), entries(2, "c"));
+        let abandoned = tokio::time::timeout(Duration::from_secs(1), batcher.close()).await;
+        assert!(abandoned.is_err());
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert_eq!(
+            slow.inner.get_entries(&SessionKey::new("proj", "s")).len(),
+            2
+        );
+        batcher.close().await;
+        assert_eq!(slow.attempts.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(start_paused = true)]
     async fn failed_appends_are_retried_after_200_then_800_ms() {
         let flaky = Arc::new(FlakyStore::new(2, None));
         let batcher = TranscriptMirrorBatcher::new(
-            SharedSessionStore::new(Shared(Arc::clone(&flaky))),
+            SharedSessionStore::new(Arc::clone(&flaky)),
             projects(),
             &SessionStoreFlushMode::Batched,
         );
@@ -552,7 +563,7 @@ mod tests {
     async fn a_batch_dropped_after_three_attempts_is_reported() {
         let flaky = Arc::new(FlakyStore::new(10, None));
         let batcher = TranscriptMirrorBatcher::new(
-            SharedSessionStore::new(Shared(Arc::clone(&flaky))),
+            SharedSessionStore::new(Arc::clone(&flaky)),
             projects(),
             &SessionStoreFlushMode::Batched,
         );
@@ -578,7 +589,7 @@ mod tests {
     async fn a_timed_out_append_is_not_retried() {
         let flaky = Arc::new(FlakyStore::new(0, Some(Duration::from_secs(61))));
         let batcher = TranscriptMirrorBatcher::new(
-            SharedSessionStore::new(Shared(Arc::clone(&flaky))),
+            SharedSessionStore::new(Arc::clone(&flaky)),
             projects(),
             &SessionStoreFlushMode::Batched,
         );
@@ -634,7 +645,7 @@ mod tests {
     fn counting() -> (Arc<FlakyStore>, Arc<TranscriptMirrorBatcher>) {
         let store = Arc::new(FlakyStore::new(0, None));
         let batcher = TranscriptMirrorBatcher::new(
-            SharedSessionStore::new(Shared(Arc::clone(&store))),
+            SharedSessionStore::new(Arc::clone(&store)),
             projects(),
             &SessionStoreFlushMode::Batched,
         );
@@ -700,7 +711,7 @@ mod tests {
     async fn flushes_are_serialized_so_appends_keep_their_order() {
         let slow = Arc::new(FlakyStore::new(0, Some(Duration::from_millis(50))));
         let batcher = TranscriptMirrorBatcher::with_limits(
-            SharedSessionStore::new(Shared(Arc::clone(&slow))),
+            SharedSessionStore::new(Arc::clone(&slow)),
             projects(),
             0,
             0,

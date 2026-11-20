@@ -17,6 +17,7 @@
 - The crate re-exports `indexmap`, `schemars`, and, with the `rmcp` feature, `rmcp`, the three crates whose types appear in its public API, and its docs state that a major release of one of them is a major release of this crate.
 - `MockTransport::end_input_count` returns how many times the input was ended.
 - `PermissionUpdate` and the content blocks the crate models (`TextBlock`, `ThinkingBlock`, `ToolUseBlock`, `ToolResultBlock`, `ServerToolUseBlock`, `ServerToolResultBlock`) keep the keys they do not model in an `extra` field, such as the `citations` of a text block, and a permission suggestion sent back to the CLI keeps them.
+- `SessionStore` is implemented for an `Arc` of a store, so a program can keep a handle on the store it passes to the options.
 
 ### Changed
 
@@ -80,6 +81,7 @@
 - `fork_session` ends on a transcript whose `progress` entries name each other as parents, where it looped forever (upstream has the same defect).
 - `rename_session` and `tag_session` strip what Python's `str.strip()` strips, the separators U+001C to U+001F included, and so does the reading of a first prompt.
 - The 5-second limit on `git worktree list` and the macOS Keychain read holds when a process the command started keeps its output open.
+- A `close` or `flush` of a client dropped while the transcript mirror appends to the store, as under a timeout, no longer loses the batch being sent: the sending runs in a task of its own, as upstream shields it.
 
 ## 0.1.0 - 2026-11-18
 
