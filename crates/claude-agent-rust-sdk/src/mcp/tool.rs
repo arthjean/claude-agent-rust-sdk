@@ -414,9 +414,12 @@ impl SdkMcpTool {
     ///
     /// With the `jsonschema` feature, the arguments of a call are first
     /// validated against the schema, as for [`SdkMcpTool::raw`]. They are
-    /// then deserialized into `Args`, after each float without a fractional
-    /// part (`3.0`) is turned into an integer where the schema asks for an
-    /// integer, since JSON Schema counts it as one. Arguments that do not
+    /// then deserialized into `Args`. When they do not deserialize as sent,
+    /// each float without a fractional part (`3.0`) is turned into an
+    /// integer where the schema asks for an integer, since JSON Schema counts
+    /// it as one, and they are read again; trying the arguments as sent first
+    /// keeps an untagged enum on the variant whose field takes a float.
+    /// Arguments that do not
     /// deserialize are reported to the model as an error result, and the
     /// handler does not run.
     ///
@@ -440,8 +443,11 @@ impl SdkMcpTool {
         let input_schema = schema::input_schema_of::<Args>();
         let read_schema = input_schema.clone();
         let handler = move |mut arguments: Value| -> BoxFuture<'static, _> {
-            schema::integral_floats_to_integers(&read_schema, &mut arguments);
-            match serde_json::from_value::<Args>(arguments) {
+            let read = serde_json::from_value::<Args>(arguments.clone()).or_else(|_| {
+                schema::integral_floats_to_integers(&read_schema, &mut arguments);
+                serde_json::from_value::<Args>(arguments)
+            });
+            match read {
                 Ok(arguments) => {
                     let call = handler(arguments);
                     Box::pin(async move {

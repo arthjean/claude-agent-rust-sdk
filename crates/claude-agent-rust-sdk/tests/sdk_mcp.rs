@@ -401,6 +401,41 @@ async fn typed_tool_reads_an_integral_float_as_an_integer() {
 }
 
 #[tokio::test]
+async fn an_integral_float_keeps_an_untagged_enum_on_the_variant_that_takes_a_float() {
+    #[derive(Debug, Deserialize, JsonSchema)]
+    #[serde(untagged)]
+    #[expect(dead_code, reason = "the fields are read through Debug")]
+    enum Shape {
+        Int { v: i64 },
+        Float { v: f64, w: bool },
+    }
+    #[derive(Deserialize, JsonSchema)]
+    struct Wrapped {
+        s: Shape,
+    }
+
+    let wrapped = SdkMcpTool::typed::<Wrapped>("wrapped", "Wrapped", |args| async move {
+        Ok(ToolResult::text(format!("{:?}", args.s)))
+    });
+    assert_eq!(
+        wrapped.call(json!({"s": {"v": 2.0, "w": true}})).await,
+        ToolResult::text("Float { v: 2.0, w: true }")
+    );
+    assert_eq!(
+        wrapped.call(json!({"s": {"v": 2.0}})).await,
+        ToolResult::text("Int { v: 2 }")
+    );
+
+    let top = SdkMcpTool::typed::<Shape>("top", "Top", |args| async move {
+        Ok(ToolResult::text(format!("{args:?}")))
+    });
+    assert_eq!(
+        top.call(json!({"v": 2.0, "w": false})).await,
+        ToolResult::text("Float { v: 2.0, w: false }")
+    );
+}
+
+#[tokio::test]
 async fn a_tool_is_called_directly_with_the_checks_the_server_applies() {
     assert_eq!(
         add().call(json!({"a": 1, "b": 2.5})).await,
