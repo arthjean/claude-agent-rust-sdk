@@ -92,6 +92,7 @@
 - With `PATH` unset, the CLI is searched in the search path of the system (`confstr(_CS_PATH)`, else `/bin:/usr/bin`) on Unix, as Python's `shutil.which` does.
 - `file_path_to_session_key` resolves `.` and `..` segments and, on Windows, compares the projects directory without regard to case, as Python's `os.path.relpath` does.
 - The conformance suite counts a summary a store lists twice once, as upstream does, instead of failing contract 14.
+- An unknown hook callback id that is not a string is named in the error answer (`No hook callback found for ID: 7`), as upstream does, and a line of CLI output is stripped of what Python's `str.strip()` strips, U+001C to U+001F included.
 
 ## 0.1.0 - 2026-11-18
 

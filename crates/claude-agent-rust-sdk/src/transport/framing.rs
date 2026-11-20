@@ -63,7 +63,7 @@ impl LineFramer {
 
 pub(crate) fn parse_stdout_line(line: &[u8]) -> Result<Option<Value>> {
     let text = String::from_utf8_lossy(line);
-    let text = text.trim();
+    let text = crate::sessions::python_strip(&text);
     if text.is_empty() {
         return Ok(None);
     }
@@ -300,6 +300,12 @@ mod tests {
                 .to_string()
                 .starts_with("Failed to decode JSON: {\"type\"")
         );
+    }
+
+    #[test]
+    fn a_line_led_by_a_record_separator_is_read_as_python_strip_reads_it() {
+        let parsed = parse_stdout_line(b"\x1e{\"type\":\"x\"}\n").unwrap();
+        assert_eq!(parsed, Some(serde_json::json!({"type": "x"})));
     }
 
     #[test]

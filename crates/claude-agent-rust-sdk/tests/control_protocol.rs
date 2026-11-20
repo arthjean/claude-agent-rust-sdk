@@ -889,6 +889,15 @@ async fn failing_or_unknown_hook_gets_an_error_response_and_the_session_continue
         response_to(&transport, "hook-4").unwrap()["subtype"],
         "error"
     );
+    let mut numeric = hook_request("hook-5", "unused");
+    numeric["request"]["callback_id"] = json!(7);
+    transport.push_frame(numeric);
+    settle().await;
+    assert_eq!(
+        response_to(&transport, "hook-5").unwrap()["error"],
+        "No hook callback found for ID: 7",
+        "the id is shown as upstream formats it"
+    );
 
     transport.push_frame(hook_request("hook-3", "hook_1"));
     settle().await;

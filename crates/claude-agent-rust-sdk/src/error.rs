@@ -26,6 +26,10 @@
 //!   was set), where Python always says "Check stderr output for details".
 //!   The text of the error leaves them out, where Python's text appends the
 //!   placeholder, so logging an error never logs the CLI's error output.
+//! - A control request from the CLI that lacks a field is answered with a
+//!   text naming the request and the field ("Missing required field in
+//!   can_use_tool request: 'input'"), where Python answers the bare
+//!   `KeyError` (`'input'`) or nothing at all.
 //!
 //! Otherwise the text of an error is upstream's, word for word, Python
 //! vocabulary included ("expected dict, got NoneType", "ProcessTransport",

@@ -207,14 +207,16 @@ fn permission_updates_to_wire(updates: &[PermissionUpdate]) -> Option<Vec<Value>
 }
 
 async fn hook_callback(shared: &Shared, request: &Value) -> Result<Value, String> {
-    let callback_id = required(request, "hook_callback", "callback_id")?
+    let raw_id = required(request, "hook_callback", "callback_id")?;
+    let callback = raw_id
         .as_str()
-        .unwrap_or_default();
-    let callback = shared
-        .config
-        .hook_callbacks
-        .get(callback_id)
-        .ok_or_else(|| format!("No hook callback found for ID: {callback_id}"))?;
+        .and_then(|callback_id| shared.config.hook_callbacks.get(callback_id))
+        .ok_or_else(|| {
+            let shown = raw_id
+                .as_str()
+                .map_or_else(|| raw_id.to_string(), str::to_owned);
+            format!("No hook callback found for ID: {shown}")
+        })?;
     let input = HookInput::from_wire(request.get("input").cloned().unwrap_or(Value::Null));
     let tool_use_id = request
         .get("tool_use_id")

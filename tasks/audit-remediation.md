@@ -190,7 +190,8 @@ Five fresh agents, one per audit scope (protocol and process, types and parser, 
 |---|---|---|---|
 | protocol | `Error::is_retryable` was false for a CLI killed by a signal (the transport records `-signal`, never no code) | major | Fixed (`99d18fc`), `shutdown.rs::a_cli_killed_by_a_signal_gives_a_retryable_process_error`, red before |
 | protocol | Invalid UTF-8 on the CLI output is replaced, upstream ends the session; not in the ledger | minor | Recorded `[behavior.cli-output-invalid-utf8]` with a fake-CLI test (`emit_raw` takes bytes) |
-| protocol | A control request without `request` or `subtype` is answered, upstream sends nothing; not in the ledger | minor | Recorded `[behavior.malformed-control-request-body]` |
+| protocol | A control request without `request` or `subtype` is answered, upstream sends nothing; the field-error texts differ; not in the ledger | minor | Recorded `[behavior.malformed-control-request-body]`, and the `error.rs` docs name the exception to "upstream's text, word for word" |
+| protocol | A non-string `callback_id` lost its value in the error; the framing `trim` kept U+001C to U+001F | cosmetic | Fixed, with tests |
 | types | Two control requests sharing an id: neither was answered | minor | Fixed (`2d16385`), red before |
 | types | An optional field of the wrong type reads as absent; not in the ledger | minor | Recorded `[behavior.optional-field-wrong-type]` |
 | types | Unmodeled keys lost on `PermissionUpdate`, content blocks, and the user, assistant, result, and stream messages | minor | Fixed (`a45f9e7`, `8ae3424`): `extra` fields, and `message_extra` for the nested `message` |

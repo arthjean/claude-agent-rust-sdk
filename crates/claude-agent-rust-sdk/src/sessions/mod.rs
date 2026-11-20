@@ -63,6 +63,7 @@ pub use disk::{
     get_session_info, get_session_messages, get_subagent_messages, list_sessions, list_subagents,
 };
 pub(crate) use jsonl::plain_line;
+pub(crate) use lite::python_strip;
 pub use mutations::{
     ForkSessionResult, delete_session, delete_session_via_store, fork_session,
     fork_session_via_store, rename_session, rename_session_via_store, tag_session,

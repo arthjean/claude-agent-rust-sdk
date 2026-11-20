@@ -185,9 +185,9 @@ reason = "One malformed frame from the CLI must not end the session."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::each_control_request_runs_one_handler_tracked_until_it_answers"
 
 [behavior.malformed-control-request-body]
-summary = "A control request without `request`, or whose `request` has no `subtype`"
-python = "`KeyError` ends the handler task before its `try`: the CLI gets no answer and waits for it."
-rust = "The CLI is answered with an error response, `Unsupported control request subtype: null`, and the session goes on."
+summary = "A control request without `request`, whose `request` has no `subtype`, or that lacks a field its subtype needs"
+python = "Without `request` or `subtype`, `KeyError` ends the handler task before its `try`: the CLI gets no answer and waits for it. A missing field is answered with the bare `KeyError` text (`'input'`), and an `mcp_message` whose `message` is not an object with an empty text."
+rust = "The CLI is always answered with an error response that names what is missing: `Unsupported control request subtype: null`, `Missing required field in can_use_tool request: 'input'`, `Missing server_name or message for MCP request`; the session goes on."
 ref = "src/claude_agent_sdk/_internal/query.py:634"
 anchor = "request_data = request[\"request\"]"
 category = "rust-more-robust"
