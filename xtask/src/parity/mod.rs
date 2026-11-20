@@ -375,10 +375,8 @@ fn test_problem(root: &Path, tests: &rust::Tests, path: &str) -> Option<&'static
     if !present {
         return Some("which does not exist");
     }
-    tests
-        .ignored
-        .contains(bare)
-        .then_some("which is `#[ignore]`d, so CI never runs it")
+    (tests.ignored.contains(bare) && !rust::ci_runs_ignored(root, bare))
+        .then_some("which is `#[ignore]`d and run by no step of the CI workflow")
 }
 
 fn missing_paths(

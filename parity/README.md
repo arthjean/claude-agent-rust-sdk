@@ -189,7 +189,7 @@ test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_ow
 
 - `python` and `rust` are prose here: what each SDK does.
 - `ref` and `anchor` are required and checked like those of a `python-defect` entry.
-- `test` is a Rust test as `cargo xtask parity-tests` prints it, with the platform suffix of `tests.toml` (` @unix`, for example) when it is compiled on one platform only. `cargo xtask parity-check` fails when it does not exist.
+- `test` is a Rust test as `cargo xtask parity-tests` prints it, with the platform suffix of `tests.toml` (` @unix` or ` @linux+windows`, for example) when it is compiled on some platforms only. `cargo xtask parity-check` fails when it does not exist.
 
 The `[unclassified]` table names, with `source` (the section of `docs/research/python-sdk-parity.md`) and `summary`, the divergences of the audit that are not reviewed into `[wire]`, `[observed]`, or `[behavior]` yet. Move an entry out of it once a test or a case shows it, and move a `[behavior]` entry to `[wire]` or `[observed]` once a case shows it.
 

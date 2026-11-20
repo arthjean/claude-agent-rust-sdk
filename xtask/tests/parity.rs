@@ -659,7 +659,7 @@ fn a_ledger_naming_an_ignored_test_fails_the_check() {
 
     assert!(!check.status.success());
     assert!(
-        stderr(&check).contains("which is `#[ignore]`d, so CI never runs it"),
+        stderr(&check).contains("which is `#[ignore]`d and run by no step of the CI workflow"),
         "{}",
         stderr(&check)
     );

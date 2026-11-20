@@ -27,9 +27,9 @@ impl Paths {
     }
 }
 
-/// Splits a Rust test path into the path and the platform it is compiled
-/// on, written as a ` @platform` suffix: `windows`, `unix`, `linux`, or
-/// `macos`.
+/// Splits a Rust test path into the platforms it is compiled on, written
+/// as a ` @platform` suffix: `windows`, `unix`, `linux`, or `macos`, or
+/// several of them joined by `+` (` @linux+windows`).
 pub fn split_platform(path: &str) -> (&str, Option<&str>) {
     match path.rsplit_once(" @") {
         Some((path, platform)) => (path, Some(platform)),
@@ -37,16 +37,20 @@ pub fn split_platform(path: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Whether tests of `platform` are compiled on this host, or `None` for a
-/// platform name the ledger does not know.
-pub fn compiled_here(platform: &str) -> Option<bool> {
-    match platform {
-        "windows" => Some(cfg!(windows)),
-        "unix" => Some(cfg!(unix)),
-        "linux" => Some(cfg!(target_os = "linux")),
-        "macos" => Some(cfg!(target_os = "macos")),
-        _ => None,
-    }
+/// Whether tests of `platforms` (one name, or several joined by `+`) are
+/// compiled on this host, or `None` when one of the names is not a platform
+/// the ledger knows.
+pub fn compiled_here(platforms: &str) -> Option<bool> {
+    platforms.split('+').try_fold(false, |here, platform| {
+        let this = match platform {
+            "windows" => cfg!(windows),
+            "unix" => cfg!(unix),
+            "linux" => cfg!(target_os = "linux"),
+            "macos" => cfg!(target_os = "macos"),
+            _ => return None,
+        };
+        Some(here || this)
+    })
 }
 
 /// Disposition of one upstream item. Exactly one of `rust`, `adapted`,
@@ -440,6 +444,11 @@ unknown = { excluded = "missing-reason" }
         assert_eq!(compiled_here("windows"), Some(cfg!(windows)));
         assert_eq!(compiled_here("unix"), Some(cfg!(unix)));
         assert_eq!(compiled_here("plan9"), None);
+        assert_eq!(
+            compiled_here("linux+windows"),
+            Some(cfg!(any(target_os = "linux", windows)))
+        );
+        assert_eq!(compiled_here("linux+plan9"), None);
 
         let ledger =
             surface("[names]\nquery = { rust = \"claude_agent_rust_sdk::query @plan9\" }\n");

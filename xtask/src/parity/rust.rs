@@ -207,6 +207,46 @@ pub fn test_is_declared(root: &Path, path: &str) -> bool {
         .is_some_and(|directory| any_source_declares(directory, &declaration))
 }
 
+/// Whether a step of `.github/workflows/ci.yml` runs the `#[ignore]`d test
+/// at `path` explicitly: a `cargo test` command, its continuation lines
+/// joined, that names the target with `--test`, passes `--ignored`, and
+/// filters with a word the test name contains. Such a test needs what only
+/// that step sets up, such as the throwaway Keychain of the macOS job.
+pub fn ci_runs_ignored(root: &Path, path: &str) -> bool {
+    let Ok(workflow) = std::fs::read_to_string(root.join(".github/workflows/ci.yml")) else {
+        return false;
+    };
+    runs_ignored(&workflow, path)
+}
+
+fn runs_ignored(workflow: &str, path: &str) -> bool {
+    let Some((target, name)) = path.split_once("::") else {
+        return false;
+    };
+    let name = name.rsplit("::").next().unwrap_or(name);
+    let Some(stem) = Path::new(target).file_stem().and_then(OsStr::to_str) else {
+        return false;
+    };
+    let joined = workflow.replace("\\\n", " ");
+    joined.lines().any(|line| {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let Some(test_flag) = words
+            .windows(2)
+            .position(|pair| pair[0] == "--test" && pair[1] == stem)
+        else {
+            return false;
+        };
+        let separator = words.iter().position(|word| *word == "--");
+        let ignored = separator.is_some_and(|at| words[at..].contains(&"--ignored"));
+        let filters = &words[test_flag + 2..separator.unwrap_or(words.len())];
+        line.contains("cargo test")
+            && ignored
+            && filters
+                .iter()
+                .any(|word| !word.starts_with('-') && name.contains(word))
+    })
+}
+
 fn metadata(root: &Path) -> Result<Value, String> {
     let output = Command::new(tool("CARGO", "cargo"))
         .current_dir(root)
@@ -400,6 +440,26 @@ pub fn unresolved_paths(root: &Path, paths: &[&str]) -> Result<Vec<usize>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const STEP: &str = "      - run: |\n          KEY=1 cargo test -p sdk --all-features --test session_resume \\\n            keychain -- --ignored --nocapture\n";
+
+    #[test]
+    fn an_ignored_test_is_run_by_a_ci_step_that_names_its_target_and_filters_on_its_name() {
+        let path = "crates/sdk/tests/session_resume.rs::keychain_credentials_are_copied";
+        assert!(runs_ignored(STEP, path));
+        assert!(!runs_ignored(
+            STEP,
+            "crates/sdk/tests/session_resume.rs::settings_are_copied"
+        ));
+        assert!(!runs_ignored(
+            STEP,
+            "crates/sdk/tests/transport.rs::keychain_is_read"
+        ));
+        let without_ignored = STEP.replace(" --ignored", "");
+        assert!(!runs_ignored(&without_ignored, path));
+        let not_cargo_test = STEP.replace("cargo test", "echo");
+        assert!(!runs_ignored(&not_cargo_test, path));
+    }
 
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
