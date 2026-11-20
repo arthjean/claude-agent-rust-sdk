@@ -7,7 +7,6 @@
 //!   writes `"type": "stdio"` only when the caller did; the CLI reads a
 //!   missing type as stdio, so both forms start the same server.
 
-use std::any::Any;
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
@@ -528,29 +527,21 @@ pub type McpHttpServerConfig = McpRemoteServerConfig;
 
 /// Opaque handle to an MCP server that runs inside this process.
 ///
-/// It keeps the server alive and lets the in-process bridge recover its
-/// concrete type. A session serves the handles made by
+/// It keeps the server alive. Only
 /// [`create_sdk_mcp_server`](crate::create_sdk_mcp_server) and, with the
-/// `rmcp` feature, by `McpServerConfig::sdk_rmcp`; it refuses any other
-/// with [`ErrorKind::Config`](crate::ErrorKind::Config).
+/// `rmcp` feature, `McpServerConfig::sdk_rmcp` make one, so every handle is
+/// a server a session can serve.
 #[derive(Clone)]
-pub struct McpSdkServerInstance(Arc<dyn Any + Send + Sync>);
+pub struct McpSdkServerInstance(pub(crate) SdkServer);
 
-impl McpSdkServerInstance {
-    /// Wraps a server.
-    pub fn new<T: Any + Send + Sync>(server: T) -> Self {
-        Self(Arc::new(server))
-    }
-
-    /// Returns the server when it has type `T`.
-    #[must_use]
-    pub fn downcast_ref<T: Any + Send + Sync>(&self) -> Option<&T> {
-        self.0.downcast_ref()
-    }
-
-    pub(crate) fn downcast_arc<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
-        Arc::clone(&self.0).downcast().ok()
-    }
+/// The kinds of in-process server a session serves.
+#[derive(Clone)]
+pub(crate) enum SdkServer {
+    /// A server built from [`SdkMcpTool`](crate::SdkMcpTool)s.
+    Native(Arc<crate::mcp::server::SdkMcpServer>),
+    /// An `rmcp` server handler.
+    #[cfg(feature = "rmcp")]
+    Rmcp(crate::mcp::rmcp_bridge::RmcpServer),
 }
 
 impl fmt::Debug for McpSdkServerInstance {
@@ -622,7 +613,9 @@ impl McpServerConfig {
     pub fn sdk_rmcp(name: impl Into<String>, service: impl rmcp::ServerHandler) -> Self {
         Self::Sdk(McpSdkServerConfig::new(
             name,
-            McpSdkServerInstance::new(crate::mcp::rmcp_bridge::RmcpServer::new(service)),
+            McpSdkServerInstance(SdkServer::Rmcp(crate::mcp::rmcp_bridge::RmcpServer::new(
+                service,
+            ))),
         ))
     }
 }
@@ -880,13 +873,16 @@ wire_enum! {
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ThinkingConfig {
-    /// The model decides when and how much to think.
+    /// The model decides when and how much to think. Built with
+    /// [`ThinkingConfig::adaptive`].
+    #[non_exhaustive]
     Adaptive {
         /// How thinking is shown.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         display: Option<ThinkingDisplay>,
     },
-    /// A fixed thinking token budget.
+    /// A fixed thinking token budget. Built with [`ThinkingConfig::enabled`].
+    #[non_exhaustive]
     Enabled {
         /// Thinking budget in tokens.
         budget_tokens: u64,
@@ -912,6 +908,19 @@ impl ThinkingConfig {
             budget_tokens,
             display: None,
         }
+    }
+
+    /// Sets how thinking is shown. It has no effect on
+    /// [`ThinkingConfig::Disabled`].
+    #[must_use]
+    pub fn display(mut self, value: impl Into<ThinkingDisplay>) -> Self {
+        match &mut self {
+            Self::Adaptive { display } | Self::Enabled { display, .. } => {
+                *display = Some(value.into());
+            }
+            Self::Disabled => {}
+        }
+        self
     }
 }
 

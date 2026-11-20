@@ -11,7 +11,10 @@ macro_rules! wire_enum {
         $vis enum $name {
             $( $(#[$variant_meta])* $variant, )+
             /// A value unknown to this version of the crate, kept verbatim.
-            Unknown(String),
+            /// Only the crate builds it, from a spelling no known variant
+            /// has, so two values are equal exactly when their wire
+            /// spellings are.
+            Unknown($crate::types::UnknownValue),
         }
 
         impl $name {
@@ -32,7 +35,7 @@ macro_rules! wire_enum {
             fn from(value: &str) -> Self {
                 match value {
                     $( $wire => Self::$variant, )+
-                    other => Self::Unknown(other.to_owned()),
+                    other => Self::Unknown($crate::types::UnknownValue::new(other.to_owned())),
                 }
             }
         }
@@ -41,7 +44,7 @@ macro_rules! wire_enum {
             fn from(value: String) -> Self {
                 match value.as_str() {
                     $( $wire => Self::$variant, )+
-                    _ => Self::Unknown(value),
+                    _ => Self::Unknown($crate::types::UnknownValue::new(value)),
                 }
             }
         }

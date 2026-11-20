@@ -356,7 +356,10 @@ pub struct ToolPermissionContext {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum PermissionResult {
-    /// Allow the tool call.
+    /// Allow the tool call. Built with [`PermissionResult::allow`] and the
+    /// methods that refine it; new fields may be added, so a pattern needs
+    /// `..`.
+    #[non_exhaustive]
     Allow {
         /// Replacement input; the original input is used when absent.
         updated_input: Option<Value>,
@@ -365,7 +368,9 @@ pub enum PermissionResult {
         /// sent and a warning is logged; the tool call is still allowed.
         updated_permissions: Option<Vec<PermissionUpdate>>,
     },
-    /// Deny the tool call.
+    /// Deny the tool call. Built with [`PermissionResult::deny`] or
+    /// [`PermissionResult::deny_and_interrupt`].
+    #[non_exhaustive]
     Deny {
         /// Explanation given to the model.
         message: String,
@@ -400,6 +405,32 @@ impl PermissionResult {
             message: message.into(),
             interrupt: false,
         }
+    }
+
+    /// Denies the call and interrupts the run.
+    #[must_use]
+    pub fn deny_and_interrupt(message: impl Into<String>) -> Self {
+        Self::Deny {
+            message: message.into(),
+            interrupt: true,
+        }
+    }
+
+    /// Sets the permission updates to apply along with an allow. It has no
+    /// effect on a deny, which carries none.
+    #[must_use]
+    pub fn updated_permissions(
+        mut self,
+        updates: impl IntoIterator<Item = PermissionUpdate>,
+    ) -> Self {
+        if let Self::Allow {
+            updated_permissions,
+            ..
+        } = &mut self
+        {
+            *updated_permissions = Some(updates.into_iter().collect());
+        }
+        self
     }
 }
 

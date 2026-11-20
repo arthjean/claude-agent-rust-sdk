@@ -510,7 +510,10 @@ mod tests {
         let options = ClaudeAgentOptions::builder()
             .mcp_server(
                 "srv",
-                McpSdkServerConfig::new("scripted", McpSdkServerInstance::new(server)),
+                McpSdkServerConfig::new(
+                    "scripted",
+                    McpSdkServerInstance(crate::types::SdkServer::Rmcp(server)),
+                ),
             )
             .build()
             .unwrap();

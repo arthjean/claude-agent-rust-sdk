@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, McpSdkServerConfig,
-    McpSdkServerInstance, McpServerConfig, SdkMcpTool, SubprocessTransport, ToolAnnotations,
-    ToolContent, ToolResult, create_sdk_mcp_server, query_with_transport,
+    BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, McpSdkServerConfig, McpServerConfig,
+    SdkMcpTool, SubprocessTransport, ToolAnnotations, ToolContent, ToolResult,
+    create_sdk_mcp_server, query_with_transport,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -650,17 +650,13 @@ async fn tool_results_convert_each_content_type() {
     let mixed = ToolResult::new([
         ToolContent::text("plain"),
         ToolContent::image("aW1hZ2U=", "image/png"),
-        ToolContent::ResourceLink {
-            name: Some("Report".to_owned()),
-            uri: Some("file:///report.pdf".to_owned()),
-            description: Some("Quarterly report".to_owned()),
-        },
+        ToolContent::resource_link_parts(
+            Some("Report".to_owned()),
+            Some("file:///report.pdf".to_owned()),
+            Some("Quarterly report".to_owned()),
+        ),
         ToolContent::resource_link("Data", "file:///data.csv"),
-        ToolContent::ResourceLink {
-            name: None,
-            uri: None,
-            description: None,
-        },
+        ToolContent::resource_link_parts(None, None, None),
         ToolContent::text_resource("file:///notes.txt", "embedded notes"),
         ToolContent::blob_resource("file:///archive.zip", "YmluYXJ5"),
         ToolContent::text("after"),
@@ -1009,26 +1005,6 @@ async fn string_prompt_without_callbacks_closes_stdin_at_once() {
     let messages = drain(stream).await;
     assert_eq!(result_texts(&messages), ["Hello!"]);
     assert!(transport.input_ended());
-}
-
-#[tokio::test(start_paused = true)]
-async fn in_process_server_of_an_unknown_kind_is_a_config_error() {
-    let options = ClaudeAgentOptions::builder()
-        .mcp_server(
-            "mystery",
-            McpSdkServerConfig::new("mystery", McpSdkServerInstance::new(41_u32)),
-        )
-        .build()
-        .unwrap();
-    let transport = silent_cli();
-    let messages = drain(query_with_transport("Hi", options, transport.clone())).await;
-    let [Err(error)] = &messages[..] else {
-        panic!("expected one configuration error, got {messages:?}");
-    };
-    assert_eq!(error.kind(), ErrorKind::Config);
-    let message = error.to_string();
-    assert!(message.contains("'mystery'"), "{message}");
-    assert_eq!(transport.connect_count(), 0);
 }
 
 #[tokio::test(start_paused = true)]

@@ -17,6 +17,9 @@
 - **Breaking:** the text of an `Io` or `SessionStore` error no longer repeats its source, which `std::error::Error::source` returns with its type (an `io::Error` stays an `io::Error`).
 - Messages name the product "Claude Code", as upstream does: "Claude Code not found", "Failed to start Claude Code".
 - **Breaking:** `PermissionUpdate::to_wire` returns a `Result`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `ErrorKind::Config` error. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
+- **Breaking:** the variants that carry fields, `PermissionResult::Allow` and `Deny`, `ThinkingConfig::Adaptive` and `Enabled`, and every `ToolContent` variant, are `#[non_exhaustive]`: build them with their constructors (`PermissionResult::allow().updated_permissions(..)`, `PermissionResult::deny_and_interrupt`, `ThinkingConfig::enabled(n).display(..)`, `ToolContent::resource_link_parts`) and match them with `..`, so a later field is not a breaking change.
+- **Breaking:** the `Unknown` variant of every string enum (`HookEvent`, `PermissionMode`, and the others) holds an `UnknownValue` that only the crate builds, from a spelling no known variant has. Two values are now equal exactly when their wire spellings are: `HookEvent::from("PreToolUse")` is `HookEvent::PreToolUse`, never an `Unknown` that compares unequal to it. Read the text with `as_str()`.
+- **Breaking:** `McpSdkServerInstance` can no longer be built from an arbitrary value, and `downcast_ref` is gone: only `create_sdk_mcp_server` and `McpServerConfig::sdk_rmcp` make one, so an in-process server a session cannot serve is no longer representable instead of failing at connection.
 
 ### Removed
 

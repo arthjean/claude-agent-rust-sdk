@@ -6,12 +6,11 @@ use std::path::PathBuf;
 
 use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    AgentDefinition, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, EffortLevel, Error,
-    McpSdkServerConfig, McpSdkServerInstance, McpServers, McpStdioServerConfig, PermissionMode,
-    SandboxNetworkConfig, SandboxSettings, SdkBeta, SdkPluginConfig, SessionKey, SessionStore,
-    SessionStoreEntry, SessionStoreError, SettingSource, Skills, SubprocessTransport, SystemPrompt,
-    SystemPromptCustom, SystemPromptFile, SystemPromptPreset, TaskBudget, ThinkingConfig,
-    ThinkingDisplay, Tools, ToolsPreset,
+    AgentDefinition, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, EffortLevel, Error, McpServers,
+    McpStdioServerConfig, PermissionMode, SandboxNetworkConfig, SandboxSettings, SdkBeta,
+    SdkPluginConfig, SessionKey, SessionStore, SessionStoreEntry, SessionStoreError, SettingSource,
+    Skills, SubprocessTransport, SystemPrompt, SystemPromptCustom, SystemPromptFile,
+    SystemPromptPreset, TaskBudget, ThinkingConfig, ThinkingDisplay, Tools, ToolsPreset,
 };
 use serde_json::{Value, json};
 
@@ -368,16 +367,14 @@ fn thinking_forms() {
 
 #[test]
 fn thinking_display_is_forwarded_for_adaptive_and_enabled() {
-    let adaptive = build(options().thinking(ThinkingConfig::Adaptive {
-        display: Some(ThinkingDisplay::Summarized),
-    }));
+    let adaptive =
+        build(options().thinking(ThinkingConfig::adaptive().display(ThinkingDisplay::Summarized)));
     assert_eq!(value_of(&adaptive, "--thinking"), "adaptive");
     assert_eq!(value_of(&adaptive, "--thinking-display"), "summarized");
 
-    let enabled = build(options().thinking(ThinkingConfig::Enabled {
-        budget_tokens: 20_000,
-        display: Some(ThinkingDisplay::Omitted),
-    }));
+    let enabled = build(
+        options().thinking(ThinkingConfig::enabled(20_000).display(ThinkingDisplay::Omitted)),
+    );
     assert_eq!(value_of(&enabled, "--max-thinking-tokens"), "20000");
     assert_eq!(value_of(&enabled, "--thinking-display"), "omitted");
 }
@@ -646,7 +643,12 @@ fn mcp_servers_map_is_wrapped_and_the_sdk_instance_is_removed() {
             )
             .mcp_server(
                 "in-process",
-                McpSdkServerConfig::new("calculator", McpSdkServerInstance::new("server state")),
+                claude_agent_rust_sdk::create_sdk_mcp_server(
+                    "calculator",
+                    None,
+                    Vec::<claude_agent_rust_sdk::SdkMcpTool>::new(),
+                )
+                .unwrap(),
             ),
     );
     let config: Value = serde_json::from_str(value_of(&command, "--mcp-config")).unwrap();

@@ -389,9 +389,10 @@ fn can_use_tool(field: &Field<'_>) -> Result<CanUseTool, Failure> {
                 .get("interrupt")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            PermissionResult::Deny {
-                message: message.to_owned(),
-                interrupt,
+            if interrupt {
+                PermissionResult::deny_and_interrupt(message)
+            } else {
+                PermissionResult::deny(message)
             }
         }
         _ => return Err(field.malformed()),

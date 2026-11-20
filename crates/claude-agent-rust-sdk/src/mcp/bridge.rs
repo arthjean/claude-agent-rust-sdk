@@ -2,12 +2,13 @@
 //! in-process servers of its options.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::server::{NativeSession, SdkMcpServer};
-use crate::error::{Error, Result};
-use crate::types::{McpSdkServerInstance, McpServerConfig, McpServers};
+use super::server::NativeSession;
+use crate::error::Result;
+use crate::types::{McpSdkServerInstance, McpServerConfig, McpServers, SdkServer};
 
 const SERVER_NOT_FOUND: i64 = -32601;
 const INTERNAL_ERROR: i64 = -32603;
@@ -19,18 +20,15 @@ enum Bridge {
 }
 
 #[cfg_attr(not(feature = "rmcp"), allow(unused_variables))]
-fn bridge_for(key: &str, instance: &McpSdkServerInstance) -> Option<Bridge> {
-    if let Some(server) = instance.downcast_arc::<SdkMcpServer>() {
-        return Some(Bridge::Native(NativeSession::new(server)));
-    }
-    #[cfg(feature = "rmcp")]
-    if let Some(server) = instance.downcast_ref::<super::rmcp_bridge::RmcpServer>() {
-        return Some(Bridge::Rmcp(super::rmcp_bridge::RmcpBridge::new(
+fn bridge_for(key: &str, instance: &McpSdkServerInstance) -> Bridge {
+    match &instance.0 {
+        SdkServer::Native(server) => Bridge::Native(NativeSession::new(Arc::clone(server))),
+        #[cfg(feature = "rmcp")]
+        SdkServer::Rmcp(server) => Bridge::Rmcp(super::rmcp_bridge::RmcpBridge::new(
             key.to_owned(),
             server.clone(),
-        )));
+        )),
     }
-    None
 }
 
 /// The in-process servers of one session, keyed by the name they have in
@@ -50,13 +48,7 @@ impl McpBridges {
             let McpServerConfig::Sdk(config) = server else {
                 continue;
             };
-            let bridge = bridge_for(key, &config.instance).ok_or_else(|| {
-                Error::config(format!(
-                    "The in-process MCP server '{key}' is not one this crate can serve: create \
-                     it with create_sdk_mcp_server or McpServerConfig::sdk_rmcp"
-                ))
-            })?;
-            bridges.insert(key.clone(), bridge);
+            bridges.insert(key.clone(), bridge_for(key, &config.instance));
         }
         Ok(Self { servers: bridges })
     }

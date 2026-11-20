@@ -4,6 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub(crate) mod macros;
+mod unknown;
 
 mod config;
 mod content;
@@ -20,6 +21,7 @@ pub use message::*;
 pub use options::*;
 pub use permission::*;
 pub use status::*;
+pub use unknown::UnknownValue;
 
 /// Boxed future returned by stored callbacks.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

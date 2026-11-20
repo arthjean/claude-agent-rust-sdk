@@ -786,10 +786,7 @@ fn initialize_answering(response: Value) -> claude_agent_rust_sdk::testing::Mock
 
 #[tokio::test(start_paused = true)]
 async fn block_on_failure_is_refused_when_the_cli_cannot_honor_it() {
-    for mode in [
-        HookFailureMode::Block,
-        HookFailureMode::Unknown("halt".to_owned()),
-    ] {
+    for mode in [HookFailureMode::Block, HookFailureMode::from("halt")] {
         let transport = initialize_answering(json!({}));
         let client = ClaudeSdkClient::with_transport(blocking_options(mode), transport.clone());
         let error = client.connect().await.unwrap_err();
@@ -952,19 +949,16 @@ async fn permission_results_use_the_wire_shapes() {
     let options = ClaudeAgentOptions::builder()
         .can_use_tool(async |tool_name: String, input: Value, _context| {
             Ok(match tool_name.as_str() {
-                "Write" => PermissionResult::Allow {
-                    updated_input: Some(json!({"file_path": "safe.txt", "was": input})),
-                    updated_permissions: Some(vec![
-                        PermissionUpdate::new(PermissionUpdateKind::SetMode)
-                            .mode("acceptEdits")
-                            .destination(PermissionUpdateDestination::Session),
-                    ]),
-                },
+                "Write" => PermissionResult::allow_with_input(
+                    json!({"file_path": "safe.txt", "was": input}),
+                )
+                .updated_permissions([PermissionUpdate::new(
+                    PermissionUpdateKind::SetMode,
+                )
+                .mode("acceptEdits")
+                .destination(PermissionUpdateDestination::Session)]),
                 "Bash" => PermissionResult::deny("Shell access is off"),
-                _ => PermissionResult::Deny {
-                    message: "Stop everything".to_owned(),
-                    interrupt: true,
-                },
+                _ => PermissionResult::deny_and_interrupt("Stop everything"),
             })
         })
         .build()
@@ -1005,10 +999,7 @@ async fn permission_results_use_the_wire_shapes() {
 async fn permission_callback_echoes_whole_tool_suggestions() {
     let options = ClaudeAgentOptions::builder()
         .can_use_tool(async |_tool_name, _input, context: ToolPermissionContext| {
-            Ok(PermissionResult::Allow {
-                updated_input: None,
-                updated_permissions: Some(context.suggestions),
-            })
+            Ok(PermissionResult::allow().updated_permissions(context.suggestions))
         })
         .build()
         .unwrap();
@@ -1052,18 +1043,15 @@ async fn permission_callback_sends_no_updates_if_one_is_malformed() {
     let (warnings, _guard) = Warnings::install();
     let options = ClaudeAgentOptions::builder()
         .can_use_tool(async |_tool_name, _input, _context| {
-            Ok(PermissionResult::Allow {
-                updated_input: None,
-                updated_permissions: Some(vec![
-                    PermissionUpdate::new(PermissionUpdateKind::AddRules)
-                        .rules([PermissionRuleValue::new("Read", None)])
-                        .behavior("allow")
-                        .destination(PermissionUpdateDestination::Session),
-                    PermissionUpdate::new(PermissionUpdateKind::AddRules)
-                        .rules([PermissionRuleValue::new("Bash", Some("ls".to_owned()))]),
-                    PermissionUpdate::new(PermissionUpdateKind::SetMode).mode("acceptEdits"),
-                ]),
-            })
+            Ok(PermissionResult::allow().updated_permissions([
+                PermissionUpdate::new(PermissionUpdateKind::AddRules)
+                    .rules([PermissionRuleValue::new("Read", None)])
+                    .behavior("allow")
+                    .destination(PermissionUpdateDestination::Session),
+                PermissionUpdate::new(PermissionUpdateKind::AddRules)
+                    .rules([PermissionRuleValue::new("Bash", Some("ls".to_owned()))]),
+                PermissionUpdate::new(PermissionUpdateKind::SetMode).mode("acceptEdits"),
+            ]))
         })
         .build()
         .unwrap();

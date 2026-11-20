@@ -52,10 +52,7 @@ async fn main() -> Result<(), BoxError> {
 
     let options = ClaudeAgentOptions::builder()
         .include_partial_messages(true)
-        .thinking(ThinkingConfig::Enabled {
-            budget_tokens: 8000,
-            display: Some(ThinkingDisplay::Summarized),
-        })
+        .thinking(ThinkingConfig::enabled(8000).display(ThinkingDisplay::Summarized))
         .max_turns(2)
         .build()?;
 

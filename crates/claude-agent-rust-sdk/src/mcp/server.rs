@@ -16,7 +16,7 @@ use tokio::sync::oneshot;
 
 use super::tool::{SdkMcpTool, ToolFailure, ToolResult};
 use crate::error::{Error, Result};
-use crate::types::{McpSdkServerConfig, McpSdkServerInstance};
+use crate::types::{McpSdkServerConfig, McpSdkServerInstance, SdkServer};
 
 const DEFAULT_SERVER_VERSION: &str = "1.0.0";
 const LATEST_PROTOCOL_VERSION: &str = "2025-11-25";
@@ -83,7 +83,7 @@ pub fn create_sdk_mcp_server(
     )?;
     Ok(McpSdkServerConfig::new(
         name,
-        McpSdkServerInstance::new(server),
+        McpSdkServerInstance(SdkServer::Native(Arc::new(server))),
     ))
 }
 

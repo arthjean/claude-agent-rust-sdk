@@ -6,13 +6,13 @@ use std::sync::{Arc, Mutex};
 use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptions, EffortLevel, Error, HookEvent, HookInput, HookMatcher,
-    HookOutput, McpRemoteServerConfig, McpSdkServerConfig, McpSdkServerInstance, McpServerConfig,
-    McpServers, McpStdioServerConfig, PermissionMode, PermissionResult, SandboxNetworkConfig,
-    SandboxSettings, SdkBeta, SdkPluginConfig, SdkPluginType, SessionKey, SessionStore,
-    SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreFlushMode,
-    SessionStoreListEntry, SettingSource, SharedSessionStore, Skills, StderrCallback, SystemPrompt,
-    SystemPromptCustom, SystemPromptFile, SystemPromptPreset, TaskBudget, ThinkingConfig,
-    ThinkingDisplay, ToolPermissionContext, Tools, ToolsPreset, UnsupportedStoreOperation,
+    HookOutput, McpRemoteServerConfig, McpServerConfig, McpServers, McpStdioServerConfig,
+    PermissionMode, PermissionResult, SandboxNetworkConfig, SandboxSettings, SdkBeta,
+    SdkPluginConfig, SdkPluginType, SessionKey, SessionStore, SessionStoreCapabilities,
+    SessionStoreEntry, SessionStoreError, SessionStoreFlushMode, SessionStoreListEntry,
+    SettingSource, SharedSessionStore, Skills, StderrCallback, SystemPrompt, SystemPromptCustom,
+    SystemPromptFile, SystemPromptPreset, TaskBudget, ThinkingConfig, ThinkingDisplay,
+    ToolPermissionContext, Tools, ToolsPreset, UnsupportedStoreOperation,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -314,10 +314,7 @@ fn builder_sets_every_option() {
     assert_eq!(options.sandbox.as_ref().unwrap().enabled, Some(true));
     assert_eq!(options.plugins, [SdkPluginConfig::local("/plugins/demo")]);
     assert_eq!(options.max_thinking_tokens, Some(2000));
-    assert_eq!(
-        options.thinking,
-        Some(ThinkingConfig::Adaptive { display: None })
-    );
+    assert_eq!(options.thinking, Some(ThinkingConfig::adaptive()));
     assert_eq!(options.effort, Some(EffortLevel::High));
     assert_eq!(
         options.output_format,
@@ -492,10 +489,14 @@ fn mcp_servers_union_forms() {
     );
     servers.insert(
         "calc".to_owned(),
-        McpServerConfig::Sdk(McpSdkServerConfig::new(
-            "calc",
-            McpSdkServerInstance::new(41_u32),
-        )),
+        McpServerConfig::Sdk(
+            claude_agent_rust_sdk::create_sdk_mcp_server(
+                "calc",
+                None,
+                Vec::<claude_agent_rust_sdk::SdkMcpTool>::new(),
+            )
+            .unwrap(),
+        ),
     );
     let options = ClaudeAgentOptions::builder()
         .mcp_servers(McpServers::Map(servers))
@@ -520,8 +521,7 @@ fn mcp_servers_union_forms() {
     let McpServerConfig::Sdk(sdk) = &servers["calc"] else {
         panic!("expected an sdk server");
     };
-    assert_eq!(sdk.instance.downcast_ref::<u32>(), Some(&41));
-    assert_eq!(sdk.instance.downcast_ref::<String>(), None);
+    assert_eq!(sdk.name, "calc");
     assert_eq!(servers["zeta"].type_name(), "stdio");
 
     let options = ClaudeAgentOptions::builder()
@@ -591,17 +591,15 @@ fn configuration_types_use_upstream_wire_names() {
         json!({"type": "local", "path": "/plugins/demo"})
     );
     let remote = SdkPluginConfig::new("remote", "https://example.com/plugin");
-    assert_eq!(remote.kind, SdkPluginType::Unknown("remote".to_owned()));
+    assert!(matches!(&remote.kind, SdkPluginType::Unknown(value) if value == "remote"));
 
     assert_eq!(
         serde_json::to_value(ThinkingConfig::adaptive()).unwrap(),
         json!({"type": "adaptive"})
     );
     assert_eq!(
-        serde_json::to_value(ThinkingConfig::Adaptive {
-            display: Some(ThinkingDisplay::Summarized)
-        })
-        .unwrap(),
+        serde_json::to_value(ThinkingConfig::adaptive().display(ThinkingDisplay::Summarized))
+            .unwrap(),
         json!({"type": "adaptive", "display": "summarized"})
     );
     assert_eq!(
@@ -617,10 +615,7 @@ fn configuration_types_use_upstream_wire_names() {
             json!({"type": "enabled", "budget_tokens": 1024, "display": "omitted"})
         )
         .unwrap(),
-        ThinkingConfig::Enabled {
-            budget_tokens: 1024,
-            display: Some(ThinkingDisplay::Omitted)
-        }
+        ThinkingConfig::enabled(1024).display(ThinkingDisplay::Omitted)
     );
 }
 

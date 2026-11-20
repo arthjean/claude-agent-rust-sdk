@@ -87,10 +87,35 @@ fn permission_mode_has_the_six_values() {
             mode
         );
     }
+    let future = PermissionMode::from("futureMode");
+    assert!(matches!(&future, PermissionMode::Unknown(value) if value == "futureMode"));
+    assert_eq!(future.as_str(), "futureMode");
+}
+
+#[test]
+fn a_wire_enum_value_equals_another_exactly_when_their_spellings_do() {
+    use std::collections::HashSet;
+
+    let read: HookEvent = serde_json::from_value(json!("PreToolUse")).unwrap();
     assert_eq!(
-        PermissionMode::from("futureMode"),
-        PermissionMode::Unknown("futureMode".to_owned())
+        read,
+        HookEvent::PreToolUse,
+        "a known spelling is never Unknown"
     );
+    assert_eq!(
+        HookEvent::from("PreToolUse".to_owned()),
+        HookEvent::PreToolUse
+    );
+    let future: HookEvent = serde_json::from_value(json!("FutureEvent")).unwrap();
+    assert_eq!(future, HookEvent::from("FutureEvent"));
+    assert_ne!(future, HookEvent::from("OtherEvent"));
+    let set: HashSet<HookEvent> = [read, HookEvent::PreToolUse, future.clone(), future]
+        .into_iter()
+        .collect();
+    assert_eq!(set.len(), 2);
+    for value in &set {
+        assert_eq!(serde_json::to_value(value).unwrap(), json!(value.as_str()));
+    }
 }
 
 #[test]
@@ -373,27 +398,36 @@ fn permission_update_from_wire_rejects_malformed_values() {
 
 #[test]
 fn permission_result_is_allow_or_deny() {
-    assert_eq!(
+    assert!(matches!(
         PermissionResult::allow(),
         PermissionResult::Allow {
             updated_input: None,
             updated_permissions: None,
+            ..
         }
-    );
-    assert_eq!(
-        PermissionResult::allow_with_input(json!({"safe": true})),
-        PermissionResult::Allow {
-            updated_input: Some(json!({"safe": true})),
-            updated_permissions: None,
-        }
-    );
-    assert_eq!(
+    ));
+    let PermissionResult::Allow {
+        updated_input,
+        updated_permissions,
+        ..
+    } = PermissionResult::allow_with_input(json!({"safe": true}))
+        .updated_permissions([PermissionUpdate::new(PermissionUpdateKind::SetMode).mode("plan")])
+    else {
+        panic!("expected an allow");
+    };
+    assert_eq!(updated_input, Some(json!({"safe": true})));
+    assert_eq!(updated_permissions.map(|updates| updates.len()), Some(1));
+    assert!(matches!(
         PermissionResult::deny("not allowed"),
+        PermissionResult::Deny { message, interrupt: false, .. } if message == "not allowed"
+    ));
+    assert!(matches!(
+        PermissionResult::deny_and_interrupt("stop").updated_permissions([]),
         PermissionResult::Deny {
-            message: "not allowed".to_owned(),
-            interrupt: false,
+            interrupt: true,
+            ..
         }
-    );
+    ));
 }
 
 #[tokio::test]
@@ -401,14 +435,11 @@ async fn can_use_tool_callback_receives_name_input_and_context() {
     let callback = CanUseTool::new(
         async |tool_name: String, input: Value, context: ToolPermissionContext| {
             if tool_name == "Bash" {
-                Ok(PermissionResult::Deny {
-                    message: format!(
-                        "{} blocked {}",
-                        context.tool_use_id.unwrap_or_default(),
-                        input["command"]
-                    ),
-                    interrupt: true,
-                })
+                Ok(PermissionResult::deny_and_interrupt(format!(
+                    "{} blocked {}",
+                    context.tool_use_id.unwrap_or_default(),
+                    input["command"]
+                )))
             } else {
                 Ok(PermissionResult::allow())
             }
@@ -423,10 +454,7 @@ async fn can_use_tool_callback_receives_name_input_and_context() {
         .unwrap();
     assert_eq!(
         denied,
-        PermissionResult::Deny {
-            message: "toolu_1 blocked \"rm\"".to_owned(),
-            interrupt: true,
-        }
+        PermissionResult::deny_and_interrupt("toolu_1 blocked \"rm\"")
     );
     let allowed = callback
         .clone()

@@ -91,10 +91,7 @@ async fn thinking_is_streamed_through_deltas() {
         .include_partial_messages(true)
         .model(THINKING_MODEL)
         .max_turns(2)
-        .thinking(ThinkingConfig::Enabled {
-            budget_tokens: 8000,
-            display: Some(ThinkingDisplay::Summarized),
-        })
+        .thinking(ThinkingConfig::enabled(8000).display(ThinkingDisplay::Summarized))
         .build()
         .unwrap();
 

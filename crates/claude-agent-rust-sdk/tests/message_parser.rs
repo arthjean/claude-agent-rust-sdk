@@ -1092,7 +1092,7 @@ fn parse_result_message_origin() {
     ));
     assert_eq!(
         message.origin.expect("origin").kind,
-        MessageOriginKind::Unknown("from-the-future".to_owned())
+        MessageOriginKind::from("from-the-future")
     );
 }
 

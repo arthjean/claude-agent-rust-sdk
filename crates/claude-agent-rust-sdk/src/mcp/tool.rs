@@ -101,11 +101,13 @@ pub enum ResourceContents {
 #[non_exhaustive]
 pub enum ToolContent {
     /// Plain text.
+    #[non_exhaustive]
     Text {
         /// The text.
         text: String,
     },
     /// An image.
+    #[non_exhaustive]
     Image {
         /// Image data, encoded in base64.
         data: String,
@@ -114,6 +116,7 @@ pub enum ToolContent {
     },
     /// A link to a resource, sent as text: its name, URI, and description on
     /// separate lines.
+    #[non_exhaustive]
     ResourceLink {
         /// Name of the resource.
         name: Option<String>,
@@ -124,6 +127,7 @@ pub enum ToolContent {
     },
     /// An embedded resource. Text contents are sent as text; binary contents
     /// are left out.
+    #[non_exhaustive]
     Resource {
         /// URI of the resource.
         uri: String,
@@ -157,6 +161,21 @@ impl ToolContent {
             name: Some(name.into()),
             uri: Some(uri.into()),
             description: None,
+        }
+    }
+
+    /// Creates a resource link from its parts, any of which may be missing,
+    /// as the MCP wire allows.
+    #[must_use]
+    pub fn resource_link_parts(
+        name: Option<String>,
+        uri: Option<String>,
+        description: Option<String>,
+    ) -> Self {
+        Self::ResourceLink {
+            name,
+            uri,
+            description,
         }
     }
 

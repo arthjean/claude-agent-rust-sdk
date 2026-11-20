@@ -135,10 +135,9 @@ async fn a_whole_tool_rule_returned_by_the_callback_is_applied_by_the_cli() {
                     .rules([PermissionRuleValue::new(tool_name, None)])
                     .behavior(PermissionBehavior::Allow)
                     .destination(PermissionUpdateDestination::Session);
-                Ok::<PermissionResult, BoxError>(PermissionResult::Allow {
-                    updated_input: None,
-                    updated_permissions: Some(vec![rule]),
-                })
+                Ok::<PermissionResult, BoxError>(
+                    PermissionResult::allow().updated_permissions([rule]),
+                )
             }
         },
     );

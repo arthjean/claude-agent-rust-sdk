@@ -10,7 +10,7 @@
 mod bridge;
 #[cfg(feature = "rmcp")]
 pub(crate) mod rmcp_bridge;
-mod server;
+pub(crate) mod server;
 mod tool;
 
 pub(crate) use bridge::McpBridges;
