@@ -230,6 +230,14 @@ Listed, not changed, with the reason:
 - `ResultErrorData::errors()` allocates: it trims and drops blank entries.
 - Not covered by the counter-audit: the Windows branches, a `CLAUDE_CONFIG_DIR` that is not UTF-8, JSON integers above `u64` in a fork or import.
 
+## Checks on the final code
+
+On `ee1062a`: `cargo xtask gates`, `parity-check --deny-pending` (159 exports, 1178 tests), `parity-diff` (43 cases match), `parity-diff --coverage`, line coverage 92.33% (floor 91.5%), `package-check`, `cargo deny check licenses advisories`, `cargo +1.88.0 check --workspace --all-features --locked`, `gh actions-lock --verify`, and a full `cargo xtask e2e` (55 of 55) all pass.
+
+`cargo xtask semver-check` against the branch as is compares 0.1.0 with 0.1.0 and reports the intended breaking changes. Run with `--root` on a throwaway worktree of `ee1062a` whose only change is the version bump to 0.2.0 (what `release prepare minor` writes in the manifests), it passes: "claude-agent-rust-sdk v0.1.0 -> v0.2.0 (major change)", "no semver update required". Below 1.0, Cargo treats a minor bump as major. The bump itself is left to the owner's `cargo xtask release prepare minor`.
+
+Left to CI, with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
+
 ## Upstream releases during the run
 
 None: `v0.2.186` (2026-11-19) is still the newest release of the Python SDK (`gh release list`, checked on 2026-11-20 at the end of the run).
