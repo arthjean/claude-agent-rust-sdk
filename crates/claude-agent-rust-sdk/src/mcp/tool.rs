@@ -433,8 +433,9 @@ impl SdkMcpTool {
     /// a sequence, an enum of unit variants) is listed with the schema of an
     /// object that states no property; use [`SdkMcpTool::raw`] to describe
     /// the arguments of such a tool by hand. A tool that takes no argument
-    /// can take `()` or a unit struct: the empty object the CLI sends is
-    /// read as `null` for them.
+    /// can take `()` or a unit struct: the object the CLI sends, empty or
+    /// not, is read as `null` for them, as upstream passes a tool of schema
+    /// `{}` whatever keys the model sends.
     pub fn typed<Args>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -445,19 +446,15 @@ impl SdkMcpTool {
     {
         let input_schema = schema::input_schema_of::<Args>();
         let read_schema = input_schema.clone();
+        let no_arguments = schema::takes_no_arguments::<Args>();
         let handler = move |mut arguments: Value| -> BoxFuture<'static, _> {
-            let read = serde_json::from_value::<Args>(arguments.clone())
-                .or_else(|error| {
-                    if arguments.as_object().is_some_and(Map::is_empty) {
-                        serde_json::from_value::<Args>(Value::Null).map_err(|_| error)
-                    } else {
-                        Err(error)
-                    }
-                })
-                .or_else(|_| {
-                    schema::integral_floats_to_integers(&read_schema, &mut arguments);
-                    serde_json::from_value::<Args>(arguments)
-                });
+            if no_arguments && arguments.is_object() {
+                arguments = Value::Null;
+            }
+            let read = serde_json::from_value::<Args>(arguments.clone()).or_else(|_| {
+                schema::integral_floats_to_integers(&read_schema, &mut arguments);
+                serde_json::from_value::<Args>(arguments)
+            });
             match read {
                 Ok(arguments) => {
                     let call = handler(arguments);

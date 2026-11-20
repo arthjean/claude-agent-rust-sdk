@@ -460,7 +460,11 @@ async fn a_tool_without_arguments_can_take_the_unit_type_or_a_unit_struct() {
     });
     for (tool, answer) in [(unit, "noon"), (unit_struct, "friday")] {
         assert_eq!(tool.call(json!({})).await, ToolResult::text(answer));
-        assert!(tool.call(json!({"extra": 1})).await.is_error);
+        assert_eq!(
+            tool.call(json!({"extra": 1})).await,
+            ToolResult::text(answer),
+            "stray keys reach a tool of no arguments, as upstream"
+        );
     }
 }
 

@@ -40,17 +40,7 @@ const MAX_VISITS: usize = 100_000;
 /// a sequence, an enum of unit variants) is listed with the schema of an
 /// object that states no property.
 pub(super) fn input_schema_of<Args: JsonSchema>() -> Value {
-    let settings = SchemaSettings::draft2020_12()
-        .for_deserialize()
-        .with(|settings| {
-            settings.meta_schema = None;
-            settings.inline_subschemas = true;
-        });
-    let schema = settings
-        .into_generator()
-        .into_root_schema_for::<Args>()
-        .to_value();
-    let Value::Object(mut root) = schema else {
+    let Value::Object(mut root) = root_schema_of::<Args>() else {
         return empty_object();
     };
     let merged = merge_alternatives(&mut root);
@@ -61,6 +51,31 @@ pub(super) fn input_schema_of<Args: JsonSchema>() -> Value {
     typed.insert("type".to_owned(), json!("object"));
     typed.extend(root.into_iter().filter(|(key, _)| key != "type"));
     Value::Object(typed)
+}
+
+/// Whether `Args` reads only `null`, as `()` and a unit struct do: such a
+/// tool takes no argument, and whatever object the model sends is passed
+/// to it as `null`, as upstream hands a tool of schema `{}` any keys.
+pub(super) fn takes_no_arguments<Args: JsonSchema>() -> bool {
+    let Value::Object(root) = root_schema_of::<Args>() else {
+        return false;
+    };
+    root.get("type") == Some(&json!("null"))
+        && root
+            .keys()
+            .all(|key| matches!(key.as_str(), "type" | "title" | "description" | "$schema"))
+}
+
+fn root_schema_of<Args: JsonSchema>() -> Value {
+    SchemaSettings::draft2020_12()
+        .for_deserialize()
+        .with(|settings| {
+            settings.meta_schema = None;
+            settings.inline_subschemas = true;
+        })
+        .into_generator()
+        .into_root_schema_for::<Args>()
+        .to_value()
 }
 
 fn empty_object() -> Value {
