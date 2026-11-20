@@ -449,7 +449,10 @@ fn parse_system(fields: &Fields<'_>) -> Parsed<SystemMessage> {
             uuid: fields.required_str("uuid")?,
             session_id: fields.required_str("session_id")?,
             tool_use_id: fields.optional_str("tool_use_id"),
-            usage: non_null(fields.get("usage")).map(parse_task_usage),
+            usage: fields
+                .get("usage")
+                .filter(|usage| usage.is_object())
+                .map(parse_task_usage),
             subtype,
             data,
         }),

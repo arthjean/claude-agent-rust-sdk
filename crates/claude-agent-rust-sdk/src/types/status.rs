@@ -10,6 +10,12 @@
 //! server configuration types, shared with the options, do too. A
 //! configuration of a type this crate does not know, or that does not read
 //! as its type, is kept whole as [`McpServerStatusConfig::Unknown`].
+//!
+//! Differs from upstream in one deliberate way: where upstream returns
+//! the values as sent, a count that is a fraction is truncated, a negative
+//! count is 0, and `null` is 0 or the empty string, as for messages; a
+//! value of another JSON type fails the call with the raw response in
+//! [`Error::data`](crate::Error::data).
 
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -24,6 +30,7 @@ use super::macros::wire_enum;
 #[non_exhaustive]
 pub struct McpSdkServerConfigStatus {
     /// Name of the server.
+    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Keys of the response this version of the crate does not model,
     /// kept as the CLI sent them and written back on serialization.
@@ -37,8 +44,10 @@ pub struct McpSdkServerConfigStatus {
 #[non_exhaustive]
 pub struct McpClaudeAiProxyServerConfig {
     /// URL of the proxy.
+    #[serde(deserialize_with = "text")]
     pub url: String,
     /// Id of the proxied server.
+    #[serde(deserialize_with = "text")]
     pub id: String,
     /// Keys of the response this version of the crate does not model,
     /// kept as the CLI sent them and written back on serialization.
@@ -157,6 +166,7 @@ pub struct McpToolAnnotations {
 #[non_exhaustive]
 pub struct McpToolInfo {
     /// Name of the tool.
+    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Description of the tool.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -176,8 +186,10 @@ pub struct McpToolInfo {
 #[non_exhaustive]
 pub struct McpServerInfo {
     /// Name the server reports.
+    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Version the server reports.
+    #[serde(deserialize_with = "text")]
     pub version: String,
     /// Keys of the response this version of the crate does not model,
     /// kept as the CLI sent them and written back on serialization.
@@ -209,6 +221,7 @@ wire_enum! {
 #[non_exhaustive]
 pub struct McpServerStatus {
     /// Server name as configured.
+    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Current connection status.
     pub status: McpServerConnectionStatus,
@@ -253,10 +266,13 @@ pub struct McpStatusResponse {
 #[non_exhaustive]
 pub struct ContextUsageCategory {
     /// Name of the category.
+    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Tokens used by the category.
+    #[serde(deserialize_with = "count")]
     pub tokens: u64,
     /// Display color of the category.
+    #[serde(deserialize_with = "text")]
     pub color: String,
     /// Whether the category is deferred.
     #[serde(rename = "isDeferred", skip_serializing_if = "Option::is_none")]
@@ -276,14 +292,19 @@ pub struct ContextUsageResponse {
     /// Token usage by category.
     pub categories: Vec<ContextUsageCategory>,
     /// Tokens currently in the context window.
+    #[serde(deserialize_with = "count")]
     pub total_tokens: u64,
     /// Effective maximum, which a compaction buffer may reduce.
+    #[serde(deserialize_with = "count")]
     pub max_tokens: u64,
     /// Raw context window size of the model.
+    #[serde(deserialize_with = "count")]
     pub raw_max_tokens: u64,
     /// Percentage of the context window in use, from 0 to 100.
+    #[serde(deserialize_with = "number")]
     pub percentage: f64,
     /// Model the usage is computed for.
+    #[serde(deserialize_with = "text")]
     pub model: String,
     /// Whether automatic compaction is enabled.
     pub is_auto_compact_enabled: bool,
@@ -297,6 +318,7 @@ pub struct ContextUsageResponse {
     pub grid_rows: Vec<Vec<Value>>,
     /// Token threshold at which automatic compaction triggers.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "optional_count")]
     pub auto_compact_threshold: Option<u64>,
     /// Built-in tools deferred from the initial tool list.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -324,4 +346,38 @@ pub struct ContextUsageResponse {
     /// kept as the CLI sent them and written back on serialization.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Reads a count as the CLI's JavaScript may write it: a fraction is
+/// truncated toward zero, a negative number is 0, and `null` is 0, so a
+/// status response is not refused over one number, as upstream hands the
+/// dictionary through.
+fn count<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    Ok(optional_count(deserializer)?.unwrap_or(0))
+}
+
+/// [`count`] for an optional field: `null` stays absent.
+fn optional_count<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
+    match Value::deserialize(deserializer)? {
+        Value::Null => Ok(None),
+        Value::Number(number) => Ok(Some(number.as_u64().unwrap_or_else(|| {
+            number
+                .as_f64()
+                .filter(|value| *value > 0.0)
+                .map_or(0, |value| value as u64)
+        }))),
+        other => Err(serde::de::Error::custom(format!(
+            "invalid type: {other}, expected a number"
+        ))),
+    }
+}
+
+/// Reads a number, with `null` as 0.
+fn number<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+    Ok(Option::<f64>::deserialize(deserializer)?.unwrap_or(0.0))
+}
+
+/// Reads a string, with `null` as the empty string.
+fn text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
 }

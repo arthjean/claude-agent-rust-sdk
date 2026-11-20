@@ -1487,6 +1487,44 @@ fn mcp_status_response_wraps_servers() {
 }
 
 #[test]
+fn a_status_response_with_a_fractional_or_null_number_or_string_is_still_read() {
+    let usage: ContextUsageResponse = serde_json::from_value(json!({
+        "categories": [{"name": null, "tokens": 1.5, "color": "blue"}],
+        "totalTokens": 1200.9,
+        "maxTokens": -3,
+        "rawMaxTokens": null,
+        "percentage": null,
+        "model": null,
+        "autoCompactThreshold": null,
+    }))
+    .unwrap();
+    assert_eq!(usage.categories[0].tokens, 1);
+    assert_eq!(usage.categories[0].name, "");
+    assert_eq!(
+        (usage.total_tokens, usage.max_tokens, usage.raw_max_tokens),
+        (1200, 0, 0)
+    );
+    assert_eq!((usage.percentage, usage.model.as_str()), (0.0, ""));
+    assert_eq!(usage.auto_compact_threshold, None);
+
+    let status: McpStatusResponse = serde_json::from_value(json!({
+        "mcpServers": [{"name": "files", "status": "connected",
+                        "serverInfo": {"name": "files", "version": null}}],
+    }))
+    .unwrap();
+    assert_eq!(
+        status.mcp_servers[0].server_info.as_ref().unwrap().version,
+        ""
+    );
+
+    let refused = serde_json::from_value::<ContextUsageResponse>(json!({"totalTokens": {"n": 1}}));
+    assert!(
+        refused.is_err(),
+        "a value of another JSON type is still refused"
+    );
+}
+
+#[test]
 fn context_usage_response_reads_the_wire_names() {
     let response: ContextUsageResponse = serde_json::from_value(json!({
         "categories": [{"name": "Messages", "tokens": 1200, "color": "blue", "isDeferred": false}],

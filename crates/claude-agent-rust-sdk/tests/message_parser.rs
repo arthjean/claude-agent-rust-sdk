@@ -743,6 +743,26 @@ fn parse_task_notification_message() {
 }
 
 #[test]
+fn a_task_notification_usage_that_is_not_an_object_reads_as_absent() {
+    for usage in [json!(5), json!("tokens"), json!([1]), Value::Null] {
+        let SystemMessage::TaskNotification(message) = system(json!({
+            "type": "system",
+            "subtype": "task_notification",
+            "task_id": "task-abc",
+            "status": "completed",
+            "output_file": "/tmp/out.md",
+            "summary": "Done",
+            "usage": usage,
+            "uuid": "uuid-3",
+            "session_id": "session-1",
+        })) else {
+            panic!("expected a task_notification message");
+        };
+        assert_eq!(message.usage, None);
+    }
+}
+
+#[test]
 fn parse_task_notification_message_optional_fields_absent() {
     let SystemMessage::TaskNotification(message) = system(json!({
         "type": "system",
