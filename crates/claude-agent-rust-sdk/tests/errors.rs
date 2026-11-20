@@ -109,7 +109,8 @@ fn process_error_with_exit_code_and_stderr() {
     assert_eq!(error.stderr(), Some("Command not found"));
     assert_eq!(
         error.to_string(),
-        "Process failed (exit code: 1)\nError output: Command not found"
+        "Process failed (exit code: 1)",
+        "the error output stays out of the text"
     );
 }
 

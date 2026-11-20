@@ -310,7 +310,7 @@ test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the
 [behavior.process-error-stderr]
 summary = "The error output carried by a process error"
 python = "`ProcessError.stderr` is always the placeholder \"Check stderr output for details\"."
-rust = "`Error::stderr()` holds the last 8 KiB of the error output when it was captured (a `stderr` callback was set), and is `None` otherwise."
+rust = "`Error::stderr()` holds the last 8 KiB of the error output when it was captured (a `stderr` callback was set), and is `None` otherwise. The text of the error never includes it, so logging the error never logs the CLI error output."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1114-1116"
 category = "rust-more-robust"
 reason = "A typed field that promises the error output should hold it; without it a CLI that dies on an authentication error leaves no diagnostic in the error."

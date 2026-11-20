@@ -1044,7 +1044,8 @@ async fn a_failed_process_keeps_the_last_lines_of_its_captured_error_output() {
     assert_eq!(error.stderr(), Some("Starting\nError: invalid API key"));
     assert_eq!(
         error.to_string(),
-        "Command failed with exit code 1 (exit code: 1)\nError output: Starting\nError: invalid API key"
+        "Command failed with exit code 1 (exit code: 1)",
+        "the error output stays out of the text, so a log never holds it"
     );
     transport.close().await.unwrap();
 }

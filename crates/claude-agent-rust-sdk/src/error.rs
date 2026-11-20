@@ -24,6 +24,8 @@
 //! - [`Error::stderr`] holds the last lines the CLI wrote to its error
 //!   output when they were captured (a [`StderrCallback`](crate::StderrCallback)
 //!   was set), where Python always says "Check stderr output for details".
+//!   The text of the error leaves them out, where Python's text appends the
+//!   placeholder, so logging an error never logs the CLI's error output.
 
 use std::fmt;
 use std::ops::Deref;
@@ -247,14 +249,15 @@ impl Error {
     }
 
     /// Builds an [`ErrorKind::Process`] error. The text appends the exit
-    /// code and the error output to `message`.
+    /// code to `message`; the error output is kept for [`Error::stderr`]
+    /// only, so it never reaches a log through the text of the error.
     #[must_use]
     pub fn process(
         message: impl Into<String>,
         exit_code: Option<i32>,
         stderr: Option<String>,
     ) -> Self {
-        let message = process_text(&message.into(), exit_code, stderr.as_deref());
+        let message = process_text(&message.into(), exit_code);
         Self::with_detail(
             ErrorKind::Process,
             message,
@@ -278,7 +281,6 @@ impl Error {
         let message = process_text(
             &format!("{ERROR_RESULT_PREFIX}{}", data.summary()),
             exit_code,
-            None,
         );
         Self::with_detail(
             ErrorKind::ResultError,
@@ -733,17 +735,14 @@ fn leading_chars(text: &str, count: usize) -> &str {
     }
 }
 
-fn process_text(message: &str, exit_code: Option<i32>, stderr: Option<&str>) -> String {
-    let mut text = message.to_owned();
-    if let Some(code) = exit_code {
-        text.push_str(&format!(" (exit code: {code})"));
+/// The text of a process failure: the message and the exit code. The error
+/// output stays out of it, so logging an error never logs what the CLI wrote
+/// to stderr; [`Error::stderr`] returns it.
+fn process_text(message: &str, exit_code: Option<i32>) -> String {
+    match exit_code {
+        Some(code) => format!("{message} (exit code: {code})"),
+        None => message.to_owned(),
     }
-    if let Some(stderr) = stderr
-        && !stderr.is_empty()
-    {
-        text.push_str(&format!("\nError output: {stderr}"));
-    }
-    text
 }
 
 #[cfg(test)]
@@ -884,7 +883,7 @@ mod tests {
         assert_eq!(copy.stderr(), Some("boom"));
         assert_eq!(
             copy.to_string(),
-            "Command failed with exit code 3 (exit code: 3)\nError output: boom"
+            "Command failed with exit code 3 (exit code: 3)"
         );
         let wrapped = copy.with_source(std::io::Error::other("pipe"));
         assert_eq!(wrapped.exit_code(), Some(3));
