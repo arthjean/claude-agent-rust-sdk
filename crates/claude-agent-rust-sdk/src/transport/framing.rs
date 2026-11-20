@@ -15,19 +15,17 @@
 //!   pair. A Rust string cannot hold a lone surrogate, so each one becomes
 //!   U+FFFD, where Python keeps the surrogate itself;
 //! - nesting deeper than the 128 levels `serde_json` allows. Up to
-//!   [`MAX_NESTING_DEPTH`] levels the line is read whole. Deeper, it is
-//!   read level by level and each array or object at that depth is kept as
-//!   the JSON text it was written as, a string, so the value never nests
+//!   [`MAX_NESTING_DEPTH`] levels the line is read whole. Deeper, each
+//!   array or object that opens at that depth is kept as the JSON text it
+//!   was written as, a string, so the value never nests
 //!   deeper than the parse, clone, and drop of a 2 MiB tokio worker stack
 //!   allow in a debug build. The rest of the line (its type, its uuid, the
 //!   parent it names) reads as written, so neither the session nor the
 //!   history of a transcript loses the message. Python reads the whole
 //!   line until its interpreter runs out of recursion.
 
-use indexmap::IndexMap;
 use serde::Deserialize;
-use serde_json::value::RawValue;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::error::{Error, Result};
 
@@ -98,7 +96,7 @@ fn recover(text: &str) -> Option<Value> {
     let replaced = replace_lone_surrogates(text);
     let text = replaced.as_deref().unwrap_or(text);
     if nesting_depth(text) > MAX_NESTING_DEPTH {
-        return bounded(text, 1);
+        return bounded(text);
     }
     let mut deserializer = serde_json::Deserializer::from_str(text);
     deserializer.disable_recursion_limit();
@@ -107,36 +105,51 @@ fn recover(text: &str) -> Option<Value> {
     Some(value)
 }
 
-/// Reads `text`, a JSON value whose arrays and objects start at `depth`,
-/// one level at a time: `serde_json` skips each member as raw text without
-/// recursing, and a container at [`MAX_NESTING_DEPTH`] becomes the string
-/// of its text. Each level scans the text below it again, a cost paid only
-/// by lines too deep for [`recover`]'s single parse.
-fn bounded(text: &str, depth: usize) -> Option<Value> {
-    let start = text.trim_start().as_bytes().first().copied();
-    let container = matches!(start, Some(b'{' | b'['));
-    if container && depth >= MAX_NESTING_DEPTH {
-        return Some(Value::String(text.trim().to_owned()));
-    }
-    match start {
-        Some(b'{') => {
-            let members: IndexMap<String, Box<RawValue>> = serde_json::from_str(text).ok()?;
-            let mut object = Map::with_capacity(members.len());
-            for (key, member) in members {
-                object.insert(key, bounded(member.get(), depth + 1)?);
+/// Reads `text`, whose nesting exceeds [`MAX_NESTING_DEPTH`], in one
+/// pass: each array or object that opens at that depth is replaced by the
+/// JSON string of its text, which leaves a value no deeper than the limit
+/// for a single parse.
+fn bounded(text: &str) -> Option<Value> {
+    let mut flattened = String::with_capacity(text.len());
+    let (mut depth, mut copied, mut opened_at) = (0_usize, 0_usize, None);
+    let (mut in_string, mut escaped) = (false, false);
+    for (index, byte) in text.bytes().enumerate() {
+        if in_string {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
             }
-            Some(Value::Object(object))
+            continue;
         }
-        Some(b'[') => {
-            let items: Vec<Box<RawValue>> = serde_json::from_str(text).ok()?;
-            items
-                .iter()
-                .map(|item| bounded(item.get(), depth + 1))
-                .collect::<Option<Vec<_>>>()
-                .map(Value::Array)
+        match byte {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                depth += 1;
+                if depth == MAX_NESTING_DEPTH {
+                    opened_at = Some(index);
+                }
+            }
+            b']' | b'}' => {
+                if depth == MAX_NESTING_DEPTH
+                    && let Some(start) = opened_at.take()
+                {
+                    flattened.push_str(&text[copied..start]);
+                    flattened.push_str(&serde_json::to_string(&text[start..=index]).ok()?);
+                    copied = index + 1;
+                }
+                depth = depth.checked_sub(1)?;
+            }
+            _ => {}
         }
-        _ => serde_json::from_str(text).ok(),
     }
+    flattened.push_str(&text[copied..]);
+    let mut deserializer = serde_json::Deserializer::from_str(&flattened);
+    deserializer.disable_recursion_limit();
+    let value = Value::deserialize(&mut deserializer).ok()?;
+    deserializer.end().ok()?;
+    Some(value)
 }
 
 /// The deepest nesting of arrays and objects, brackets inside strings left
