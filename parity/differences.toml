@@ -534,6 +534,16 @@ category = "python-defect"
 reason = "A corrupt transcript must not hang the program that forks it."
 test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_ends_on_a_cycle_of_progress_parents"
 
+[behavior.transcript-raw-utf8]
+summary = "Text outside ASCII in the lines `rename_session`, `tag_session`, and `fork_session` write"
+python = "`json.dumps` escapes every character outside ASCII (`\\u00e9`)."
+rust = "The characters are written as raw UTF-8, as the CLI writes its own transcript lines."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:98"
+anchor = "json.dumps("
+category = "rust-follows-cli"
+reason = "CLI 2.1.329 writes a prompt holding `café` with the raw bytes `caf\\xc3\\xa9` and no escape (probe of 2026-11-20 logged in `tasks/audit-remediation.md`), so a line Rust appends has the bytes of the lines around it, and file sizes match what the CLI would write."
+test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::titles_tags_and_forks_are_written_with_raw_utf8_as_the_cli_writes"
+
 [behavior.transcript-invalid-utf8]
 summary = "A transcript that is not valid UTF-8"
 python = "Reading the session or a subagent from disk, and importing it into a store, decode it strictly: one byte such as `0xff` raises `UnicodeDecodeError`. Credentials that are not UTF-8 fail a resume the same way."
@@ -643,22 +653,6 @@ anchor = 'def _sanitize_unicode(value: str) -> str:'
 category = "deliberate"
 reason = "The result of Python depends on the interpreter version; the crate follows the Unicode version of its dependencies, which only moves forward."
 test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::a_tag_keeps_a_character_assigned_after_unicode_15"
-
-[unclassified.conformance-duplicate-summaries]
-source = "4.1, stricter conformance check"
-summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."
-
-[unclassified.raw-utf8-in-transcripts]
-source = "4.2, bytes written by rename, tag, and fork"
-summary = "Rust writes non-ASCII text as raw UTF-8, Python escapes it. That the CLI writes raw UTF-8 is inferred, not checked, and no test shows the Rust side yet."
-
-[unclassified.store-key-paths]
-source = "4.3, path to store key"
-summary = "Converting a path to a store key refuses `..` segments Python normalizes away and compares case-sensitively on Windows. The existing test covers a case both SDKs refuse."
-
-[unclassified.path-unset]
-source = "4.4 item 10, `PATH` unset on Unix"
-summary = "Rust skips the search in `PATH` when it is not set; Python falls back to the default search path. No test shows it yet."
 
 [behavior.typed-tool-schema-shape]
 summary = "The input schema of a tool whose arguments are a Rust type"

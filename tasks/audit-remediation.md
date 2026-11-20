@@ -84,8 +84,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | `e2e` `a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`, fixed code then the previous `tool.rs` (handshake and `mcp_status` only) | 0.00 | Passes with the fix; with the previous code the CLI lists `tools: []` for the server. |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `9036340` (55 tests, `--test-threads=4`) | about 0.80 (the documented cost of a run; the suite does not print its total) | 54 pass. `session_store_resume_settings::a_store_resume_applies_the_user_settings` fails by design here: it runs the CLI under an empty config directory and needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, which a claude.ai login does not provide (before A32 it returned early and passed without checking anything). |
 | 2026-11-20 | A04 probe: a `user` frame whose text holds the escape `\ud800`, with `--replay-user-messages` and `--model haiku`, process killed after the echo | under 0.01 (killed before the answer) | The CLI echoes the escape as written (`"content":"Reply with one word: \\ud800 ok"`): a lone surrogate escape does reach the SDK, which before A04 failed the whole session on it. |
+| 2026-11-20 | Counter-audit probe: a `user` frame holding `café`, same flags as the A04 probe, killed after the echo | under 0.01 (killed before the answer) | The transcript the CLI wrote holds the raw bytes `caf\xc3\xa9` and no `\u00e9`: the CLI writes raw UTF-8, which settles `[unclassified.raw-utf8-in-transcripts]` as `[behavior.transcript-raw-utf8]`. |
 
-Total spent: about 0.83 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 0.84 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 

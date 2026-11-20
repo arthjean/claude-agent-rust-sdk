@@ -684,3 +684,23 @@ fn titles_and_tags_are_stripped_of_what_python_strip_removes() {
     assert_eq!(info.custom_title.as_deref(), Some("Title"));
     assert_eq!(info.tag.as_deref(), Some("tag"));
 }
+
+#[test]
+fn titles_tags_and_forks_are_written_with_raw_utf8_as_the_cli_writes() {
+    let project = Project::new();
+    let id = new_id();
+    let mut source = transcript(&project, &id);
+    source[3]["message"]["content"] = Value::from("caf\u{e9} \u{1f600}");
+    project.write(&id, &source);
+    rename_session(&id, "Caf\u{e9}", Some(project.path())).unwrap();
+    tag_session(&id, Some("\u{e9}t\u{e9}"), Some(project.path())).unwrap();
+    let text = std::fs::read_to_string(project.transcript(&id)).unwrap();
+    assert!(text.contains(r#""customTitle":"Café""#), "{text}");
+    assert!(text.contains(r#""tag":"été""#), "{text}");
+    assert!(!text.contains("\\u00e9"), "{text}");
+
+    let fork = fork_session(&id, ForkSessionOptions::new().directory(project.path())).unwrap();
+    let forked = std::fs::read_to_string(project.transcript(&fork.session_id)).unwrap();
+    assert!(forked.contains("caf\u{e9} \u{1f600}"), "{forked}");
+    assert!(!forked.contains("\\u"), "{forked}");
+}

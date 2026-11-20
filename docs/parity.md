@@ -45,7 +45,7 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ## Deliberately different
 
-65 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 55 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+66 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 56 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
 ### Deliberate choices (32)
 
@@ -86,7 +86,7 @@ Rust chose another form on purpose; the CLI accepts both.
 | The `user` option | Only the user changes. (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:835`) | The primary group of that user is set too, and supplementary groups are cleared when running as root. | A process running as another user with the caller's groups keeps access the user does not have. | `crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the_requested_user @unix` |
 | Environment variables that differ only in case, on Windows | Merged as distinct keys of a dictionary. (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:764-770`) | Matched without regard to case, as Windows does, so an option replaces the inherited variable. | Windows keeps one variable per case-insensitive name; two keys would leave which one wins undefined. | `crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::windows_names_are_matched_without_regard_to_case` |
 
-### Rust follows the CLI (3)
+### Rust follows the CLI (4)
 
 Rust does what the CLI does where Python does not.
 
@@ -95,6 +95,7 @@ Rust does what the CLI does where Python does not.
 | Timestamps written into a transcript | Microseconds. (upstream `src/claude_agent_sdk/_internal/session_mutations.py:402`) | Milliseconds, as `Date.toISOString` in the CLI writes them. | The transcript is the CLI's file; Rust writes what the CLI writes. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::formats_like_javascript` |
 | The project directory name of a path outside ASCII | Characters are counted as code points, so an emoji is one character. (upstream `src/claude_agent_sdk/_internal/sessions.py:81-114`) | Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 in `docs/validation/project-dir-naming.md`. | Python computes a name the CLI never creates, and finds no session there. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::sanitize_replaces_every_unit_outside_ascii_alphanumerics` |
 | The size and the 64 KiB head and tail of a session read from a store | Entries are serialized with `json.dumps(..., separators=(",", ":"))`, which escapes every character outside ASCII, so `file_size` and the windows the metadata is read from differ from the file the CLI writes for the same entries. (upstream `src/claude_agent_sdk/_internal/sessions.py:1765-1786`) | Entries are serialized compact with raw UTF-8, as the CLI writes the transcript: a session read from a store has the `file_size` and the windows of the local file. | The store path is meant to read what the disk path reads for the same transcript, and the CLI writes JSON with raw UTF-8. | `crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::a_store_session_has_the_size_of_the_transcript_the_cli_writes` |
+| Text outside ASCII in the lines `rename_session`, `tag_session`, and `fork_session` write | `json.dumps` escapes every character outside ASCII (`\u00e9`). (upstream `src/claude_agent_sdk/_internal/session_mutations.py:98`) | The characters are written as raw UTF-8, as the CLI writes its own transcript lines. | CLI 2.1.329 writes a prompt holding `café` with the raw bytes `caf\xc3\xa9` and no escape (probe of 2026-11-20 logged in `tasks/audit-remediation.md`), so a line Rust appends has the bytes of the lines around it, and file sizes match what the CLI would write. | `crates/claude-agent-rust-sdk/tests/session_mutations.rs::titles_tags_and_forks_are_written_with_raw_utf8_as_the_cli_writes` |
 
 ### Rust handles what stops Python (20)
 
@@ -170,16 +171,11 @@ Every upstream export has a Rust counterpart.
 | `python-warnings` | 2 | Checks the filter and deduplication mechanics of the Python `warnings` module. |
 | `upstream-repository` | 6 | Checks files of the upstream repository itself. |
 
-## Not yet classified (4)
+## Not yet classified (0)
 
 Divergences the parity audit (`docs/research/python-sdk-parity.md`) found that are neither reviewed above nor closed. Each is listed in the `[unclassified]` table of `parity/differences.toml` until it is.
 
-| Audit section | Divergence |
-|---|---|
-| 4.1, stricter conformance check | Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet. |
-| 4.4 item 10, `PATH` unset on Unix | Rust skips the search in `PATH` when it is not set; Python falls back to the default search path. No test shows it yet. |
-| 4.2, bytes written by rename, tag, and fork | Rust writes non-ASCII text as raw UTF-8, Python escapes it. That the CLI writes raw UTF-8 is inferred, not checked, and no test shows the Rust side yet. |
-| 4.3, path to store key | Converting a path to a store key refuses `..` segments Python normalizes away and compares case-sensitively on Windows. The existing test covers a case both SDKs refuse. |
+None.
 <!-- parity:page:end -->
 
 ## Closed since the audit

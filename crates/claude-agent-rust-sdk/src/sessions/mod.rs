@@ -33,6 +33,8 @@
 //!   lets the id reach the subpath the store loads.
 //! - The 1 MiB batch limit of an import counts the UTF-8 bytes of each
 //!   line, where Python counts its characters.
+//! - The lines rename, tag, and fork write hold raw UTF-8, as the CLI
+//!   writes its transcripts; Python escapes every character outside ASCII.
 //! - A session read from a store is serialized compact with raw UTF-8, as
 //!   the CLI writes it, so its `file_size` and the 64 KiB windows its
 //!   metadata is read from are those of the local file; Python escapes
