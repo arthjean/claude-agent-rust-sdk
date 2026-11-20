@@ -195,12 +195,12 @@ test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::handler_panic_is_an_error
 
 [behavior.mcp-unknown-method]
 summary = "An MCP method the in-process server does not implement"
-python = "The `mcp` package answers `-32602 Invalid request parameters`."
-rust = "The answer is `-32601 Method not found: <method>`."
+python = "The `mcp` package answers `-32601 Method not found` for a method MCP defines that the server does not serve (`resources/list`, `prompts/list`), and `-32602 Invalid request parameters` for a name MCP does not define."
+rust = "The answer is `-32601 Method not found: <method>` in both cases."
 ref = "src/claude_agent_sdk/_internal/sdk_mcp_bridge.py:185-190"
 anchor = "raise_exceptions=False,"
 category = "deliberate"
-reason = "`-32601` is the code JSON-RPC 2.0 defines for an unknown method; the CLI treats both as an error."
+reason = "`-32601` is the code JSON-RPC 2.0 defines for an unknown method, and the Rust server has no list of MCP method names to tell the two cases apart; the CLI treats both as an error."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::unsupported_method_is_a_jsonrpc_method_not_found"
 
 [behavior.mcp-before-initialize]
@@ -221,7 +221,7 @@ ref = "src/claude_agent_sdk/__init__.py:439-444"
 anchor = "and \"properties\" in tool_def.input_schema"
 category = "python-defect"
 reason = "`{\"type\": \"object\"}` is a valid JSON Schema; rewriting it changes the tool the model sees."
-test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields"
+test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists"
 
 [behavior.project-directory-utf16]
 summary = "The project directory name of a path outside ASCII"

@@ -472,9 +472,9 @@ upstream-repository = "Checks files of the upstream repository itself."
 "test_id_of_a_call_whose_waiter_gave_up_stays_reserved_until_the_server_answers" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::control_cancel_request_lets_the_tool_finish_and_keeps_its_id_reserved_until_then", "crates/claude-agent-rust-sdk/tests/sdk_mcp_rmcp.rs::request_id_in_flight_is_refused_and_a_late_response_is_dropped"] }
 "test_waiter_on_a_stuck_call_is_failed_once_the_grace_period_is_up" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mcp::rmcp_bridge::tests::waiter_on_a_stuck_call_is_failed_once_the_grace_period_is_up" }
 "test_close_while_a_lifespan_is_still_starting_is_bounded_by_the_grace_period" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mcp::rmcp_bridge::tests::closing_waits_at_most_the_grace_period_for_a_server_that_does_not_stop" }
-"test_tools_list_wire_format" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields" }
+"test_tools_list_wire_format" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists" }
 "test_plain_mcp_tool_annotations_are_accepted" = { excluded = "python-mcp-library", note = "Passes the mcp package's own ToolAnnotations class; Rust has a single ToolAnnotations type." }
-"test_max_result_size_chars_annotation_flows_to_cli" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields", "crates/claude-agent-rust-sdk/tests/tool_macro.rs::annotation_hints_are_attribute_arguments"] }
+"test_max_result_size_chars_annotation_flows_to_cli" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists", "crates/claude-agent-rust-sdk/tests/tool_macro.rs::annotation_hints_are_attribute_arguments"] }
 "test_max_result_size_chars_declared_as_a_field_on_a_subclass_flows_too" = { excluded = "python-mcp-library", note = "Subclasses the mcp package's pydantic ToolAnnotations model to declare the field." }
 "test_tool_annotations_take_either_spelling_on_every_mcp_version" = { excluded = "python-mcp-library", note = "Dual camelCase and snake_case keyword spellings level out differences between mcp majors; Rust has one set of setters." }
 "test_tool_annotations_is_an_mcp_tool_annotations" = { excluded = "python-mcp-library", note = "Checks that the SDK class is an instance of the mcp package's ToolAnnotations." }
@@ -533,11 +533,11 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestTypedDictToJsonSchema::test_typeddict_annotated_with_notrequired" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_keeps_the_description_of_an_optional_field_and_leaves_it_out_of_required", note = "Same description and required list; upstream types the optional field {\"type\": \"integer\"}, Rust [\"integer\", \"null\"], as recorded in differences.toml behavior.typed-tool-schema-shape." }
 "TestTypedDictToJsonSchema::test_nested_typeddict" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_inlines_nested_types_and_marks_optional_fields" }
 "TestTypedDictToJsonSchema::test_typeddict_empty" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_whose_argument_struct_has_no_fields_lists_an_object_schema_requiring_nothing" }
-"TestTypedDictMcpIntegration::test_typeddict_tool_schema_in_list_tools" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields", "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_derives_its_schema_from_the_argument_type"] }
+"TestTypedDictMcpIntegration::test_typeddict_tool_schema_in_list_tools" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists", "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_derives_its_schema_from_the_argument_type"] }
 "TestTypedDictMcpIntegration::test_typeddict_tool_call_works" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_and_raw_tools_are_called_with_their_arguments" }
 "TestTypedDictMcpIntegration::test_dict_schema_still_works" = { excluded = "python-typing", note = "The {name: type} dict schema form does not exist in Rust; a schema comes from a type or from raw JSON Schema." }
-"TestTypedDictMcpIntegration::test_json_schema_dict_passthrough" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields" }
-"TestTypedDictMcpIntegration::test_tool_list_is_stable" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_omits_empty_fields" }
+"TestTypedDictMcpIntegration::test_json_schema_dict_passthrough" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists" }
+"TestTypedDictMcpIntegration::test_tool_list_is_stable" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists" }
 
 [tests."tests/test_session_helpers_store.py"]
 "TestListSessionsFromStore::test_lists_seeded_sessions_sorted_by_mtime" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_listing_loads_at_most_16_sessions_at_once", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::fresh_summaries_are_used_and_stale_or_missing_ones_are_refilled_after_pagination"] }

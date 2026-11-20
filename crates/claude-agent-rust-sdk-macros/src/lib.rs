@@ -12,7 +12,7 @@ use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::{
     Attribute, Error, Expr, FnArg, Ident, ItemFn, Lit, LitBool, LitInt, LitStr, Meta, Pat, PatType,
-    Result, Type,
+    Path, Result, Type,
 };
 
 /// Turns an async function into a function returning the tool it defines.
@@ -27,6 +27,7 @@ pub fn tool(arguments: TokenStream, item: TokenStream) -> TokenStream {
 
 #[derive(Default)]
 struct Settings {
+    krate: Option<Path>,
     name: Option<LitStr>,
     description: Option<LitStr>,
     title: Option<LitStr>,
@@ -47,6 +48,10 @@ impl Settings {
                 .map(ToString::to_string)
                 .unwrap_or_default();
             match key.as_str() {
+                "crate" => {
+                    let path: LitStr = meta.value()?.parse()?;
+                    settings.krate = Some(path.parse()?);
+                }
                 "name" => settings.name = Some(meta.value()?.parse()?),
                 "description" => settings.description = Some(meta.value()?.parse()?),
                 "title" => settings.title = Some(meta.value()?.parse()?),
@@ -61,7 +66,7 @@ impl Settings {
                     return Err(meta.error(
                         "unknown #[tool] argument: expected `name`, `description`, `title`, \
                          `read_only_hint`, `destructive_hint`, `idempotent_hint`, \
-                         `open_world_hint`, or `max_result_size_chars`",
+                         `open_world_hint`, `max_result_size_chars`, or `crate`",
                     ));
                 }
             }
@@ -69,6 +74,15 @@ impl Settings {
         });
         parser.parse2(arguments)?;
         Ok(settings)
+    }
+
+    /// The path of the SDK crate in the generated code: `crate = "..."`, or
+    /// `::claude_agent_rust_sdk`.
+    fn krate(&self) -> TokenStream2 {
+        self.krate.as_ref().map_or_else(
+            || quote!(::claude_agent_rust_sdk),
+            ToTokens::to_token_stream,
+        )
     }
 
     fn annotations(&self) -> Option<TokenStream2> {
@@ -92,20 +106,25 @@ impl Settings {
         if setters.is_empty() {
             return None;
         }
+        let krate = self.krate();
         Some(quote! {
-            .annotations(::claude_agent_rust_sdk::ToolAnnotations::new() #(#setters)*)
+            .annotations(#krate::ToolAnnotations::new() #(#setters)*)
         })
     }
 }
 
+/// The doc comment of the function, as rustdoc reads it: the lines of every
+/// `#[doc]` attribute, less the indentation they all share, with blank lines
+/// at either end left out. Indentation beyond the shared part stays, so an
+/// indented code block or a nested list keeps its shape.
 fn doc_comment(attributes: &[Attribute]) -> Option<String> {
-    let lines: Vec<String> = attributes
+    let text: Vec<String> = attributes
         .iter()
         .filter(|attribute| attribute.path().is_ident("doc"))
         .filter_map(|attribute| match &attribute.meta {
             Meta::NameValue(pair) => match &pair.value {
                 Expr::Lit(literal) => match &literal.lit {
-                    Lit::Str(text) => Some(text.value().trim().to_owned()),
+                    Lit::Str(text) => Some(text.value()),
                     _ => None,
                 },
                 _ => None,
@@ -113,8 +132,23 @@ fn doc_comment(attributes: &[Attribute]) -> Option<String> {
             _ => None,
         })
         .collect();
-    let text = lines.join("\n").trim().to_owned();
-    (!text.is_empty()).then_some(text)
+    let lines: Vec<&str> = text
+        .iter()
+        .flat_map(|text| text.split('\n'))
+        .map(str::trim_end)
+        .collect();
+    let indent = lines
+        .iter()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let lines: Vec<&str> = lines
+        .iter()
+        .map(|line| line.get(indent..).unwrap_or_else(|| line.trim_start()))
+        .collect();
+    let text = lines.join("\n").trim_matches('\n').to_owned();
+    (!text.trim().is_empty()).then_some(text)
 }
 
 /// How the tool function receives the state it was built with.
@@ -240,6 +274,7 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
         }
     };
     let annotations = settings.annotations();
+    let krate = settings.krate();
 
     let attributes = &function.attrs;
     let visibility = &function.vis;
@@ -261,10 +296,10 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
     };
     Ok(quote! {
         #(#attributes)*
-        #visibility fn #ident(#parameter) -> ::claude_agent_rust_sdk::SdkMcpTool {
+        #visibility fn #ident(#parameter) -> #krate::SdkMcpTool {
             #signature #block
 
-            ::claude_agent_rust_sdk::SdkMcpTool::typed::<#argument>(
+            #krate::SdkMcpTool::typed::<#argument>(
                 #name,
                 #description,
                 move |#arguments| {
@@ -272,7 +307,7 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
                     async move {
                         #call
                             .await
-                            .map_err(::claude_agent_rust_sdk::BoxError::from)
+                            .map_err(#krate::BoxError::from)
                     }
                 },
             )

@@ -122,16 +122,34 @@ impl SdkMcpServer {
         })
     }
 
-    fn initialize(&self, params: &Value) -> Value {
+    /// Answers the handshake. Its parameters are checked as the `mcp`
+    /// package checks them: a `protocolVersion` string, a `capabilities`
+    /// object, and a `clientInfo` with a `name` and a `version`.
+    fn initialize(&self, params: &Value) -> std::result::Result<Value, RpcError> {
+        let client = params.get("clientInfo");
+        let well_formed = params.get("protocolVersion").is_some_and(Value::is_string)
+            && params.get("capabilities").is_some_and(Value::is_object)
+            && client
+                .and_then(|client| client.get("name"))
+                .is_some_and(Value::is_string)
+            && client
+                .and_then(|client| client.get("version"))
+                .is_some_and(Value::is_string);
+        if !well_formed {
+            return Err(invalid_params(
+                "initialize needs a protocolVersion, capabilities, and a clientInfo with a name \
+                 and a version",
+            ));
+        }
         let requested = params.get("protocolVersion").and_then(Value::as_str);
         let negotiated = requested
             .filter(|version| SUPPORTED_PROTOCOL_VERSIONS.contains(version))
             .unwrap_or(LATEST_PROTOCOL_VERSION);
-        json!({
+        Ok(json!({
             "protocolVersion": negotiated,
             "capabilities": {"experimental": {}, "tools": {"listChanged": false}},
             "serverInfo": {"name": self.name, "version": self.version},
-        })
+        }))
     }
 
     fn list_tools(&self) -> Value {
@@ -148,17 +166,22 @@ impl SdkMcpServer {
 
     async fn dispatch(&self, method: &str, params: &Value) -> std::result::Result<Value, RpcError> {
         match method {
-            "initialize" => Ok(self.initialize(params)),
+            "initialize" => self.initialize(params),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(self.list_tools()),
             "tools/call" => {
-                let name = params.get("name").and_then(Value::as_str).ok_or(RpcError {
-                    code: INVALID_PARAMS,
-                    message: "Invalid params: tools/call needs a tool name".to_owned(),
-                })?;
+                let name = params
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| invalid_params("tools/call needs a tool name"))?;
                 let arguments = match params.get("arguments") {
                     None | Some(Value::Null) => json!({}),
-                    Some(arguments) => arguments.clone(),
+                    Some(arguments @ Value::Object(_)) => arguments.clone(),
+                    Some(_) => {
+                        return Err(invalid_params(
+                            "the arguments of tools/call must be an object",
+                        ));
+                    }
                 };
                 Ok(self.call_tool(name, arguments).await)
             }
@@ -173,6 +196,15 @@ impl SdkMcpServer {
 struct RpcError {
     code: i64,
     message: String,
+}
+
+/// The `-32602` error the `mcp` package answers for parameters it cannot
+/// read.
+fn invalid_params(detail: &str) -> RpcError {
+    RpcError {
+        code: INVALID_PARAMS,
+        message: format!("Invalid request parameters: {detail}"),
+    }
 }
 
 fn response(id: &Value, outcome: std::result::Result<Value, RpcError>) -> Value {

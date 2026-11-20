@@ -227,6 +227,47 @@ async fn a_tool_made_by_the_attribute_is_called_directly_with_its_arguments() {
     );
 }
 
+/// Look a word up.
+///
+/// Example:
+///
+///     lookup("tool")
+///
+/// - A nested list:
+///   - keeps its indent.
+#[tool]
+async fn lookup(args: Entry) -> Result<ToolResult, String> {
+    Ok(ToolResult::text(args.text))
+}
+
+mod sdk {
+    pub use claude_agent_rust_sdk::*;
+}
+
+/// Echo through a re-exported path.
+#[tool(crate = "crate::sdk")]
+async fn echo_through_reexport(args: Entry) -> Result<sdk::ToolResult, String> {
+    Ok(sdk::ToolResult::text(args.text))
+}
+
+#[test]
+fn doc_comment_loses_only_the_indentation_its_lines_share() {
+    assert_eq!(
+        lookup().description(),
+        "Look a word up.\n\nExample:\n\n    lookup(\"tool\")\n\n- A nested list:\n  - keeps its indent."
+    );
+}
+
+#[tokio::test]
+async fn the_crate_argument_names_the_path_of_the_sdk_in_the_generated_code() {
+    let tool = echo_through_reexport();
+    assert_eq!(tool.name(), "echo_through_reexport");
+    assert_eq!(
+        tool.call(json!({"text": "hi"})).await,
+        ToolResult::text("hi")
+    );
+}
+
 #[test]
 fn misuse_of_the_attribute_is_a_compile_error() {
     let cases = trybuild::TestCases::new();

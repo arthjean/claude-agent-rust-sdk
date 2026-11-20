@@ -642,6 +642,62 @@ async fn unsupported_method_is_a_jsonrpc_method_not_found() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn arguments_that_are_not_an_object_are_jsonrpc_invalid_params_as_upstream() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&calls);
+    let echo = SdkMcpTool::raw("echo", "Echo", json!({}), move |_| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        async { Ok(ToolResult::text("ran")) }
+    })
+    .unwrap();
+    let client = SdkMcpClient::connected(server([echo])).await;
+    for arguments in [json!("x"), json!([1]), json!(3), json!(true)] {
+        let response = client
+            .request(
+                "srv",
+                "tools/call",
+                json!({"name": "echo", "arguments": arguments}),
+            )
+            .await;
+        assert_eq!(response["error"]["code"], -32602, "{arguments}: {response}");
+        assert!(response.get("result").is_none(), "{response}");
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    for call in [
+        json!({"name": "echo", "arguments": null}),
+        json!({"name": "echo"}),
+    ] {
+        let response = client.request("srv", "tools/call", call).await;
+        assert_eq!(texts(&response["result"]), ["ran"], "{response}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn initialize_without_its_required_params_is_jsonrpc_invalid_params_as_upstream() {
+    let client = SdkMcpClient::connected(server([])).await;
+    let complete = initialize_params();
+    let mut without_client = complete.clone();
+    without_client
+        .as_object_mut()
+        .unwrap()
+        .shift_remove("clientInfo");
+    let mut without_version = complete.clone();
+    without_version["clientInfo"]
+        .as_object_mut()
+        .unwrap()
+        .shift_remove("version");
+    for params in [json!({}), Value::Null, without_client, without_version] {
+        let response = client.request("srv", "initialize", params.clone()).await;
+        assert_eq!(response["error"]["code"], -32602, "{params}: {response}");
+    }
+    let response = client.request("srv", "initialize", complete).await;
+    assert_eq!(
+        response["result"]["serverInfo"]["name"], "srv",
+        "{response}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn malformed_message_is_a_jsonrpc_error_and_the_session_survives() {
     let client = SdkMcpClient::connected(server([])).await;
     let response = client.send("srv", json!({"jsonrpc": "2.0", "id": 5})).await;
@@ -687,7 +743,7 @@ async fn control_request_without_server_name_or_message_is_refused() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn tools_list_wire_format_omits_empty_fields() {
+async fn tools_list_wire_format_lists_what_upstream_lists() {
     let read_data = noop("read_data").annotations(
         ToolAnnotations::new()
             .read_only_hint(true)
@@ -767,10 +823,10 @@ async fn tools_list_wire_format_omits_empty_fields() {
         tool("only_size")["_meta"],
         json!({"anthropic/maxResultSizeChars": 333})
     );
-    assert!(tool("only_size").get("annotations").is_none());
+    assert_eq!(tool("only_size")["annotations"], json!({}));
     assert_eq!(
         tool("undescribed"),
-        json!({"name": "undescribed", "inputSchema": {"type": "object"}})
+        json!({"name": "undescribed", "description": "", "inputSchema": {"type": "object"}})
     );
 
     assert_eq!(client.list_tools("srv").await, tools);

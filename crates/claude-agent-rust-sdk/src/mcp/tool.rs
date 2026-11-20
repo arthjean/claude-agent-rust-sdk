@@ -67,7 +67,7 @@ impl ToolAnnotations {
         val max_result_size_chars: u64;
     }
 
-    fn to_wire(&self) -> Option<Value> {
+    fn to_wire(&self) -> Value {
         let mut wire = Map::new();
         if let Some(title) = &self.title {
             wire.insert("title".to_owned(), json!(title));
@@ -82,7 +82,7 @@ impl ToolAnnotations {
                 wire.insert(name.to_owned(), json!(hint));
             }
         }
-        (!wire.is_empty()).then_some(Value::Object(wire))
+        Value::Object(wire)
     }
 }
 
@@ -539,20 +539,18 @@ impl SdkMcpTool {
         self.annotations.as_ref()
     }
 
-    /// The tool as listed to the CLI: `name`, `description`, `inputSchema`,
-    /// `annotations`, and `_meta`, with empty fields left out.
+    /// The tool as listed to the CLI, as the Python SDK lists it: `name`,
+    /// `description` (even when empty), `inputSchema`, `annotations` when
+    /// they are set (`{}` when they hold no hint), and `_meta` when
+    /// `max_result_size_chars` is set.
     #[must_use]
     pub fn to_wire(&self) -> Value {
         let mut wire = Map::new();
         wire.insert("name".to_owned(), json!(self.name));
-        if !self.description.is_empty() {
-            wire.insert("description".to_owned(), json!(self.description));
-        }
+        wire.insert("description".to_owned(), json!(self.description));
         wire.insert("inputSchema".to_owned(), self.input_schema.clone());
         if let Some(annotations) = &self.annotations {
-            if let Some(hints) = annotations.to_wire() {
-                wire.insert("annotations".to_owned(), hints);
-            }
+            wire.insert("annotations".to_owned(), annotations.to_wire());
             if let Some(size) = annotations.max_result_size_chars {
                 wire.insert("_meta".to_owned(), json!({MAX_RESULT_SIZE_META_KEY: size}));
             }

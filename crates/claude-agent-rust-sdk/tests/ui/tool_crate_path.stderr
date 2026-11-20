@@ -1,0 +1,7 @@
+error[E0433]: cannot find module or crate `nowhere` in this scope
+ --> tests/ui/tool_crate_path.rs:2:39
+  |
+2 | #[claude_agent_rust_sdk::tool(crate = "nowhere")]
+  |                                       ^^^^^^^^^ use of unresolved module or unlinked crate `nowhere`
+  |
+  = help: if you wanted to use a crate named `nowhere`, use `cargo add nowhere` to add it to your `Cargo.toml`

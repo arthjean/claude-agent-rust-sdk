@@ -1,6 +1,6 @@
 {
   "name": "mcp-tools-list",
-  "description": "The CLI lists the tools of an in-process MCP server.",
+  "description": "The CLI lists the tools of an in-process MCP server, one with an empty description and annotations that hold no hint.",
   "scenario": {
     "steps": [
       {
@@ -142,6 +142,18 @@
                 }
               ],
               "is_error": true
+            }
+          },
+          {
+            "name": "bare",
+            "description": "",
+            "input_schema": {
+              "type": "object",
+              "properties": {}
+            },
+            "annotations": {},
+            "result": {
+              "content": []
             }
           }
         ]

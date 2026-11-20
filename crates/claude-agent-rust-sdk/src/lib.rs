@@ -173,7 +173,12 @@ pub use message_parser::parse_message;
 ///
 /// - `name`: name of the tool. Defaults to the name of the function.
 /// - `description`: description shown to the model. Defaults to the doc
-///   comment of the function. One of the two is required.
+///   comment of the function, less the indentation its lines share, so an
+///   indented code block or a nested list keeps its shape. One of the two
+///   is required.
+/// - `crate`: the path of this crate in the generated code, as a string,
+///   for a crate that depends on it under another name or re-exports it:
+///   `#[tool(crate = "my_sdk")]`. Defaults to `::claude_agent_rust_sdk`.
 /// - `title`, `read_only_hint`, `destructive_hint`, `idempotent_hint`,
 ///   `open_world_hint`, `max_result_size_chars`: the fields of
 ///   [`ToolAnnotations`].
