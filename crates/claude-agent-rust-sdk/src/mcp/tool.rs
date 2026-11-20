@@ -572,19 +572,22 @@ impl SdkMcpTool {
     ///
     /// ```
     /// use claude_agent_rust_sdk::{SdkMcpTool, ToolResult};
+    /// use schemars::JsonSchema;
+    /// use serde::Deserialize;
     /// use serde_json::json;
     ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Echo {
+    ///     text: String,
+    /// }
+    ///
     /// # #[tokio::main(flavor = "current_thread")]
-    /// # async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
-    /// let echo = SdkMcpTool::raw(
-    ///     "echo",
-    ///     "Echoes its text",
-    ///     json!({"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}),
-    ///     |arguments| async move { Ok(ToolResult::text(arguments["text"].as_str().unwrap_or(""))) },
-    /// )?;
+    /// # async fn main() {
+    /// let echo = SdkMcpTool::typed::<Echo>("echo", "Echoes its text", |args| async move {
+    ///     Ok(ToolResult::text(args.text))
+    /// });
     /// assert_eq!(echo.call(json!({"text": "hi"})).await, ToolResult::text("hi"));
     /// assert!(echo.call(json!({})).await.is_error);
-    /// # Ok(())
     /// # }
     /// ```
     pub async fn call(&self, arguments: Value) -> ToolResult {
