@@ -269,6 +269,8 @@ CI on pull request #7 (draft, opened with the owner's approval). The first run f
 
 Before the PR, left to CI with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
 
+CI on pull request #8 (the confirmation recheck, draft): every job passes on `113891c` but `API compatibility`, which reports the same five intended breaking changes. Merged into `main` by fast-forward. Before it, on `113891c` here: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.59%, `package-check`, the docs.rs-style build, `cargo deny check licenses advisories`, and `cargo +1.88.0 check` pass. No real-CLI run since the e2e pass above: the recheck fixes are proven by offline tests.
+
 ## Upstream releases during the run
 
 None: `v0.2.186` (2026-11-19) is still the newest release of the Python SDK (`gh release list`, checked on 2026-11-20 at the end of the run).
