@@ -45,13 +45,17 @@
 //!
 //! # Public dependencies
 //!
-//! Three crates appear in the public API, and each is re-exported so a
-//! program uses the version this crate was built with: [`indexmap`]
-//! (`IndexMap` keeps the order of options such as `env` and `extra_args`),
-//! [`schemars`] (the `JsonSchema` bound of a typed tool), and, with the
-//! `rmcp` feature, `rmcp` (the `ServerHandler` that `sdk_rmcp` serves). A
-//! major release of one of them is a major release of this crate. A typed
-//! tool can derive its schema without a direct dependency:
+//! Six crates appear in the public API. [`serde`] (`Serialize` and
+//! `Deserialize` on the types) and [`serde_json`] (`Value` and `Map` for
+//! the JSON the CLI writes) are the common vocabulary of Rust, at 1.x. The
+//! other four are re-exported so a program uses the version this crate was
+//! built with: [`futures_core`] (the `Stream` that `query`, the client, and
+//! a [`Transport`] yield), [`indexmap`] (`IndexMap` keeps the order of
+//! options such as `env` and `extra_args`), [`schemars`] (the `JsonSchema`
+//! bound of a typed tool), and, with the `rmcp` feature, `rmcp` (the
+//! `ServerHandler` that `sdk_rmcp` serves). A major release of any of the
+//! six is a major release of this crate. A typed tool can derive its
+//! schema without a direct dependency:
 //!
 //! ```
 //! use claude_agent_rust_sdk::schemars::{self, JsonSchema};
@@ -179,6 +183,7 @@ pub mod testing;
 pub mod transport;
 pub mod types;
 
+pub use futures_core;
 pub use indexmap;
 #[cfg(feature = "rmcp")]
 pub use rmcp;

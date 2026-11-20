@@ -19,6 +19,7 @@
 - `PermissionUpdate` and the content blocks the crate models (`TextBlock`, `ThinkingBlock`, `ToolUseBlock`, `ToolResultBlock`, `ServerToolUseBlock`, `ServerToolResultBlock`) keep the keys they do not model in an `extra` field, such as the `citations` of a text block, and a permission suggestion sent back to the CLI keeps them.
 - `SessionStore` is implemented for an `Arc` of a store, so a program can keep a handle on the store it passes to the options.
 - `UserMessage`, `AssistantMessage`, `ResultMessage`, and `StreamEvent` keep the frame keys they do not model in `extra`, and the user and assistant messages keep the unmodeled keys of their nested `message` object in `message_extra`.
+- `futures_core` is re-exported, as `indexmap`, `schemars`, and `rmcp` are: its `Stream` is the type of what `query`, the client, and a transport yield. The crate docs list the six crates of the public API.
 
 ### Changed
 
@@ -48,6 +49,7 @@
 ### Removed
 
 - **Breaking:** `cli::managed_install_dir` is private. The crate installs no CLI, so the directory is only searched, before `PATH`, as before.
+- **Breaking:** the public constructors `Error::cli_connection`, `Error::config`, `Error::control`, and `Error::session_not_found` are gone: an error of the crate is built by the crate, and a custom transport or store reports its failures with `Error::io`, `Error::process`, or `Error::session_store`.
 
 ### Fixed
 
@@ -94,6 +96,10 @@
 - The conformance suite counts a summary a store lists twice once, as upstream does, instead of failing contract 14.
 - An unknown hook callback id that is not a string is named in the error answer (`No hook callback found for ID: 7`), as upstream does, and a line of CLI output is stripped of what Python's `str.strip()` strips, U+001C to U+001F included.
 - The schema of a typed tool whose arguments are a tagged enum lists the tag first, whatever the schemars release: with schemars 1.2.0 the tag came after the fields of the first variant.
+- The `Debug` form of an `Error` shows the size of the captured error output of the CLI, not its text, so logging an error with `{:?}`, `unwrap`, or a `main` that returns a `Result` never logs what the CLI wrote to stderr, as its `Display` form already did not.
+- A line of CLI output or of a transcript nested more than 512 levels deep is read instead of refused: each array or object at depth 512 is kept as its JSON text, so the session goes on, and the session readers, fork, and import keep the line and the history before it.
+- `HookEffort`, `BackgroundTaskSummary`, `SessionCronSummary`, `RateLimitEvent`, and `ConversationResetMessage` keep the keys they do not model in an `extra` field, as the other wire types do.
+- The README no longer says the crate never stores or forwards credentials: a resume from a session store copies the access token of the installed CLI into its temporary configuration directory, as upstream does, and the README says so.
 
 ## 0.1.0 - 2026-11-18
 

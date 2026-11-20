@@ -25,7 +25,8 @@
 //!   output when they were captured (a [`StderrCallback`](crate::StderrCallback)
 //!   was set), where Python always says "Check stderr output for details".
 //!   The text of the error leaves them out, where Python's text appends the
-//!   placeholder, so logging an error never logs the CLI's error output.
+//!   placeholder, and its `Debug` form shows only their size, so logging an
+//!   error, with `{}` or `{:?}`, never logs the CLI's error output.
 //! - A control request from the CLI that lacks a field is answered with a
 //!   text naming the request and the field ("Missing required field in
 //!   can_use_tool request: 'input'"), where Python answers the bare
@@ -580,7 +581,7 @@ impl fmt::Debug for Error {
             debug.field("exit_code", &code);
         }
         if let Some(stderr) = &detail.stderr {
-            debug.field("stderr", stderr);
+            debug.field("stderr", &format_args!("<{} bytes>", stderr.len()));
         }
         if let Some(result) = &detail.result {
             debug.field("result", result);
@@ -752,8 +753,8 @@ fn leading_chars(text: &str, count: usize) -> &str {
 }
 
 /// The text of a process failure: the message and the exit code. The error
-/// output stays out of it, so logging an error never logs what the CLI wrote
-/// to stderr; [`Error::stderr`] returns it.
+/// output stays out of it, and out of the `Debug` form, so logging an error
+/// never logs what the CLI wrote to stderr; [`Error::stderr`] returns it.
 fn process_text(message: &str, exit_code: Option<i32>) -> String {
     match exit_code {
         Some(code) => format!("{message} (exit code: {code})"),
@@ -872,6 +873,28 @@ mod tests {
         let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
         assert!(!Error::io("read", missing).is_retryable());
         assert!(Error::session_store_timeout("load timed out").is_retryable());
+    }
+
+    #[test]
+    fn neither_the_text_nor_the_debug_form_shows_the_error_output_of_the_cli() {
+        let process = Error::process(
+            "Command failed",
+            Some(1),
+            Some("SECRET-TOKEN in stderr".to_owned()),
+        );
+        assert_eq!(process.stderr(), Some("SECRET-TOKEN in stderr"));
+        let wrapped = Error::connection_closed("Control request interrupt failed")
+            .with_source(process.clone());
+        for error in [&process, &wrapped] {
+            for shown in [
+                error.to_string(),
+                format!("{error:?}"),
+                format!("{error:#?}"),
+            ] {
+                assert!(!shown.contains("SECRET-TOKEN"), "{shown}");
+            }
+        }
+        assert!(format!("{process:?}").contains("stderr: <22 bytes>"));
     }
 
     #[test]
