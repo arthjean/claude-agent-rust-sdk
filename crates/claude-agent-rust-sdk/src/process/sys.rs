@@ -11,6 +11,8 @@
 
 #[cfg(all(unix, any(target_os = "macos", test)))]
 pub(crate) use imp::current_user_name;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) use imp::system_search_path;
 pub(crate) use imp::{ProcessTree, prepare, run_as_user};
 
 #[cfg(unix)]
@@ -115,9 +117,35 @@ mod imp {
         }
     }
 
+    /// The search path of the system, `confstr(_CS_PATH)`, which Python's
+    /// `shutil.which` searches when `PATH` is not set. The buffer is sized
+    /// by a first call and outlives the second. `None` when the system
+    /// gives none or it is not UTF-8.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub(crate) fn system_search_path() -> Option<String> {
+        let length = unsafe { libc::confstr(libc::_CS_PATH, std::ptr::null_mut(), 0) };
+        if length == 0 {
+            return None;
+        }
+        let mut buffer: Vec<u8> = vec![0; length];
+        let written = unsafe { libc::confstr(libc::_CS_PATH, buffer.as_mut_ptr().cast(), length) };
+        if written == 0 || written > length {
+            return None;
+        }
+        buffer.truncate(written - 1);
+        String::from_utf8(buffer).ok()
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[test]
+        fn the_system_search_path_names_usr_bin() {
+            let path = system_search_path().expect("the system has a search path");
+            assert!(path.split(':').any(|entry| entry == "/usr/bin"), "{path}");
+        }
 
         #[test]
         fn the_current_user_name_maps_back_to_the_current_user_id() {

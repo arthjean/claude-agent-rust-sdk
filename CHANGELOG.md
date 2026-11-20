@@ -88,6 +88,7 @@
 - A `close` or `flush` of a client dropped while the transcript mirror appends to the store, as under a timeout, no longer loses the batch being sent: the sending runs in a task of its own, as upstream shields it.
 - A request with a float id (`2.0`) sent to an `rmcp` server is acknowledged as a notification, as upstream does, where it was never answered.
 - The tag of a typed tool whose arguments are a tagged enum lists the doc comment of each variant in its description; the merge of the variants dropped them.
+- With `PATH` unset, the CLI is searched in the search path of the system (`confstr(_CS_PATH)`, else `/bin:/usr/bin`) on Unix, as Python's `shutil.which` does.
 
 ## 0.1.0 - 2026-11-18
 

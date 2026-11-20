@@ -100,6 +100,33 @@ pub fn find_cli() -> Result<PathBuf> {
 
 const SYSTEM_CLI: &str = "/usr/local/bin/claude";
 
+/// Python's `os.defpath`, which `shutil.which` searches when `PATH` is not
+/// set and the system names no search path.
+#[cfg(unix)]
+const DEFAULT_SEARCH_PATH: &str = "/bin:/usr/bin";
+
+/// The directories searched for the CLI: `PATH`, or on Unix, when it is not
+/// set, the search path of the system, as `shutil.which` does. Windows
+/// searches nothing without `PATH`, as upstream does.
+fn search_path(variable: Option<OsString>) -> Option<OsString> {
+    #[cfg(unix)]
+    {
+        variable.or_else(|| {
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            let system = crate::process::sys::system_search_path();
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            let system: Option<String> = None;
+            Some(OsString::from(
+                system.unwrap_or_else(|| DEFAULT_SEARCH_PATH.to_owned()),
+            ))
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        variable
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct CliLocator {
     pub(crate) platform: Platform,
@@ -116,7 +143,7 @@ impl CliLocator {
     pub(crate) fn from_environment() -> Self {
         Self {
             platform: Platform::current(),
-            search_path: std::env::var_os("PATH"),
+            search_path: search_path(std::env::var_os("PATH")),
             home: std::env::home_dir(),
             managed_dir: managed_install_dir(),
             system_cli: PathBuf::from(SYSTEM_CLI),
@@ -231,6 +258,23 @@ pub(crate) fn reject_windows_batch_cli(cli_path: &Path, platform: Platform) -> R
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unset_path_searches_the_system_path_on_unix_and_nothing_on_windows() {
+        let set = std::ffi::OsString::from("/opt/tools");
+        assert_eq!(super::search_path(Some(set.clone())), Some(set));
+        let unset = super::search_path(None);
+        if cfg!(unix) {
+            let unset = unset.expect("a default search path");
+            assert!(
+                std::env::split_paths(&unset)
+                    .any(|entry| entry == std::path::Path::new("/usr/bin")),
+                "{unset:?}"
+            );
+        } else {
+            assert_eq!(unset, None);
+        }
+    }
+
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
 
