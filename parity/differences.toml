@@ -497,12 +497,12 @@ test = "crates/claude-agent-rust-sdk/tests/transport.rs::invalid_utf8_from_the_c
 [behavior.nesting-depth-limit]
 summary = "A line of CLI output nested more than 512 levels deep"
 python = "Read until the interpreter runs out of recursion (tens of thousands of levels on Python 3.15), then `RecursionError` ends the session."
-rust = "Read up to 512 levels; a deeper line ends the session with `Error::JsonDecode`."
+rust = "Read whole up to 512 levels. A deeper line is read too: each array or object at depth 512 is kept as the JSON text it was written as, a string, and the rest of the line reads as written, so the message arrives and the session goes on."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:232"
 anchor = "data: dict[str, Any] = json.loads(line)"
 category = "deliberate"
-reason = "Parsing, cloning, and dropping a `serde_json::Value` recurse once per level; 512 levels fit in the 2 MiB stack of a tokio worker thread even in a debug build, where about 700 levels of parsing overflow it."
-test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::framing::tests::nesting_up_to_the_limit_is_read_and_deeper_fails"
+reason = "Parsing, cloning, and dropping a `serde_json::Value` recurse once per level; 512 levels fit in the 2 MiB stack of a tokio worker thread even in a debug build, where about 700 levels of parsing overflow it. Below that depth the line is read member by member as raw text, which `serde_json` skips without recursing, so no depth can overflow the stack or end the session."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::framing::tests::nesting_up_to_the_limit_is_read_whole_and_deeper_keeps_the_rest_of_the_line"
 
 [behavior.store-declaration-for-continue]
 summary = "`continue_conversation` with a store that implements `list_sessions` without declaring it"
@@ -517,7 +517,7 @@ test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_rea
 [behavior.transcript-line-json-reading]
 summary = "A transcript line that escapes a lone UTF-16 surrogate, or nests more than 128 levels deep"
 python = "`json.loads` reads the line, keeps the lone surrogate in the string, and reads any depth until the interpreter runs out of recursion."
-rust = "The session readers, fork, and import read the line with the reader of the CLI output: a lone surrogate becomes U+FFFD, and a line nested more than 512 levels deep is skipped as corrupt (import fails on it)."
+rust = "The session readers, fork, and import read the line with the reader of the CLI output: a lone surrogate becomes U+FFFD, and in a line nested more than 512 levels deep each array or object at depth 512 is kept as its JSON text, a string, so the line, its parent link, and the history before it are kept; a fork or an import writes that string where the nested value was."
 ref = "src/claude_agent_sdk/_internal/sessions.py:918"
 anchor = "entry = json.loads(line)"
 category = "deliberate"

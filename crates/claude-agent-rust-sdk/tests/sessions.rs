@@ -9,9 +9,10 @@ use std::process::Command;
 use std::time::{Duration, UNIX_EPOCH};
 
 use claude_agent_rust_sdk::{
-    ForkSessionOptions, ImportSessionOptions, ListSessionsOptions, SdkSessionInfo, SessionMessage,
-    SessionMessageType, SessionMessagesOptions, get_session_info, get_session_messages,
-    get_subagent_messages, list_sessions, list_subagents, project_key_for_directory,
+    ForkSessionOptions, ImportSessionOptions, InMemorySessionStore, ListSessionsOptions,
+    SdkSessionInfo, SessionMessage, SessionMessageType, SessionMessagesOptions, fork_session,
+    get_session_info, get_session_messages, get_session_messages_from_store, get_subagent_messages,
+    import_session_to_store, list_sessions, list_subagents, project_key_for_directory,
 };
 use serde_json::{Value, json};
 
@@ -1314,35 +1315,51 @@ fn import_session_options_default_to_upstream_keyword_defaults() {
     assert_eq!((set.include_subagents, set.batch_size), (false, 2));
 }
 
-#[test]
-fn a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_before_it() {
-    let deep = format!("{}{}", "[".repeat(130), "]".repeat(130));
-    for (marker, raw) in [("LONE", "\\ud83d"), ("DEEP", deep.as_str())] {
+/// Writes the session u1 -> a1 -> c1 -> a2 whose line c1 holds `raw`:
+/// a lone surrogate escape in its content, or a nested value in its
+/// `toolUseResult`.
+fn session_with_an_odd_line(project: &Project, marker: &str, raw: &str) -> String {
+    let id = new_id();
+    let mut middle = user(
+        "c1",
+        Some("a1"),
+        &id,
+        Value::from(format!("output {marker}")),
+    );
+    if marker != "LONE" {
+        middle["toolUseResult"] = Value::from("DEEP_VALUE");
+    }
+    let lines = vec![
+        user("u1", None, &id, Value::from(format!("prompt {marker}"))),
+        assistant("a1", Some("u1"), &id, "b"),
+        middle,
+        assistant("a2", Some("c1"), &id, "d"),
+    ];
+    let path = project.write(&id, &lines);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let text = if marker == "LONE" {
+        text.replace("LONE", raw)
+    } else {
+        text.replace("\"DEEP_VALUE\"", raw)
+    };
+    std::fs::write(&path, text).unwrap();
+    id
+}
+
+fn odd_lines() -> [(&'static str, String); 3] {
+    let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+    [
+        ("LONE", "\\ud83d".to_owned()),
+        ("DEEP", nested(130)),
+        ("DEEPER", nested(600)),
+    ]
+}
+
+#[tokio::test]
+async fn a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_before_it() {
+    for (marker, raw) in odd_lines() {
         let project = Project::new();
-        let id = new_id();
-        let mut middle = user(
-            "c1",
-            Some("a1"),
-            &id,
-            Value::from(format!("output {marker}")),
-        );
-        if marker == "DEEP" {
-            middle["toolUseResult"] = Value::from("DEEP_VALUE");
-        }
-        let lines = vec![
-            user("u1", None, &id, Value::from(format!("prompt {marker}"))),
-            assistant("a1", Some("u1"), &id, "b"),
-            middle,
-            assistant("a2", Some("c1"), &id, "d"),
-        ];
-        let path = project.write(&id, &lines);
-        let text = std::fs::read_to_string(&path).unwrap();
-        let text = if marker == "DEEP" {
-            text.replace("\"DEEP_VALUE\"", raw)
-        } else {
-            text.replace("LONE", raw)
-        };
-        std::fs::write(&path, text).unwrap();
+        let id = session_with_an_odd_line(&project, marker, &raw);
 
         let messages =
             get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
@@ -1353,5 +1370,30 @@ fn a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_bef
             assert_eq!(info.summary, "prompt \u{fffd}");
             assert_eq!(messages[2].message["content"], "output \u{fffd}");
         }
+
+        let fork = fork_session(&id, ForkSessionOptions::new().directory(project.path()))
+            .unwrap_or_else(|error| panic!("{marker}: {error}"));
+        let forked = get_session_messages(
+            &fork.session_id,
+            SessionMessagesOptions::new().directory(project.path()),
+        );
+        assert_eq!(forked.len(), 4, "{marker}: the fork keeps the whole chain");
+
+        let store = InMemorySessionStore::new();
+        import_session_to_store(
+            &id,
+            &store,
+            ImportSessionOptions::new().directory(project.path()),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{marker}: {error}"));
+        let stored = get_session_messages_from_store(
+            &store,
+            &id,
+            SessionMessagesOptions::new().directory(project.path()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(uuids(&stored), ["u1", "a1", "c1", "a2"], "{marker}");
     }
 }

@@ -14,13 +14,20 @@
 //!   `JSON.stringify` writes for a string cut in the middle of a surrogate
 //!   pair. A Rust string cannot hold a lone surrogate, so each one becomes
 //!   U+FFFD, where Python keeps the surrogate itself;
-//! - nesting deeper than the 128 levels `serde_json` allows, up to
-//!   [`MAX_NESTING_DEPTH`]. Python reads deeper, until its interpreter
-//!   runs out of recursion; Rust stops at a depth whose parse, clone, and
-//!   drop fit in the 2 MiB stack of a tokio worker thread in a debug build.
+//! - nesting deeper than the 128 levels `serde_json` allows. Up to
+//!   [`MAX_NESTING_DEPTH`] levels the line is read whole. Deeper, it is
+//!   read level by level and each array or object at that depth is kept as
+//!   the JSON text it was written as, a string, so the value never nests
+//!   deeper than the parse, clone, and drop of a 2 MiB tokio worker stack
+//!   allow in a debug build. The rest of the line (its type, its uuid, the
+//!   parent it names) reads as written, so neither the session nor the
+//!   history of a transcript loses the message. Python reads the whole
+//!   line until its interpreter runs out of recursion.
 
+use indexmap::IndexMap;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::value::RawValue;
+use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 
@@ -78,26 +85,58 @@ pub(crate) fn parse_stdout_line(line: &[u8]) -> Result<Option<Value>> {
 }
 
 /// Reads one JSON text as the CLI output is read: a lone surrogate escape
-/// and a nesting up to [`MAX_NESTING_DEPTH`] levels are accepted, and any
-/// other refusal keeps the error of `serde_json`.
+/// and any nesting are accepted (the arrays and objects deeper than
+/// [`MAX_NESTING_DEPTH`] kept as their JSON text), and any other refusal
+/// keeps the error of `serde_json`.
 pub(crate) fn parse_json(text: &str) -> serde_json::Result<Value> {
     serde_json::from_str::<Value>(text).or_else(|source| recover(text).ok_or(source))
 }
 
 /// Reads a line `serde_json` refused with its defaults, when the cause is
-/// a lone surrogate escape or a nesting between 128 and
-/// [`MAX_NESTING_DEPTH`] levels.
+/// a lone surrogate escape or a nesting deeper than 128 levels.
 fn recover(text: &str) -> Option<Value> {
     let replaced = replace_lone_surrogates(text);
     let text = replaced.as_deref().unwrap_or(text);
     if nesting_depth(text) > MAX_NESTING_DEPTH {
-        return None;
+        return bounded(text, 1);
     }
     let mut deserializer = serde_json::Deserializer::from_str(text);
     deserializer.disable_recursion_limit();
     let value = Value::deserialize(&mut deserializer).ok()?;
     deserializer.end().ok()?;
     Some(value)
+}
+
+/// Reads `text`, a JSON value whose arrays and objects start at `depth`,
+/// one level at a time: `serde_json` skips each member as raw text without
+/// recursing, and a container at [`MAX_NESTING_DEPTH`] becomes the string
+/// of its text. Each level scans the text below it again, a cost paid only
+/// by lines too deep for [`recover`]'s single parse.
+fn bounded(text: &str, depth: usize) -> Option<Value> {
+    let start = text.trim_start().as_bytes().first().copied();
+    let container = matches!(start, Some(b'{' | b'['));
+    if container && depth >= MAX_NESTING_DEPTH {
+        return Some(Value::String(text.trim().to_owned()));
+    }
+    match start {
+        Some(b'{') => {
+            let members: IndexMap<String, Box<RawValue>> = serde_json::from_str(text).ok()?;
+            let mut object = Map::with_capacity(members.len());
+            for (key, member) in members {
+                object.insert(key, bounded(member.get(), depth + 1)?);
+            }
+            Some(Value::Object(object))
+        }
+        Some(b'[') => {
+            let items: Vec<Box<RawValue>> = serde_json::from_str(text).ok()?;
+            items
+                .iter()
+                .map(|item| bounded(item.get(), depth + 1))
+                .collect::<Option<Vec<_>>>()
+                .map(Value::Array)
+        }
+        _ => serde_json::from_str(text).ok(),
+    }
 }
 
 /// The deepest nesting of arrays and objects, brackets inside strings left
@@ -181,7 +220,7 @@ pub(crate) fn oversize_error(length: usize, limit: usize) -> Error {
 #[cfg(test)]
 mod tests {
     use super::{LineFramer, MAX_NESTING_DEPTH, parse_stdout_line, replace_lone_surrogates};
-    use crate::error::{Error, ErrorKind};
+    use crate::error::ErrorKind;
 
     fn lines(framer: &mut LineFramer, chunk: &str) -> Vec<String> {
         framer
@@ -249,10 +288,10 @@ mod tests {
     }
 
     #[test]
-    fn nesting_up_to_the_limit_is_read_and_deeper_fails() {
+    fn nesting_up_to_the_limit_is_read_whole_and_deeper_keeps_the_rest_of_the_line() {
         let nested = |depth: usize| {
             format!(
-                "{{\"a\": {}{}}}",
+                "{{\"type\": \"user\", \"a\": {}{}, \"uuid\": \"u2\"}}",
                 "[".repeat(depth - 1),
                 "]".repeat(depth - 1)
             )
@@ -261,15 +300,44 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(value["a"].is_array());
-        assert_eq!(
-            parse_stdout_line(nested(MAX_NESTING_DEPTH + 1).as_bytes())
-                .as_ref()
-                .err()
-                .map(Error::kind),
-            Some(ErrorKind::JsonDecode)
-        );
+
+        let deeper = nested(MAX_NESTING_DEPTH + 88);
+        let value = parse_stdout_line(deeper.as_bytes()).unwrap().unwrap();
+        assert_eq!(value["type"], "user");
+        assert_eq!(value["uuid"], "u2");
+        let mut level = &value["a"];
+        for _ in 2..MAX_NESTING_DEPTH {
+            level = &level[0];
+        }
+        let kept = level
+            .as_str()
+            .expect("the container at the limit is kept as its text");
+        let inner = 88 + 1;
+        assert_eq!(kept, format!("{}{}", "[".repeat(inner), "]".repeat(inner)));
+
         let in_string = format!("{{\"a\": \"{}\"}}", "[".repeat(MAX_NESTING_DEPTH * 2));
         assert!(parse_stdout_line(in_string.as_bytes()).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_line_nested_fifty_thousand_levels_is_read_on_a_small_stack_and_dropped() {
+        let line = format!(
+            "{{\"type\": \"user\", \"a\": {}{}}}",
+            "{\"b\": [".repeat(25_000),
+            "]}".repeat(25_000)
+        );
+        let read = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                let value = parse_stdout_line(line.as_bytes()).unwrap().unwrap();
+                let copy = value.clone();
+                drop(value);
+                copy["type"].as_str().map(str::to_owned)
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(read.as_deref(), Some("user"));
     }
 
     #[test]

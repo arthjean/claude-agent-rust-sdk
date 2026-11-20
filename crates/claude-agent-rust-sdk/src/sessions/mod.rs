@@ -18,9 +18,11 @@
 //!   credentials of a resume; Python decodes strictly and raises
 //!   `UnicodeDecodeError`.
 //! - A line is read as the CLI output is: a lone surrogate escape
-//!   (`\ud83d`) becomes U+FFFD, where Python keeps the surrogate, and a
-//!   line nested more than 512 levels deep is skipped as corrupt, where
-//!   Python reads any depth its interpreter allows.
+//!   (`\ud83d`) becomes U+FFFD, where Python keeps the surrogate, and in
+//!   a line nested more than 512 levels deep each array or object at that
+//!   depth is kept as its JSON text, a string, which a fork or an import
+//!   writes in place of the nested value; Python reads any depth its
+//!   interpreter allows.
 //! - A fork cuts the transcript on `\n` only. Python's `splitlines` also
 //!   cuts on U+2028, U+2029, and U+0085, which a JSON string may hold
 //!   unescaped, and loses the entry.
