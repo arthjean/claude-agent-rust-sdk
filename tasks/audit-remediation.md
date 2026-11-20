@@ -87,8 +87,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | Counter-audit probe: a `user` frame holding `café`, same flags as the A04 probe, killed after the echo | under 0.01 (killed before the answer) | The transcript the CLI wrote holds the raw bytes `caf\xc3\xa9` and no `\u00e9`: the CLI writes raw UTF-8, which settles `[unclassified.raw-utf8-in-transcripts]` as `[behavior.transcript-raw-utf8]`. |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `e02cdda`, after the counter-audit fixes (a first attempt with a stray `--` filtered every test out and ran nothing) | about 0.80 (the documented cost of a run) | 54 of 55 pass; the one failure is again `a_store_resume_applies_the_user_settings`, which needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (the owner agreed to supply a token). |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `c4f364b`, with `CLAUDE_CODE_OAUTH_TOKEN` from a token the owner created with `claude setup-token` (read from a file outside the repository, never printed; the log holds no token) | about 0.80 (the documented cost of a run) | **55 of 55 pass**, `a_store_resume_applies_the_user_settings` included. |
+| 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on `c921140`, the final code after the confirmation recheck and the parity minors, with the same token | about 0.80 (the documented cost of a run) | **55 of 55 pass** in 53 s; the log holds no token. |
 
-Total spent: about 2.44 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 3.24 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
@@ -247,14 +248,19 @@ After the merge of pull request #7, five more fresh agents went over the same sc
 | surface | The CHANGELOG did not list the removed `Error` constructors; `docs/parity.md` still said "flat error enum" | minor | Fixed |
 | protocol, types | No blocker, no major; the `is_retryable` fix and the permission-update shape hold | none | |
 
+Then, so that no divergence stays neither aligned nor recorded, the minors of the recheck were settled on branch `parity-minors` (local, not pushed), each with a test that fails before the fix:
+
+- Aligned: `hook_on_failure_supported` is read as Python truthiness (`b6ebdd9`); a read error on the CLI output ends the session with an `Io` error, as upstream raises (`8c25fa9`); a tool of no arguments gets the call whatever keys the model sends (`739927f`); a fractional, negative, or `null` count and a `null` string in a status response are read as for messages (`e723d5b`); a subagent sidecar with a lone surrogate is read and a non-object `usage` of a task notification is absent (`c3ff96d`, `e723d5b`).
+- Recorded (`c921140`): `[behavior.control-error-null-text]` (a `null` error reads `Unknown error`, not Python's `None`) and `[behavior.status-response-numbers-and-nulls]` (a value of another JSON type fails the call with the raw response).
+- Rejected after checking upstream: "a duplicate `agent-<id>.jsonl` reads the first, upstream the last": `get_subagent_messages` breaks on the first match too (`sessions.py:1612-1615`).
+
 Listed, not changed, with the reason:
 
-- protocol: a read error on the CLI's stdout ends the stream and the exit code decides, where upstream raises; the exit code still reports a failed CLI, and a pipe error without one is not reproducible offline.
-- protocol: `hook_on_failure_supported` must be the boolean `true` (upstream takes any truthy value), `"error": null` reads as "Unknown error" (upstream "None"), the result is noted before the mirror flush ends, a `connect()` dropped during spawn leaves the child to exit on its closed pipes, and the group SIGKILL after the reap: none has an observable effect with the pinned CLI.
+- protocol: the result is noted before the mirror flush ends, a `connect()` dropped during spawn leaves the child to exit on its closed pipes, and the process group gets SIGKILL after the reap: internal ordering with no observable effect, not a behavior upstream defines.
 - protocol: `ConnectionClosed` is always retryable, documented; a closed connection is the case a new session fixes.
-- types: a malformed list entry makes the whole hook input `Unknown` (recorded, `behavior.hook-input-shape`, raw data kept); a fractional or null number in a status response fails that call with the raw response kept in the error (upstream types those fields `int` and `str`); a non-object `usage` of a task notification reads as zero.
-- MCP: a `()` tool called with stray keys returns a validation error the model can correct; reading any object as `null` would also hide invalid arguments. An untagged enum whose variants have the same keys can pick the integer variant when another field forces the coercion; no data is lost.
-- sessions: two `agent-<id>.jsonl` with the same random id, a sidecar `.meta.json` with a lone surrogate, a timestamp without a zone (the CLI always writes `Z`); the deep subtree is written back as a string by fork and import (recorded, better than losing the line).
+- types: a malformed list entry makes the whole hook input `Unknown` (recorded, `behavior.hook-input-shape`, raw data kept).
+- MCP: an untagged enum whose variants have the same keys can pick the integer variant when another field forces the coercion; no data is lost.
+- sessions: a timestamp without a zone is read as UTC (recorded, `behavior.timestamp-without-zone`); the deep subtree is written back as a string by fork and import (recorded).
 - surface: the temporary configuration directory is user-only on Unix; on Windows it relies on the ACL of `%TEMP%`. `UnsupportedStoreOperation.operation` and the public fields of `ClaudeAgentOptions` are kept as they are for 0.2.0, to be reviewed before 1.0.
 
 ## Checks on the final code
@@ -269,7 +275,7 @@ CI on pull request #7 (draft, opened with the owner's approval). The first run f
 
 Before the PR, left to CI with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
 
-CI on pull request #8 (the confirmation recheck, draft): every job passes on `113891c` but `API compatibility`, which reports the same five intended breaking changes. Merged into `main` by fast-forward. Before it, on `113891c` here: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.59%, `package-check`, the docs.rs-style build, `cargo deny check licenses advisories`, and `cargo +1.88.0 check` pass. No real-CLI run since the e2e pass above: the recheck fixes are proven by offline tests.
+CI on pull request #8 (the confirmation recheck, draft): every job passes on `113891c` but `API compatibility`, which reports the same five intended breaking changes. Merged into `main` by fast-forward. Before it, on `113891c` here: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.59%, `package-check`, the docs.rs-style build, `cargo deny check licenses advisories`, and `cargo +1.88.0 check` pass. On `c921140` (branch `parity-minors`), after the parity minors: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.86%, `cargo +1.88.0 check`, and a full `cargo xtask e2e` (55 of 55) pass.
 
 ## Upstream releases during the run
 
