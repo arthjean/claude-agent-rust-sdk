@@ -25,6 +25,8 @@
 - **Breaking:** `McpSdkServerInstance` can no longer be built from an arbitrary value, and `downcast_ref` is gone: only `create_sdk_mcp_server` and `McpServerConfig::sdk_rmcp` make one, so an in-process server a session cannot serve is no longer representable instead of failing at connection.
 - **Breaking:** `HookSpecificOutput::hook_event_name` returns `&str` instead of `&'static str`, since an `Unknown` output carries its own name.
 - An MCP server status whose configuration carries a key the crate does not model is now read as its typed configuration, with the key in `extra`, instead of as `McpServerStatusConfig::Unknown`.
+- A `ResultError` that replaces the process error after a failed run carries that process error as its `source`, as upstream sets `__cause__`.
+- The README, the migration guide, and the parity page state what is measured: a port of 0.2.186, the reviewed differences and the ones not yet classified, and the unit tests the ledger lists (the upstream end-to-end tests are not). `parity-check` now fails on a hand-written claim of parity (`at parity with`, `every known difference`, `full parity`, `100%`) in any of the three.
 
 ### Removed
 

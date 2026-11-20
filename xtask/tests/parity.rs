@@ -597,3 +597,22 @@ fn a_hand_written_claim_of_full_parity_fails_the_check() {
         stderr(&check)
     );
 }
+
+#[test]
+fn a_claim_of_parity_in_the_migration_guide_fails_the_check_too() {
+    let fixture = consistent();
+    let guide = std::fs::read_to_string(fixture.root.join("migration.md")).unwrap();
+    write(
+        &fixture.root.join("migration.md"),
+        &format!("The crate is at parity with the Python SDK.\n\n{guide}"),
+    );
+
+    let check = fixture.run("parity-check", &[]);
+
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("migration.md: the hand-written text claims `at parity with`"),
+        "{}",
+        stderr(&check)
+    );
+}

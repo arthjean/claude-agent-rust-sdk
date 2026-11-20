@@ -316,7 +316,7 @@ impl Fixture {
         file(
             "README.md",
             &format!(
-                "# SDK\n\nIt is at parity with version {PIN_SDK}.\nTested\n  against {PIN_CLI}.\n\n```toml\n[dependencies]\nclaude-agent-rust-sdk = \"0.1\"\n```\n"
+                "# SDK\n\nIt is a port of the Claude Agent SDK, version {PIN_SDK}.\nTested\n  against {PIN_CLI}.\n\n```toml\n[dependencies]\nclaude-agent-rust-sdk = \"0.1\"\n```\n"
             ),
         );
         file(
@@ -326,7 +326,7 @@ impl Fixture {
         file(
             "docs/migration.md",
             &format!(
-                "# Guide\n\nIt is at parity with version {PIN_SDK} of the SDK.\n\n<!-- parity:table:begin -->\n<!-- parity:table:end -->\n"
+                "# Guide\n\nIt is a port of version {PIN_SDK} of the SDK.\n\n<!-- parity:table:begin -->\n<!-- parity:table:end -->\n"
             ),
         );
         file(
@@ -1151,11 +1151,9 @@ fn sync_to_a_cli_only_release_moves_every_copy_and_the_pin() {
         fixture.read("crates/claude-agent-rust-sdk/src/lib.rs"),
         library("0.2.183", "2.1.326")
     );
-    assert!(
-        fixture
-            .read("README.md")
-            .contains("It is at parity with version 0.2.183.\nTested\n  against 2.1.326.")
-    );
+    assert!(fixture.read("README.md").contains(
+        "It is a port of the Claude Agent SDK, version 0.2.183.\nTested\n  against 2.1.326."
+    ));
     assert!(
         fixture
             .read("docs/migration.md")

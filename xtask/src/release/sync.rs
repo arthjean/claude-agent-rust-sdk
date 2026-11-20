@@ -33,7 +33,7 @@ pub const UPSTREAM_COPIES: [Pinned; 17] = [
     },
     Pinned {
         file: "README.md",
-        template: "at parity with version {sdk}.",
+        template: "Claude Agent SDK, version {sdk}.",
     },
     Pinned {
         file: "README.md",
@@ -41,7 +41,7 @@ pub const UPSTREAM_COPIES: [Pinned; 17] = [
     },
     Pinned {
         file: "docs/migration.md",
-        template: "at parity with version {sdk} of",
+        template: "a port of version {sdk} of",
     },
     Pinned {
         file: "THIRD_PARTY_NOTICES",

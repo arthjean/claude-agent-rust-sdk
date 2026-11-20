@@ -231,5 +231,5 @@ pub const CLI_VERSION: &str = "2.1.329";
 /// logged warning.
 pub const MINIMUM_CLI_VERSION: &str = "2.0.0";
 
-/// Version of the upstream Python SDK this release is at parity with.
+/// Version of the upstream Python SDK this release is ported from.
 pub const UPSTREAM_SDK_VERSION: &str = "0.2.186";

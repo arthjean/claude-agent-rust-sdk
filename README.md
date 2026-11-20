@@ -11,10 +11,11 @@ newline-delimited JSON. You get typed messages, hooks, tool-permission
 callbacks, tools served from your own process, session stores, and session
 management, all on tokio.
 
-It is a port of the Python Claude Agent SDK, at parity with version 0.2.186.
+It is a port of the Python Claude Agent SDK, version 0.2.186.
 [`docs/migration.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/migration.md) maps every Python name to its Rust
 name, and [`docs/parity.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/parity.md) lists what was compared, the
-measured counts, and every known difference with its reason and its test.
+measured counts, each reviewed difference with its reason and its test, and the
+differences found but not yet classified.
 
 > **This is not an Anthropic product.** `claude-agent-rust-sdk` is an independent,
 > community project. It is not affiliated with, endorsed by, or supported by
@@ -222,8 +223,10 @@ cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
 
 The parity ledgers live in [`parity/`](https://github.com/arthjean/claude-agent-rust-sdk/tree/main/parity): `surface.toml` lists every name
-the Python SDK exports, and `tests.toml` lists every upstream test, each with the
-Rust item that replaces it or the reason it is not ported.
+the Python SDK exports, and `tests.toml` lists every upstream unit test (under
+`tests/`), each with the Rust item that replaces it or the reason it is not
+ported. The upstream end-to-end tests (under `e2e-tests/`) are not listed;
+`crates/claude-agent-rust-sdk/tests/e2e` holds the Rust suite against the real CLI.
 
 `cargo xtask parity-diff` measures parity instead of stating it: it plays every
 case of `parity/cases` through both SDKs against the scripted stand-in CLI and

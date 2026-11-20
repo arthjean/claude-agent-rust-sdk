@@ -559,7 +559,9 @@ fn readme_states_who_authenticates_the_affiliation_and_the_two_licenses() {
         assert!(readme.contains(&statement), "{statement}");
     }
     assert!(readme.contains(&format!("tested against {CLI_VERSION}")));
-    assert!(readme.contains(&format!("at parity with version {UPSTREAM_SDK_VERSION}")));
+    assert!(readme.contains(&format!(
+        "It is a port of the Python Claude Agent SDK, version {UPSTREAM_SDK_VERSION}."
+    )));
 
     let library = read("crates/claude-agent-rust-sdk/src/lib.rs");
     assert!(library.contains("#[doc = include_str!(\"../../../README.md\")]"));

@@ -5,7 +5,9 @@
 //! counts of both ledgers, the coverage of the differential cases, and the
 //! entries of `parity/differences.toml`. Everything outside the region is
 //! written by hand, and must not claim more than the counts show: a
-//! hand-written "100%" or "full parity" fails the check.
+//! hand-written "100%", "full parity", "at parity with", or "every known
+//! difference" fails the check, in this page, the README, and the migration
+//! guide.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -20,7 +22,13 @@ pub const PAGE_BEGIN: &str = "<!-- parity:page:begin -->";
 pub const PAGE_END: &str = "<!-- parity:page:end -->";
 
 /// Claims the hand-written text may not make, lowercase.
-const UNSUPPORTED_CLAIMS: [&str; 3] = ["100%", "100 %", "full parity"];
+const UNSUPPORTED_CLAIMS: [&str; 5] = [
+    "100%",
+    "100 %",
+    "full parity",
+    "at parity with",
+    "every known difference",
+];
 
 /// The upstream checkout the page describes.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -6,21 +6,26 @@
 //! matching handler, and transcript mirror frames go to the mirror. Every
 //! other frame enters a bounded queue, and a full queue blocks the reader.
 //!
-//! The session differs from the upstream Python SDK in deliberate ways:
+//! The session differs from the upstream Python SDK in deliberate ways,
+//! each recorded in `parity/differences.toml`:
 //!
 //! - when the output of the CLI ends, pending control requests fail at once
 //!   instead of waiting for their timeout;
-//! - a cancel request stops the application callback but never a response
-//!   that is being written, so the CLI never reads a partial message;
+//! - a control request without a request id and a malformed transcript
+//!   mirror frame are ignored instead of stopping the reader.
+//!
+//! Where it behaves as upstream, through other means:
+//!
 //! - every frame goes to the CLI through one writer task, fed whole frames
 //!   by a queue: a caller that drops its future (under a `timeout` or a
 //!   `select!`) after its frame was queued still gets the frame written in
 //!   full, and a caller dropped before cannot leave half a frame behind.
 //!   Upstream gets the same guarantee from anyio, which buffers a whole
 //!   frame in one synchronous call before it awaits the drain;
-//! - a callback that panics is answered with an error response;
-//! - a control request without a request id and a malformed transcript
-//!   mirror frame are ignored instead of stopping the reader.
+//! - a cancel request stops the application callback and sends no response
+//!   for it; a response already being written is finished;
+//! - a callback that panics is answered with an error response, as a
+//!   Python callback that raises is.
 
 mod handlers;
 mod initialize;
@@ -459,7 +464,8 @@ async fn route(
 
 /// The CLI ends a failed run with an error result and then exits with a
 /// non-zero code on purpose. The exit alone says nothing, so it is replaced
-/// by an error carrying what the CLI already reported.
+/// by an error carrying what the CLI already reported, with the process
+/// error as its source, as upstream sets `__cause__`.
 fn exit_error(error: Error, last_error_result: Option<Value>) -> Error {
     match (error, last_error_result) {
         (error, Some(result)) if error.kind() == ErrorKind::Process => {
@@ -467,7 +473,7 @@ fn exit_error(error: Error, last_error_result: Option<Value>) -> Error {
             tracing::debug!(
                 "Replacing the process error (exit code {exit_code:?}) with the error result"
             );
-            Error::result_error(result, exit_code)
+            Error::result_error(result, exit_code).with_source(error)
         }
         (error, _) => {
             tracing::error!("Fatal error in message reader: {error}");

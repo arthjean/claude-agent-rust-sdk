@@ -208,6 +208,11 @@ async fn error_result_then_failing_exit_ends_the_stream_with_a_result_error() {
         Some("error_max_turns")
     );
     assert_eq!(error.exit_code(), Some(1));
+    let cause = std::error::Error::source(error)
+        .and_then(|source| source.downcast_ref::<Error>())
+        .expect("the process error is the source, as upstream's __cause__");
+    assert_eq!(cause.kind(), ErrorKind::Process);
+    assert_eq!(cause.exit_code(), Some(1));
 }
 
 #[tokio::test]

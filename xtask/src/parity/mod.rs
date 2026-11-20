@@ -338,6 +338,14 @@ fn expected_page(locations: &Locations, loaded: &Loaded) -> Result<(String, Stri
 fn page_problems(locations: &Locations, loaded: &Loaded) -> Result<Vec<String>, String> {
     let (document, expected) = expected_page(locations, loaded)?;
     let mut problems = page::unsupported_claims(&document, &locations.page);
+    for other in [
+        locations.root.join("README.md"),
+        locations.migration.clone(),
+    ] {
+        if let Ok(text) = std::fs::read_to_string(&other) {
+            problems.extend(page::unsupported_claims(&text, &other));
+        }
+    }
     if document != expected {
         problems.push(format!(
             "{} is out of date with the ledgers; run `cargo xtask parity-page`",

@@ -1,10 +1,11 @@
 # Migrating from the Python SDK
 
-`claude-agent-rust-sdk` is at parity with version 0.2.186 of the Python Claude Agent
-SDK. Every name the Python package exports has a Rust counterpart, listed in the
-table at the end of this page. This guide covers what changes in shape when you
-move a program from Python to Rust. [`parity.md`](parity.md) lists every
-known difference in behavior, with its reason and the test that shows it.
+`claude-agent-rust-sdk` is a port of version 0.2.186 of the Python Claude Agent
+SDK. Every name the Python package exports is listed in the table at the end of
+this page, with its Rust counterpart or the reason it has none. This guide
+covers what changes in shape when you move a program from Python to Rust.
+[`parity.md`](parity.md) lists each reviewed difference in behavior, with its
+reason and the test that shows it, and the differences not yet classified.
 
 ## The two entry points
 
