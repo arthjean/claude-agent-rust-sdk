@@ -26,6 +26,7 @@
 - A `can_use_tool` allow decision whose permission updates cannot all be sent now sends none of them and logs a warning; the tool call is still allowed.
 - `SdkMcpTool::raw` lists every schema with `"type": "object"`: a schema with no `type`, such as `{}`, gets it, and a schema with another `type` is an `ErrorKind::Config` error. CLI 2.1.329 drops every tool of a server when one tool lists a schema without it, and reports the server connected with no error.
 - An MCP server status written back with `serde` keeps the `"type": "stdio"` key the CLI sent.
+- A session store whose `append` panics no longer stops the session: the panic counts as a failed append, so it is retried and then reported as a `mirror_error` message, and the result is still delivered. A panic anywhere in the task that reads the CLI output now fails the pending control requests at once and ends the message stream with an `ErrorKind::ConnectionClosed` error, where the stream used to end with no result and the requests waited for their timeout.
 
 ## 0.1.0 - 2026-11-18
 

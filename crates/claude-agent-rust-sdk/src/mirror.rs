@@ -5,16 +5,19 @@
 //! a transcript file. The batcher buffers those entries and appends them to
 //! the store: before each result message is delivered, when the output of
 //! the CLI ends, when the session closes, and in the background when more
-//! than 500 entries or 1 MiB are pending. A failed append is retried; a
-//! batch dropped for good is reported as a `mirror_error` system message.
-//! The local transcript is already durable, so mirroring never stops the
-//! session.
+//! than 500 entries or 1 MiB are pending. A failed append, or one whose
+//! store panics, is retried; a batch dropped for good is reported as a
+//! `mirror_error` system message. The local transcript is already durable,
+//! so mirroring never stops the session.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::Duration;
 
+use std::panic::AssertUnwindSafe;
+
+use futures_util::FutureExt;
 use indexmap::IndexMap;
 use serde_json::Value;
 
@@ -184,14 +187,22 @@ impl TranscriptMirrorBatcher {
             if attempt > 0 {
                 tokio::time::sleep(APPEND_BACKOFF[attempt - 1]).await;
             }
-            match tokio::time::timeout(self.send_timeout, self.store.append(key, entries)).await {
-                Ok(Ok(())) => return Ok(()),
-                Ok(Err(error)) => {
+            let append = AssertUnwindSafe(async { self.store.append(key, entries).await });
+            match tokio::time::timeout(self.send_timeout, append.catch_unwind()).await {
+                Ok(Ok(Ok(()))) => return Ok(()),
+                Ok(Ok(Err(error))) => {
                     tracing::debug!(
                         "[TranscriptMirrorBatcher] append attempt {} failed: {error}",
                         attempt + 1
                     );
                     last_error = error.to_string();
+                }
+                Ok(Err(_)) => {
+                    tracing::debug!(
+                        "[TranscriptMirrorBatcher] append attempt {} panicked",
+                        attempt + 1
+                    );
+                    last_error = "Session store append panicked".to_owned();
                 }
                 Err(_) => {
                     return Err(format!(

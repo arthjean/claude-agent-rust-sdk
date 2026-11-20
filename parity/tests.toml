@@ -19,7 +19,6 @@ python-aliasing = "Checks defensive copies of shared mutable objects, which Rust
 python-pickle = "Checks pickling and copying of exception objects."
 python-warnings = "Checks the filter and deduplication mechanics of the Python `warnings` module."
 python-atexit-registry = "Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry."
-python-exception-guard = "Checks that an exception patched into an internal function is swallowed; the Rust function cannot fail by its signature."
 no-sdk-code = "Asserts only on literals defined in the test file and calls no SDK code."
 packaging = "Tests the wheel build, the bundled CLI, the CLI download, or the release scripts; distribution is a non-goal of this PRD."
 example-store-adapters = "Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal)."
@@ -1011,7 +1010,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestTranscriptMirrorBatcher::test_append_retries_then_succeeds_no_error_reported" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::failed_appends_are_retried_after_200_then_800_ms", note = "No reporter is attached, so the absence of a mirror error is not asserted." }
 "TestTranscriptMirrorBatcher::test_append_retries_exhausted_reports_error_once" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::a_batch_dropped_after_three_attempts_is_reported" }
 "TestTranscriptMirrorBatcher::test_close_flushes_pending" = { rust = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::pending_entries_are_flushed_on_disconnect" }
-"TestTranscriptMirrorBatcher::test_drain_never_raises_on_unexpected_do_flush_error" = { excluded = "python-exception-guard" }
+"TestTranscriptMirrorBatcher::test_drain_never_raises_on_unexpected_do_flush_error" = { rust = ["crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::a_store_that_panics_is_reported_and_the_result_is_still_delivered", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::a_panic_in_the_reader_fails_pending_requests_at_once_and_ends_the_stream_with_an_error"], note = "The Rust counterpart of an unexpected exception is a panic: a store that panics is reported like a failing one, and a panic anywhere in the reader still fails pending requests and ends the stream with an error." }
 "TestTranscriptMirrorBatcher::test_unmapped_file_path_is_dropped_silently" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::a_frame_outside_the_projects_directory_makes_no_append_call_and_reports_no_error", "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::frames_outside_the_projects_directory_are_dropped"] }
 "TestTranscriptMirrorBatcher::test_two_eager_flushes_do_not_interleave_or_duplicate" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::flushes_are_serialized_so_appends_keep_their_order", "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::concurrent_background_flushes_keep_the_order_of_a_key"] }
 "TestTranscriptMirrorBatcher::test_flush_awaits_in_flight_eager_flush" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::flushes_are_serialized_so_appends_keep_their_order", "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::concurrent_background_flushes_keep_the_order_of_a_key"] }

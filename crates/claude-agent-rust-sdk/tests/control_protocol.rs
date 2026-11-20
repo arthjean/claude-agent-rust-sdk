@@ -254,6 +254,71 @@ async fn clean_end_of_output_fails_pending_requests_at_once() {
     assert!(started.elapsed() < Duration::from_secs(1));
 }
 
+/// A transport whose output stream panics on a frame of type `explode`,
+/// standing in for a bug in code the reader task runs.
+#[derive(Clone)]
+struct PanickingOutput(claude_agent_rust_sdk::testing::MockTransport);
+
+impl claude_agent_rust_sdk::Transport for PanickingOutput {
+    async fn connect(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.0.connect().await
+    }
+
+    async fn write(&self, data: &str) -> claude_agent_rust_sdk::Result<()> {
+        self.0.write(data).await
+    }
+
+    fn read_messages(&self) -> claude_agent_rust_sdk::MessageStream {
+        Box::pin(self.0.read_messages().map(|item| {
+            assert!(
+                item.as_ref()
+                    .map_or(true, |frame| frame["type"] != "explode"),
+                "a bug in the reader"
+            );
+            item
+        }))
+    }
+
+    async fn close(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.0.close().await
+    }
+
+    fn is_ready(&self) -> bool {
+        self.0.is_ready()
+    }
+
+    async fn end_input(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.0.end_input().await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_panic_in_the_reader_fails_pending_requests_at_once_and_ends_the_stream_with_an_error() {
+    let mock = cli_answering_only_initialize();
+    let client = ClaudeSdkClient::with_transport(default_options(), PanickingOutput(mock.clone()));
+    client.connect().await.unwrap();
+
+    let explode = async {
+        settle().await;
+        mock.push_frame(json!({"type": "explode"}));
+    };
+    let started = tokio::time::Instant::now();
+    let (interrupt, ()) = tokio::join!(client.interrupt(), explode);
+    let error = interrupt.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::ConnectionClosed, "{error}");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "no wait for the timeout"
+    );
+
+    let mut messages = client.receive_messages();
+    let streamed = messages.next().await.unwrap().unwrap_err();
+    assert_eq!(streamed.kind(), ErrorKind::ConnectionClosed);
+    assert!(messages.next().await.is_none());
+    let later = client.set_model(None).await.unwrap_err();
+    assert_eq!(later.kind(), ErrorKind::ConnectionClosed);
+}
+
 #[tokio::test(start_paused = true)]
 async fn unsupported_control_request_gets_an_error_and_the_session_continues() {
     let transport = cli();

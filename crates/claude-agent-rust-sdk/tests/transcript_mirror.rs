@@ -198,6 +198,50 @@ async fn a_dropped_batch_is_delivered_as_a_mirror_error_message() {
     assert!(matches!(messages.last(), Some(Message::Result(_))));
 }
 
+struct PanickingStore;
+
+impl SessionStore for PanickingStore {
+    async fn append(
+        &self,
+        _key: &SessionKey,
+        _entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        panic!("the adapter has a bug");
+    }
+
+    async fn load(
+        &self,
+        _key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        Ok(None)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_store_that_panics_is_reported_and_the_result_is_still_delivered() {
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            vec![mirror_frame("s7", &["p1"]), result("done")]
+        } else {
+            Vec::new()
+        }
+    });
+    let messages: Vec<Message> =
+        query_with_transport("hello", options(PanickingStore), transport.clone())
+            .map(Result::unwrap)
+            .collect()
+            .await;
+    let mirror_error = messages
+        .iter()
+        .find_map(|message| match message {
+            Message::System(SystemMessage::MirrorError(error)) => Some(error.clone()),
+            _ => None,
+        })
+        .expect("a mirror_error message");
+    assert_eq!(mirror_error.error, "Session store append panicked");
+    assert!(matches!(messages.last(), Some(Message::Result(_))));
+}
+
 #[tokio::test]
 async fn frames_outside_the_projects_directory_are_dropped() {
     let store = InMemorySessionStore::new();

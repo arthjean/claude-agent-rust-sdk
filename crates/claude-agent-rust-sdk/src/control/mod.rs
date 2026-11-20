@@ -320,16 +320,44 @@ impl Shared {
     }
 }
 
-struct ReaderFinish(Arc<Shared>);
+/// Ends the run when the reader task stops, however it stops. When it
+/// stops without recording its end, which only a panic in code it runs can
+/// cause, the pending requests fail at once and the message stream ends
+/// with an error instead of just ending.
+struct ReaderFinish {
+    shared: Arc<Shared>,
+    outbox: mpsc::Sender<Result<Value>>,
+}
 
 impl Drop for ReaderFinish {
     fn drop(&mut self) {
-        self.0.run.finish();
+        let lost = {
+            let mut state = self.shared.state();
+            if state.reader_end.is_some() || state.closed {
+                None
+            } else {
+                let error = reader_lost();
+                state.fail_pending(reader_lost);
+                state.reader_end = Some(ReaderEnd::Failed(error.clone()));
+                Some(error)
+            }
+        };
+        if let Some(error) = lost {
+            let _ = self.outbox.try_send(Err(error));
+        }
+        self.shared.run.finish();
     }
 }
 
+fn reader_lost() -> Error {
+    Error::connection_closed("The session stopped reading the CLI output because of a panic")
+}
+
 async fn read_messages(shared: Arc<Shared>, outbox: mpsc::Sender<Result<Value>>) {
-    let _finish = ReaderFinish(Arc::clone(&shared));
+    let _finish = ReaderFinish {
+        shared: Arc::clone(&shared),
+        outbox: outbox.clone(),
+    };
     let mut frames = shared.transport.read_messages();
     let mut last_error_result: Option<Value> = None;
     let mut failure = None;

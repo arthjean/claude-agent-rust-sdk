@@ -33,9 +33,9 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 | State | Upstream exports | Upstream tests |
 |---|---|---|
-| Implemented | 147 (92.5%) | 941 (79.9%) |
+| Implemented | 147 (92.5%) | 942 (80.0%) |
 | Adapted | 12 (7.5%) | 0 (0.0%) |
-| Not ported | 0 (0.0%) | 237 (20.1%) |
+| Not ported | 0 (0.0%) | 236 (20.0%) |
 | Pending | 0 (0.0%) | 0 (0.0%) |
 | Total | 159 | 1178 |
 
@@ -125,7 +125,7 @@ Upstream items with no Rust counterpart, each with the reason of its ledger. The
 
 Every upstream export has a Rust counterpart.
 
-237 upstream tests are not ported, by reason:
+236 upstream tests are not ported, by reason:
 
 | Reason | Tests | Why |
 |---|---|---|
@@ -135,7 +135,6 @@ Every upstream export has a Rust counterpart.
 | `packaging` | 78 | Tests the wheel build, the bundled CLI, the CLI download, or the release scripts; distribution is a non-goal of this PRD. |
 | `python-aliasing` | 3 | Checks defensive copies of shared mutable objects, which Rust ownership rules out. |
 | `python-atexit-registry` | 2 | Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry. |
-| `python-exception-guard` | 1 | Checks that an exception patched into an internal function is swallowed; the Rust function cannot fail by its signature. |
 | `python-mcp-library` | 5 | Tests the bridge to the Python `mcp` package; the native dispatcher and the `rmcp` bridge have their own tests. |
 | `python-pickle` | 1 | Checks pickling and copying of exception objects. |
 | `python-runtime` | 25 | Exercises anyio or trio backends, the asyncio event loop, cancel scopes, task groups, thread affinity, or garbage collection, which have no tokio counterpart. |
