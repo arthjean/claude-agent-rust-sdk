@@ -1,0 +1,151 @@
+{
+  "name": "permission-allow-suggestions",
+  "description": "A permission callback that allows the call and sends back, as updated_permissions, every suggestion it received: rules with and without ruleContent, a mode, directories, with and without a destination. The suggestions are parsed into the callback's context and written back in the shape the CLI accepts (upstream #1502).",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "perm-1",
+          "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "input": {
+              "command": "npm test"
+            },
+            "permission_suggestions": [
+              {
+                "type": "addRules",
+                "rules": [
+                  {
+                    "toolName": "Bash",
+                    "ruleContent": "npm test:*"
+                  }
+                ],
+                "behavior": "allow",
+                "destination": "localSettings"
+              },
+              {
+                "type": "addRules",
+                "rules": [
+                  {
+                    "toolName": "WebFetch"
+                  }
+                ],
+                "behavior": "allow"
+              },
+              {
+                "type": "replaceRules",
+                "rules": [
+                  {
+                    "toolName": "Read",
+                    "ruleContent": "//tmp/**"
+                  }
+                ],
+                "behavior": "deny",
+                "destination": "projectSettings"
+              },
+              {
+                "type": "removeRules",
+                "rules": [
+                  {
+                    "toolName": "Bash",
+                    "ruleContent": "rm:*"
+                  }
+                ],
+                "behavior": "ask",
+                "destination": "userSettings"
+              },
+              {
+                "type": "setMode",
+                "mode": "acceptEdits",
+                "destination": "session"
+              },
+              {
+                "type": "addDirectories",
+                "directories": [
+                  "/work/a",
+                  "/work/b"
+                ]
+              },
+              {
+                "type": "removeDirectories",
+                "directories": [
+                  "/work/c"
+                ],
+                "destination": "session"
+              }
+            ],
+            "tool_use_id": "toolu_1",
+            "agent_id": "agent-7",
+            "blocked_path": "/work/a/secret.txt",
+            "decision_reason": "A hook asked for confirmation.",
+            "title": "Claude wants to run npm test",
+            "display_name": "Run command",
+            "description": "Runs the test suite."
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "perm-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "can_use_tool": {
+      "behavior": "allow",
+      "updated_permissions": "suggestions"
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

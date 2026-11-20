@@ -1,0 +1,99 @@
+{
+  "name": "permission-allow-unsendable-suggestion",
+  "description": "A permission callback that sends back the suggestions it received when one of them lacks a field its type needs: the call is allowed and no update is sent, since the updates go all together or not at all.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "control_request",
+          "request_id": "perm-1",
+          "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Bash",
+            "input": {
+              "command": "npm test"
+            },
+            "permission_suggestions": [
+              {
+                "type": "addRules",
+                "rules": [
+                  {
+                    "toolName": "Bash",
+                    "ruleContent": "npm test:*"
+                  }
+                ],
+                "behavior": "allow",
+                "destination": "session"
+              },
+              {
+                "type": "setMode",
+                "destination": "session"
+              }
+            ],
+            "tool_use_id": "toolu_1"
+          }
+        }
+      },
+      {
+        "expect": {
+          "type": "control_response",
+          "response": {
+            "request_id": "perm-1"
+          }
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "can_use_tool": {
+      "behavior": "allow",
+      "updated_permissions": "suggestions"
+    }
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "disconnect": true
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "name": "transcript-mirror",
+  "description": "With a session store, the CLI mirrors the transcript in transcript_mirror frames: each SDK keeps the frames out of the message stream and appends their entries to the store under the key derived from the file path (the projects directory comes from CLAUDE_CONFIG_DIR of the env option), for the main transcript and a subagent transcript, before the result reaches the application. A frame for a file outside the projects directory is dropped.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/config/projects/-work-app/sess-1.jsonl",
+          "entries": [
+            {
+              "type": "user",
+              "uuid": "u-1",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z",
+              "message": {
+                "role": "user",
+                "content": "Go"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/config/projects/-work-app/sess-1.jsonl",
+          "entries": [
+            {
+              "type": "assistant",
+              "uuid": "a-1",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z",
+              "message": {
+                "role": "assistant",
+                "content": "Working."
+              }
+            }
+          ]
+        }
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/config/projects/-work-app/sess-1/subagents/agent-9.jsonl",
+          "entries": [
+            {
+              "type": "user",
+              "uuid": "s-1",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z",
+              "isSidechain": true
+            }
+          ]
+        }
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/elsewhere/sess-1.jsonl",
+          "entries": [
+            {
+              "type": "user",
+              "uuid": "x-1",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z"
+            }
+          ]
+        }
+      },
+      {
+        "emit": {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "model": "m",
+            "content": [
+              {
+                "type": "text",
+                "text": "Working."
+              }
+            ]
+          },
+          "session_id": "sess-1"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "sess-1",
+          "result": "done"
+        }
+      }
+    ]
+  },
+  "options": {
+    "session_store": "memory",
+    "env": {
+      "CLAUDE_CONFIG_DIR": "${WORK}/config"
+    }
+  },
+  "prompt": "Go"
+}
