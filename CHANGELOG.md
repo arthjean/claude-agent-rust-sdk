@@ -58,6 +58,12 @@
 - A typed tool whose arguments are an enum lists every field of every variant in one object schema instead of an object with no property, and a float without a fractional part is read as an integer where the schema asks for one.
 - In-process tools are listed with their description even when empty and with `annotations: {}` when annotations hold no hint; `tools/call` arguments that are not an object and an incomplete `initialize` are JSON-RPC `-32602` errors; `#[tool]` keeps the relative indentation of its doc comment and takes `crate = "..."`.
 - A user message no longer fails to parse on a `thinking`, `server_tool_use`, or `advisor_tool_result` block; any block other than text, tool use, and tool result is kept as `ContentBlock::Unknown`.
+- A `SubprocessTransport` connects again after `close`, starting a new CLI process, so `ClaudeSdkClient::with_transport` survives a second `connect`.
+- An empty `cwd` is treated as unset: the CLI runs in the current directory instead of failing with "Working directory does not exist".
+- `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` is read like Python's `int()`, so `120_000` gives two minutes; a value `int()` rejects keeps the 60 s default with a warning.
+- Permission callbacks, hooks, in-process MCP tools, session stores, and the stderr callback run in the `tracing` span and, with `otel`, the OpenTelemetry context current when the session connected. Without a global propagator, the `otel` feature hands the CLI the W3C trace context and baggage, following `OTEL_PROPAGATORS`, as the Python SDK does.
+- `connect`, a resume from a session store, and `import_session_to_store` no longer block the async runtime: file access, the macOS Keychain read, and the user lookup run on the blocking pool, so a `current_thread` runtime keeps its other tasks and timers going.
+- Control responses, hooks, and permission requests keep flowing while up to 16 MiB of messages wait unread, so `interrupt()` called from the loop that reads the messages no longer times out after 60 s; past that budget the session stops reading the CLI output until the application catches up.
 
 ## 0.1.0 - 2026-11-18
 

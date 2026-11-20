@@ -278,6 +278,7 @@ summary = "Control traffic while the application is not reading its messages"
 python = "The reader stops at 100 unread messages, so an `interrupt` sent from the loop that reads them times out after 60 s, and hooks and permission requests wait unanswered."
 rust = "The reader keeps routing control responses and requests while up to 16 MiB of messages wait for the application, beyond the queue of 100, and stops reading only past that budget. A `result` also no longer stops the routing while the transcript mirror flushes; the result itself still waits for the flush."
 ref = "src/claude_agent_sdk/_internal/query.py:259-261"
+anchor = '](max_buffer_size=100)'
 category = "rust-more-robust"
 reason = "An application often waits on that very control traffic before it reads again; the budget keeps memory bounded when it never reads."
 test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::interrupt_is_answered_while_unread_messages_wait_for_the_application"
@@ -287,6 +288,7 @@ summary = "A propagator name in `OTEL_PROPAGATORS` other than `tracecontext`, `b
 python = "The propagator registered under that entry point name is loaded, and an unknown name raises at import."
 rust = "Without a global propagator only `tracecontext` and `baggage` are written, and other names are skipped with a debug log; an application that needs another format installs it with `opentelemetry::global::set_text_map_propagator`, which then takes over."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:785-806"
+anchor = 'propagate.inject(carrier)'
 category = "deliberate"
 reason = "Rust has no entry point registry, and a library depends on the OpenTelemetry API alone, which ships no propagator."
 test = "crates/claude-agent-rust-sdk/tests/otel.rs::otel_propagators_chooses_what_is_written_without_a_global_propagator"
@@ -296,6 +298,7 @@ summary = "A `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that is not an integer"
 python = "`int()` raises `ValueError`, so the connect fails."
 rust = "The initialize timeout stays at 60 s and a warning is logged. A value `int()` accepts, such as `120_000`, is read the same way on both sides."
 ref = "src/claude_agent_sdk/client.py:178-181"
+anchor = 'initialize_timeout_ms = int('
 category = "rust-more-robust"
 reason = "The variable only lengthens a timeout; a typo in it should not stop the session."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::initialize::tests::initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable"
