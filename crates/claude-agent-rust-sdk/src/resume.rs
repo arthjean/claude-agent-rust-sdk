@@ -490,9 +490,10 @@ fn write_credentials(path: &Path, content: &[u8]) -> std::io::Result<()> {
 /// The OAuth credentials the CLI keeps in the macOS Keychain by default.
 #[cfg(target_os = "macos")]
 fn read_keychain_credentials() -> Option<String> {
-    let user = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "claude-code-user".to_owned());
+    let user = keychain_account(
+        |name| std::env::var(name).ok(),
+        crate::process::sys::current_user_name,
+    );
     let mut command = std::process::Command::new("security");
     command.args([
         "find-generic-password",
@@ -510,6 +511,25 @@ fn read_keychain_credentials() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn read_keychain_credentials() -> Option<String> {
     None
+}
+
+/// The Keychain account the CLI stores its credentials under: the user
+/// this process runs as, found as upstream finds it (`USER`, then what
+/// Python's `getpass.getuser` reads: `LOGNAME`, `USER`, `LNAME`,
+/// `USERNAME`, and the user database), so a daemon started by `launchd`
+/// without those variables still finds its credentials. Empty variables
+/// are skipped.
+#[cfg(any(target_os = "macos", test))]
+fn keychain_account(
+    variable: impl Fn(&str) -> Option<String>,
+    user_database: impl FnOnce() -> Option<String>,
+) -> String {
+    ["USER", "LOGNAME", "LNAME", "USERNAME"]
+        .into_iter()
+        .find_map(|name| variable(name).filter(|value| !value.is_empty()))
+        .or_else(user_database)
+        .filter(|user| !user.is_empty())
+        .unwrap_or_else(|| "claude-code-user".to_owned())
 }
 
 /// Whether a subpath from a store may become a path under the session
@@ -730,6 +750,66 @@ mod tests {
             "the resume was materialized and the CLI looked up: {first:?}"
         );
         assert!(arm.attempts().is_empty());
+    }
+
+    fn variables(set: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let set: Vec<(String, String)> = set
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect();
+        move |name| {
+            set.iter()
+                .find(|(set_name, _)| set_name == name)
+                .map(|(_, value)| value.clone())
+        }
+    }
+
+    #[test]
+    fn without_user_variables_the_keychain_account_comes_from_the_user_database() {
+        assert_eq!(
+            keychain_account(variables(&[]), || Some("daemon-user".to_owned())),
+            "daemon-user"
+        );
+        assert_eq!(
+            keychain_account(variables(&[("USER", ""), ("LOGNAME", "")]), || Some(
+                "daemon-user".to_owned()
+            )),
+            "daemon-user",
+            "empty variables are skipped"
+        );
+        assert_eq!(
+            keychain_account(variables(&[]), || None),
+            "claude-code-user"
+        );
+        #[cfg(unix)]
+        {
+            let name = crate::process::sys::current_user_name().unwrap();
+            assert_eq!(
+                keychain_account(variables(&[]), crate::process::sys::current_user_name),
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn user_variables_name_the_keychain_account_in_the_order_upstream_reads_them() {
+        let database = || Some("database".to_owned());
+        assert_eq!(
+            keychain_account(variables(&[("USER", "u"), ("LOGNAME", "l")]), database),
+            "u"
+        );
+        assert_eq!(
+            keychain_account(variables(&[("LOGNAME", "l"), ("USERNAME", "n")]), database),
+            "l"
+        );
+        assert_eq!(
+            keychain_account(variables(&[("LNAME", "ln"), ("USERNAME", "n")]), database),
+            "ln"
+        );
+        assert_eq!(
+            keychain_account(variables(&[("USERNAME", "n")]), database),
+            "n"
+        );
     }
 
     #[test]

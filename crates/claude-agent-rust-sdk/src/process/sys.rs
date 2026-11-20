@@ -1,12 +1,16 @@
-//! Operating-system calls that keep a child process tree under control.
+//! Operating-system calls that keep a child process tree under control,
+//! and the user database lookups they and the resume need.
 //!
 //! This is the only module of the crate allowed to contain `unsafe` code.
 //! Every `unsafe` block is a direct call to an operating-system function
 //! whose arguments are plain integers, handles, or buffers owned by this
-//! module.
+//! module, or the read of a user database entry that such a call filled
+//! in, while its buffer is alive.
 
 #![allow(unsafe_code)]
 
+#[cfg(all(unix, any(target_os = "macos", test)))]
+pub(crate) use imp::current_user_name;
 pub(crate) use imp::{ProcessTree, prepare, run_as_user};
 
 #[cfg(unix)]
@@ -35,26 +39,67 @@ mod imp {
         Ok(())
     }
 
-    /// Calls `getpwnam_r` with a name, an entry, and a buffer that all live
-    /// until it returns. The entry is read only when the system reports a
-    /// match, which is when it has been filled in.
+    /// Looks a name up in the user database with `getpwnam_r`; the name
+    /// outlives the call.
     fn user_ids(user: &str) -> io::Result<(libc::uid_t, libc::gid_t)> {
         let unknown =
             || io::Error::new(io::ErrorKind::InvalidInput, format!("unknown user: {user}"));
         let name = CString::new(user).map_err(|_| unknown())?;
+        let ids = lookup_user(
+            |entry, buffer, length, found| unsafe {
+                libc::getpwnam_r(name.as_ptr(), entry, buffer, length, found)
+            },
+            |entry| (entry.pw_uid, entry.pw_gid),
+        )?;
+        ids.ok_or_else(unknown)
+    }
+
+    /// The login name of the user this process runs as, from the user
+    /// database (`getpwuid_r` on `getuid`), as Python's `getpass.getuser`
+    /// finds it when no variable names the user. `None` when the database
+    /// has no entry for the user id or the name is not UTF-8.
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn current_user_name() -> Option<String> {
+        let user_id = unsafe { libc::getuid() };
+        let name = lookup_user(
+            |entry, buffer, length, found| unsafe {
+                libc::getpwuid_r(user_id, entry, buffer, length, found)
+            },
+            |entry| {
+                if entry.pw_name.is_null() {
+                    return None;
+                }
+                let name = unsafe { std::ffi::CStr::from_ptr(entry.pw_name) };
+                name.to_str().ok().map(str::to_owned)
+            },
+        );
+        name.ok().flatten().flatten()
+    }
+
+    /// Runs one `getpw*_r` call with an entry and a buffer that both live
+    /// until `read` returns, growing the buffer on `ERANGE`. The entry is
+    /// read only when the system reports a match, which is when it has been
+    /// filled in, and its strings point into the buffer, so `read` copies
+    /// what it keeps. `Ok(None)` when the database has no match.
+    fn lookup_user<T>(
+        call: impl Fn(
+            *mut libc::passwd,
+            *mut libc::c_char,
+            libc::size_t,
+            *mut *mut libc::passwd,
+        ) -> libc::c_int,
+        read: impl FnOnce(&libc::passwd) -> T,
+    ) -> io::Result<Option<T>> {
         let mut buffer: Vec<libc::c_char> = vec![0; USER_LOOKUP_BUFFER_START];
         loop {
             let mut entry = MaybeUninit::<libc::passwd>::uninit();
             let mut found: *mut libc::passwd = std::ptr::null_mut();
-            let status = unsafe {
-                libc::getpwnam_r(
-                    name.as_ptr(),
-                    entry.as_mut_ptr(),
-                    buffer.as_mut_ptr(),
-                    buffer.len(),
-                    &raw mut found,
-                )
-            };
+            let status = call(
+                entry.as_mut_ptr(),
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &raw mut found,
+            );
             if status == libc::ERANGE && buffer.len() < USER_LOOKUP_BUFFER_LIMIT {
                 buffer.resize(buffer.len() * 2, 0);
                 continue;
@@ -63,10 +108,23 @@ mod imp {
                 return Err(io::Error::from_raw_os_error(status));
             }
             if found.is_null() {
-                return Err(unknown());
+                return Ok(None);
             }
             let entry = unsafe { entry.assume_init() };
-            return Ok((entry.pw_uid, entry.pw_gid));
+            return Ok(Some(read(&entry)));
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_current_user_name_maps_back_to_the_current_user_id() {
+            let name = current_user_name().expect("the user database has the test user");
+            assert!(!name.is_empty());
+            let (user_id, _) = user_ids(&name).unwrap();
+            assert_eq!(user_id, unsafe { libc::getuid() });
         }
     }
 
