@@ -3,8 +3,21 @@
 //!
 //! The CLI still writes transcripts to local disk; a [`SessionStore`]
 //! receives a secondary copy. Only [`SessionStore::append`] and
-//! [`SessionStore::load`] are required. A store declares the optional
-//! methods it implements through [`SessionStore::capabilities`].
+//! [`SessionStore::load`] are required. An optional method a store leaves
+//! out keeps its default implementation, which returns
+//! [`UnsupportedStoreOperation`]: the crate calls an optional method and
+//! takes that error as absence, as upstream takes an inherited method that
+//! raises `NotImplementedError`. [`SessionStore::capabilities`] is a hint
+//! read only where no call can be made, when options are built.
+//!
+//! The store contract differs from upstream in one deliberate way:
+//!
+//! - Python checks at option validation whether the store overrides
+//!   `list_sessions`, so `continue_conversation` with a store that does not
+//!   fails before the child starts. Rust cannot see an override, so that
+//!   check reads [`SessionStoreCapabilities::list_sessions`] from
+//!   [`SessionStore::capabilities`]: a store meant for
+//!   `continue_conversation` declares it.
 
 use std::fmt;
 use std::future::Future;
@@ -188,7 +201,12 @@ wire_enum! {
     }
 }
 
-/// Optional methods a [`SessionStore`] implements.
+/// Optional methods a [`SessionStore`] declares it implements.
+///
+/// The declaration is a hint: an optional method is always called, and its
+/// [`UnsupportedStoreOperation`] error is what marks it absent. Only the
+/// validation of `continue_conversation`, which runs before any call can
+/// be made, reads [`list_sessions`](Self::list_sessions).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub struct SessionStoreCapabilities {
@@ -267,6 +285,11 @@ fn unsupported<T>(operation: &'static str) -> Result<T, SessionStoreError> {
     Err(Box::new(UnsupportedStoreOperation { operation }))
 }
 
+/// Whether a store error says the optional method is not implemented.
+pub(crate) fn is_unsupported(error: &SessionStoreError) -> bool {
+    error.downcast_ref::<UnsupportedStoreOperation>().is_some()
+}
+
 /// Adapter that mirrors session transcripts to external storage.
 ///
 /// Retention is the adapter's responsibility: this crate deletes from a
@@ -290,7 +313,13 @@ pub trait SessionStore: Send + Sync + 'static {
         key: &SessionKey,
     ) -> impl Future<Output = Result<Option<Vec<SessionStoreEntry>>, SessionStoreError>> + Send;
 
-    /// Optional methods this store implements. The default declares none.
+    /// Optional methods this store declares. The default declares none.
+    ///
+    /// A hint only: the crate calls an optional method whatever the
+    /// declaration says, and takes [`UnsupportedStoreOperation`] as its
+    /// absence. Declare [`list_sessions`](SessionStoreCapabilities::list_sessions)
+    /// for a store used with `continue_conversation`, which is validated
+    /// before the store can be called.
     fn capabilities(&self) -> SessionStoreCapabilities {
         SessionStoreCapabilities::none()
     }

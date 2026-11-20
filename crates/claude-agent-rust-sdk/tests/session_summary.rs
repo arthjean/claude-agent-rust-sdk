@@ -131,6 +131,11 @@ impl SessionStore for ScriptedStore {
         &self,
         project_key: &str,
     ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        if !self.capabilities.list_sessions {
+            return Err(Box::new(UnsupportedStoreOperation {
+                operation: "list_sessions",
+            }));
+        }
         let mut listing = self.inner.list_sessions(project_key).await?;
         listing.retain(|listed| !self.unlisted.contains(&listed.session_id));
         Ok(listing)
@@ -140,6 +145,11 @@ impl SessionStore for ScriptedStore {
         &self,
         project_key: &str,
     ) -> Result<Vec<SessionSummaryEntry>, SessionStoreError> {
+        if !self.capabilities.list_session_summaries {
+            return Err(Box::new(UnsupportedStoreOperation {
+                operation: "list_session_summaries",
+            }));
+        }
         match &self.summaries {
             Summaries::Stored => self.inner.list_session_summaries(project_key).await,
             Summaries::Unsupported => Err(Box::new(UnsupportedStoreOperation {

@@ -22,7 +22,7 @@ use super::{SdkSessionInfo, SessionMessage, validate_uuid};
 use crate::error::{Error, Result};
 use crate::session_store::{
     SessionKey, SessionListSubkeysKey, SessionStore, SessionStoreEntry, SessionStoreError,
-    SessionStoreListEntry, UnsupportedStoreOperation,
+    SessionStoreListEntry, UnsupportedStoreOperation, is_unsupported,
 };
 
 /// Most store loads a listing runs at once, so a large project does not
@@ -44,10 +44,6 @@ fn store_error(context: &'static str) -> impl FnOnce(SessionStoreError) -> Error
         Ok(unsupported) => Error::from(*unsupported),
         Err(error) => Error::session_store(context, error),
     }
-}
-
-fn is_unsupported(error: &SessionStoreError) -> bool {
-    error.downcast_ref::<UnsupportedStoreOperation>().is_some()
 }
 
 fn to_values(entries: Vec<SessionStoreEntry>) -> Vec<Value> {
@@ -163,86 +159,84 @@ pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
 ) -> Result<Vec<SdkSessionInfo>> {
     let project_path = project_path_of(directory);
     let project_key = sanitize_path(&project_path);
-    let capabilities = store.capabilities();
-
-    if capabilities.list_session_summaries {
-        match store.list_session_summaries(&project_key).await {
-            Err(error) if is_unsupported(&error) => {}
-            Err(error) => {
-                return Err(Error::session_store(
-                    "Session store list_session_summaries failed",
-                    error,
-                ));
-            }
-            Ok(summaries) => {
-                let listing = if capabilities.list_sessions {
-                    store
-                        .list_sessions(&project_key)
-                        .await
-                        .map_err(store_error("Session store list_sessions failed"))?
-                } else {
+    match store.list_session_summaries(&project_key).await {
+        Err(error) if is_unsupported(&error) => {}
+        Err(error) => {
+            return Err(Error::session_store(
+                "Session store list_session_summaries failed",
+                error,
+            ));
+        }
+        Ok(summaries) => {
+            let listing = match store.list_sessions(&project_key).await {
+                Ok(listing) => Some(listing),
+                Err(error) if is_unsupported(&error) => {
                     tracing::debug!(
                         "list_session_summaries without list_sessions: sessions without a summary are omitted"
                     );
-                    Vec::new()
-                };
-                let known: HashMap<&str, i64> = listing
+                    None
+                }
+                Err(error) => {
+                    return Err(Error::session_store(
+                        "Session store list_sessions failed",
+                        error,
+                    ));
+                }
+            };
+            let known: Option<HashMap<&str, i64>> = listing.as_ref().map(|listing| {
+                listing
                     .iter()
                     .map(|entry| (entry.session_id.as_str(), entry.mtime))
-                    .collect();
-                let mut slots = Vec::new();
-                let mut fresh: HashSet<String> = HashSet::new();
-                for summary in &summaries {
-                    if capabilities.list_sessions {
-                        match known.get(summary.session_id.as_str()) {
-                            None => continue,
-                            Some(&mtime) if summary.mtime < mtime => continue,
-                            Some(_) => {}
-                        }
-                    }
-                    fresh.insert(summary.session_id.clone());
-                    if let Some(info) = summary_entry_to_sdk_info(summary, Some(&project_path)) {
-                        slots.push(Slot::Ready(summary.mtime, info));
+                    .collect()
+            });
+            let mut slots = Vec::new();
+            let mut fresh: HashSet<String> = HashSet::new();
+            for summary in &summaries {
+                if let Some(known) = &known {
+                    match known.get(summary.session_id.as_str()) {
+                        None => continue,
+                        Some(&mtime) if summary.mtime < mtime => continue,
+                        Some(_) => {}
                     }
                 }
-                slots.extend(
-                    listing
-                        .iter()
-                        .filter(|entry| !fresh.contains(&entry.session_id))
-                        .cloned()
-                        .map(Slot::Pending),
-                );
-                slots.sort_by_key(|slot| std::cmp::Reverse(slot.mtime()));
-                let page = super::chain::paginate(slots, limit, offset);
-                let pending: Vec<SessionStoreListEntry> = page
-                    .iter()
-                    .filter_map(|slot| match slot {
-                        Slot::Pending(entry) => Some(entry.clone()),
-                        Slot::Ready(..) => None,
-                    })
-                    .collect();
-                let mut filled: HashMap<String, SdkSessionInfo> =
-                    derive_infos_via_load(store, &pending, &project_key, &project_path)
-                        .await
-                        .into_iter()
-                        .map(|info| (info.session_id.clone(), info))
-                        .collect();
-                return Ok(page
-                    .into_iter()
-                    .filter_map(|slot| match slot {
-                        Slot::Ready(_, info) => Some(info),
-                        Slot::Pending(entry) => filled.remove(&entry.session_id),
-                    })
-                    .collect());
+                fresh.insert(summary.session_id.clone());
+                if let Some(info) = summary_entry_to_sdk_info(summary, Some(&project_path)) {
+                    slots.push(Slot::Ready(summary.mtime, info));
+                }
             }
+            slots.extend(
+                listing
+                    .iter()
+                    .flatten()
+                    .filter(|entry| !fresh.contains(&entry.session_id))
+                    .cloned()
+                    .map(Slot::Pending),
+            );
+            slots.sort_by_key(|slot| std::cmp::Reverse(slot.mtime()));
+            let page = super::chain::paginate(slots, limit, offset);
+            let pending: Vec<SessionStoreListEntry> = page
+                .iter()
+                .filter_map(|slot| match slot {
+                    Slot::Pending(entry) => Some(entry.clone()),
+                    Slot::Ready(..) => None,
+                })
+                .collect();
+            let mut filled: HashMap<String, SdkSessionInfo> =
+                derive_infos_via_load(store, &pending, &project_key, &project_path)
+                    .await
+                    .into_iter()
+                    .map(|info| (info.session_id.clone(), info))
+                    .collect();
+            return Ok(page
+                .into_iter()
+                .filter_map(|slot| match slot {
+                    Slot::Ready(_, info) => Some(info),
+                    Slot::Pending(entry) => filled.remove(&entry.session_id),
+                })
+                .collect());
         }
     }
 
-    if !capabilities.list_sessions {
-        return Err(Error::from(UnsupportedStoreOperation {
-            operation: "list_sessions",
-        }));
-    }
     let listing = store
         .list_sessions(&project_key)
         .await
@@ -349,11 +343,6 @@ pub async fn list_subagents_from_store<S: SessionStore + ?Sized>(
     let Some(session_id) = validate_uuid(session_id) else {
         return Ok(Vec::new());
     };
-    if !store.capabilities().list_subkeys {
-        return Err(Error::from(UnsupportedStoreOperation {
-            operation: "list_subkeys",
-        }));
-    }
     let key = SessionListSubkeysKey::new(sanitize_path(&project_path_of(directory)), session_id);
     let subkeys = store
         .list_subkeys(&key)
@@ -395,18 +384,27 @@ pub async fn get_subagent_messages_from_store<S: SessionStore + ?Sized>(
     }
     let project_key = sanitize_path(&project_path_of(directory));
     let mut subpath = format!("subagents/agent-{agent_id}");
-    if store.capabilities().list_subkeys {
-        let subkeys = store
-            .list_subkeys(&SessionListSubkeysKey::new(project_key.clone(), session_id))
-            .await
-            .map_err(store_error("Session store list_subkeys failed"))?;
-        let target = format!("agent-{agent_id}");
-        let Some(found) = subkeys.into_iter().find(|subkey| {
-            subkey.starts_with("subagents/") && subkey.rsplit('/').next() == Some(target.as_str())
-        }) else {
-            return Ok(Vec::new());
-        };
-        subpath = found;
+    match store
+        .list_subkeys(&SessionListSubkeysKey::new(project_key.clone(), session_id))
+        .await
+    {
+        Err(error) if is_unsupported(&error) => {}
+        Err(error) => {
+            return Err(Error::session_store(
+                "Session store list_subkeys failed",
+                error,
+            ));
+        }
+        Ok(subkeys) => {
+            let target = format!("agent-{agent_id}");
+            let Some(found) = subkeys.into_iter().find(|subkey| {
+                subkey.starts_with("subagents/")
+                    && subkey.rsplit('/').next() == Some(target.as_str())
+            }) else {
+                return Ok(Vec::new());
+            };
+            subpath = found;
+        }
     }
     let key = SessionKey::new(project_key, session_id).with_subpath(subpath);
     let entries = store

@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::session_store::{
     SessionKey, SessionListSubkeysKey, SessionStore, SessionStoreCapabilities, SessionStoreEntry,
-    SessionStoreError,
+    SessionStoreError, is_unsupported,
 };
 use crate::sessions::fold_session_summary;
 
@@ -86,14 +86,33 @@ fn subkeys_of(base: &SessionKey) -> SessionListSubkeysKey {
 
 const MTIME_FLOOR: i64 = 1_000_000_000_000;
 
+/// The optional methods an empty store implements: each is called once,
+/// and only [`UnsupportedStoreOperation`](crate::UnsupportedStoreOperation)
+/// marks it absent.
+async fn implemented_optional_methods(store: &impl SessionStore) -> SessionStoreCapabilities {
+    fn present<T>(result: &Result<T, SessionStoreError>) -> bool {
+        !matches!(result, Err(error) if is_unsupported(error))
+    }
+    let probe = key("probe-project", "probe-session");
+    SessionStoreCapabilities {
+        list_sessions: present(&store.list_sessions(&probe.project_key).await),
+        list_session_summaries: present(&store.list_session_summaries(&probe.project_key).await),
+        delete: present(&store.delete(&probe).await),
+        list_subkeys: present(&store.list_subkeys(&subkeys_of(&probe)).await),
+    }
+}
+
 /// Checks the 14 behavioral contracts of
 /// `src/claude_agent_sdk/testing/session_store_conformance.py` of the
 /// upstream Python SDK against a store.
 ///
 /// `make_store` is called once per contract, so each starts from an empty
-/// store. The contracts of an optional method are skipped when the store
-/// does not declare it in [`SessionStore::capabilities`]. Returns the
-/// first contract broken.
+/// store. The contracts of an optional method run when the store declares
+/// it in [`SessionStore::capabilities`] or implements it, that is when a
+/// call on an empty store does not return the
+/// [`UnsupportedStoreOperation`](crate::UnsupportedStoreOperation) of the
+/// default implementation; a declared method left unimplemented breaks its
+/// first contract. Returns the first contract broken.
 ///
 /// ```
 /// use claude_agent_rust_sdk::InMemorySessionStore;
@@ -136,11 +155,16 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = S>,
 {
-    let declared = make_store().await.capabilities();
-    let has_list_sessions = declared.list_sessions && !skip_optional.list_sessions;
-    let has_summaries = declared.list_session_summaries && !skip_optional.list_session_summaries;
-    let has_delete = declared.delete && !skip_optional.delete;
-    let has_subkeys = declared.list_subkeys && !skip_optional.list_subkeys;
+    let probe = make_store().await;
+    let declared = probe.capabilities();
+    let implemented = implemented_optional_methods(&probe).await;
+    let has_list_sessions =
+        (declared.list_sessions || implemented.list_sessions) && !skip_optional.list_sessions;
+    let has_summaries = (declared.list_session_summaries || implemented.list_session_summaries)
+        && !skip_optional.list_session_summaries;
+    let has_delete = (declared.delete || implemented.delete) && !skip_optional.delete;
+    let has_subkeys =
+        (declared.list_subkeys || implemented.list_subkeys) && !skip_optional.list_subkeys;
     let main = main_key();
 
     let store = make_store().await;

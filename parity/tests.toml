@@ -719,7 +719,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestInMemorySessionStore::test_conformance_with_async_factory" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::the_in_memory_store_passes_every_contract" }
 "TestInMemorySessionStore::test_skip_optional_suppresses_contracts" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::broken_stores_fail_the_contract_they_break" }
 "TestInMemorySessionStore::test_auto_skips_unimplemented_optionals" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::a_store_with_only_the_required_methods_passes_and_reports_unsupported" }
-"TestInMemorySessionStore::test_store_implements_is_canonical_probe" = { excluded = "python-typing", note = "Protocol runtime-checkability and method-override probing; Rust stores declare SessionStore::capabilities." }
+"TestInMemorySessionStore::test_store_implements_is_canonical_probe" = { excluded = "python-typing", note = "Protocol runtime-checkability and method-override probing; Rust calls an optional method and takes UnsupportedStoreOperation as its absence." }
 "TestInMemorySessionStore::test_get_entries_helper" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::get_entries_returns_a_copy_of_what_was_appended_in_order" }
 "TestInMemorySessionStore::test_size_helper_counts_main_transcripts_only" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_store_semantics" }
 "TestInMemorySessionStore::test_clear_helper" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_store_semantics" }

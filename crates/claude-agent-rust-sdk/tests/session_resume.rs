@@ -521,6 +521,34 @@ impl SessionStore for MinimalStore {
     }
 }
 
+/// Implements `list_subkeys` but keeps the default `capabilities`, which
+/// declares nothing.
+struct UndeclaredSubkeysStore(InMemorySessionStore);
+
+impl SessionStore for UndeclaredSubkeysStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    async fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        self.0.list_subkeys(key).await
+    }
+}
+
 #[tokio::test]
 async fn continue_needs_a_store_that_lists_sessions() {
     let setup = Setup::new();
@@ -1026,6 +1054,41 @@ async fn a_store_without_list_subkeys_gets_the_main_transcript_only() {
             .join(&id)
             .exists()
     );
+    let rest: Vec<_> = messages.collect().await;
+    assert!(rest.iter().all(Result::is_ok), "{rest:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_store_that_implements_list_subkeys_without_declaring_it_gets_its_subagents() {
+    let _serial = SERIAL.lock().await;
+    let setup = Setup::new();
+    let inner = InMemorySessionStore::new();
+    let id = uuid::Uuid::new_v4().to_string();
+    inner
+        .append(&setup.key(&id), &transcript(&id))
+        .await
+        .unwrap();
+    inner
+        .append(
+            &setup.key(&id).with_subpath("subagents/agent-a1"),
+            &[entry(json!({"type": "user", "uuid": "s1"}))],
+        )
+        .await
+        .unwrap();
+    let options = setup
+        .options(UndeclaredSubkeysStore(inner))
+        .resume(id.as_str())
+        .build()
+        .unwrap();
+    let mut messages = query("continue", options);
+    let config = child_config_dir(&until_init(&mut messages).await);
+    let subagent = config
+        .join("projects")
+        .join(&setup.project_key)
+        .join(&id)
+        .join("subagents")
+        .join("agent-a1.jsonl");
+    assert!(subagent.is_file(), "{} is missing", subagent.display());
     let rest: Vec<_> = messages.collect().await;
     assert!(rest.iter().all(Result::is_ok), "{rest:?}");
 }

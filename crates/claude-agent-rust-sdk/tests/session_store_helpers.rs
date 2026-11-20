@@ -10,8 +10,8 @@ use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     Error, InMemorySessionStore, SdkSessionInfo, SessionKey, SessionListSubkeysKey, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
-    SessionSummaryEntry, delete_session_via_store, fold_session_summary, fork_session_via_store,
-    get_session_info, get_session_info_from_store, get_session_messages,
+    SessionSummaryEntry, UnsupportedStoreOperation, delete_session_via_store, fold_session_summary,
+    fork_session_via_store, get_session_info, get_session_info_from_store, get_session_messages,
     get_session_messages_from_store, get_subagent_messages, get_subagent_messages_from_store,
     import_session_to_store, list_sessions, list_sessions_from_store, list_subagents,
     list_subagents_from_store, project_key_for_directory, rename_session_via_store,
@@ -274,6 +274,7 @@ impl SessionStore for CountingStore {
         &self,
         project_key: &str,
     ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        offered(self.capabilities.list_sessions, "list_sessions")?;
         self.inner.list_sessions(project_key).await
     }
 
@@ -281,6 +282,10 @@ impl SessionStore for CountingStore {
         &self,
         project_key: &str,
     ) -> Result<Vec<SessionSummaryEntry>, SessionStoreError> {
+        offered(
+            self.capabilities.list_session_summaries,
+            "list_session_summaries",
+        )?;
         if let Some(summaries) = self.summaries.lock().unwrap().clone() {
             return Ok(summaries);
         }
@@ -291,8 +296,135 @@ impl SessionStore for CountingStore {
         &self,
         key: &SessionListSubkeysKey,
     ) -> Result<Vec<String>, SessionStoreError> {
+        offered(self.capabilities.list_subkeys, "list_subkeys")?;
         self.inner.list_subkeys(key).await
     }
+}
+
+/// Answers as the default implementation of an optional method does when
+/// the store under test does not offer it.
+fn offered(offered: bool, operation: &'static str) -> Result<(), SessionStoreError> {
+    if offered {
+        Ok(())
+    } else {
+        Err(Box::new(UnsupportedStoreOperation { operation }))
+    }
+}
+
+/// Implements every optional method but keeps the default
+/// `capabilities`, which declares none.
+#[derive(Default)]
+struct UndeclaredStore(InMemorySessionStore);
+
+impl SessionStore for UndeclaredStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    async fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        self.0.list_sessions(project_key).await
+    }
+
+    async fn list_session_summaries(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<SessionSummaryEntry>, SessionStoreError> {
+        self.0.list_session_summaries(project_key).await
+    }
+
+    async fn delete(&self, key: &SessionKey) -> Result<(), SessionStoreError> {
+        self.0.delete(key).await
+    }
+
+    async fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        self.0.list_subkeys(key).await
+    }
+}
+
+#[tokio::test]
+async fn listing_methods_a_store_implements_are_called_without_being_declared() {
+    let project = Project::new();
+    let key = project_key_for_directory(Some(project.path()));
+    let store = UndeclaredStore::default();
+    assert_eq!(store.capabilities(), SessionStoreCapabilities::none());
+    let ids = fill(&store, &key, 2).await;
+    let sub =
+        SessionKey::new(key.as_str(), ids[0].as_str()).with_subpath("subagents/nested/agent-n1");
+    store
+        .append(&sub, &[entry(user("n1", None, &ids[0], Value::from("t")))])
+        .await
+        .unwrap();
+
+    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 2);
+
+    assert_eq!(
+        list_subagents_from_store(&store, &ids[0], Some(project.path()))
+            .await
+            .unwrap(),
+        ["n1"]
+    );
+    let messages =
+        get_subagent_messages_from_store(&store, &ids[0], "n1", Some(project.path()), None, 0)
+            .await
+            .unwrap();
+    assert_eq!(messages.len(), 1, "found through list_subkeys");
+}
+
+#[tokio::test]
+async fn delete_via_store_deletes_from_a_store_that_implements_delete_without_declaring_it() {
+    let project = Project::new();
+    let key = project_key_for_directory(Some(project.path()));
+    let store = UndeclaredStore::default();
+    let ids = fill(&store, &key, 1).await;
+    delete_session_via_store(&store, &ids[0], Some(project.path()))
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .load(&SessionKey::new(key.as_str(), ids[0].as_str()))
+            .await
+            .unwrap(),
+        None,
+        "the session is deleted"
+    );
+}
+
+#[tokio::test]
+async fn delete_via_store_leaves_a_store_without_delete_unchanged() {
+    let project = Project::new();
+    let key = project_key_for_directory(Some(project.path()));
+    let store = CountingStore::new(SessionStoreCapabilities::none(), None);
+    let ids = fill(&store, &key, 1).await;
+    delete_session_via_store(&store, &ids[0], Some(project.path()))
+        .await
+        .unwrap();
+    assert!(
+        store
+            .load(&SessionKey::new(key.as_str(), ids[0].as_str()))
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 async fn fill(store: &impl SessionStore, project_key: &str, count: usize) -> Vec<String> {

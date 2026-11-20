@@ -24,7 +24,7 @@ use super::paths::{project_key_for_directory, projects_dir};
 use super::timestamp::now_iso;
 use super::validate_uuid;
 use crate::error::{Error, Result};
-use crate::session_store::{SessionKey, SessionStore, SessionStoreEntry};
+use crate::session_store::{SessionKey, SessionStore, SessionStoreEntry, is_unsupported};
 
 const SANITIZE_PASSES: usize = 10;
 const FORK_TYPES: [&str; 5] = ["user", "assistant", "attachment", "system", "progress"];
@@ -593,9 +593,12 @@ pub async fn tag_session_via_store<S: SessionStore + ?Sized>(
 }
 
 /// Store-backed counterpart of [`delete_session`]. A store that does not
-/// declare `delete` is left unchanged, as fits an append-only backend.
-/// Whether subagent transcripts go too depends on the store; the contract
-/// asks it to cascade.
+/// implement `delete` (its default returns [`UnsupportedStoreOperation`])
+/// is left unchanged, as fits an append-only backend. Whether subagent
+/// transcripts go too depends on the store; the contract asks it to
+/// cascade.
+///
+/// [`UnsupportedStoreOperation`]: crate::UnsupportedStoreOperation
 ///
 /// # Errors
 ///
@@ -607,13 +610,15 @@ pub async fn delete_session_via_store<S: SessionStore + ?Sized>(
     directory: Option<&Path>,
 ) -> Result<()> {
     let session_id = require_uuid(session_id, "session_id")?;
-    if !store.capabilities().delete {
-        return Ok(());
+    match store.delete(&store_key(session_id, directory)).await {
+        Err(error) if is_unsupported(&error) => {
+            tracing::debug!("[SessionStore] delete is not implemented: the session is kept");
+            Ok(())
+        }
+        result => {
+            result.map_err(|error| Error::session_store("Session store delete failed", error))
+        }
     }
-    store
-        .delete(&store_key(session_id, directory))
-        .await
-        .map_err(|error| Error::session_store("Session store delete failed", error))
 }
 
 /// Store-backed counterpart of [`fork_session`]: loads the source from the

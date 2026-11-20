@@ -26,6 +26,7 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 use crate::session_store::{
     SessionKey, SessionListSubkeysKey, SessionStoreEntry, SessionStoreError, SharedSessionStore,
+    is_unsupported,
 };
 use crate::sessions::{
     agent_metadata_sidecar_path, plain_line, project_key_for_directory, split_agent_metadata,
@@ -274,10 +275,7 @@ pub(crate) async fn materialize_resume_session(
     let filled = async {
         write_jsonl(&project_dir.join(format!("{session_id}.jsonl")), &entries)?;
         copy_auth_files(directory.path(), options)?;
-        if store.capabilities().list_subkeys {
-            materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await?;
-        }
-        Ok(())
+        materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await
     }
     .await;
     if let Err(error) = filled {
@@ -533,6 +531,8 @@ pub(crate) fn is_safe_subpath(subpath: &str) -> bool {
         .any(|segment| matches!(segment, "." | ".."))
 }
 
+/// Writes the subagent transcripts the store lists under the session. A
+/// store without `list_subkeys` gets the main transcript only.
 async fn materialize_subkeys(
     store: &SharedSessionStore,
     project_dir: &Path,
@@ -541,12 +541,23 @@ async fn materialize_subkeys(
     limit: Duration,
 ) -> Result<()> {
     let session_dir = project_dir.join(session_id);
-    let subkeys = bounded(
+    let listed = bounded(
         &format!("list_subkeys for session {session_id}"),
         limit,
-        store.list_subkeys(&SessionListSubkeysKey::new(project_key, session_id)),
+        async {
+            match store
+                .list_subkeys(&SessionListSubkeysKey::new(project_key, session_id))
+                .await
+            {
+                Err(error) if is_unsupported(&error) => Ok(None),
+                result => result.map(Some),
+            }
+        },
     )
     .await?;
+    let Some(subkeys) = listed else {
+        return Ok(());
+    };
     for subpath in subkeys {
         if !is_safe_subpath(&subpath) {
             tracing::warn!("[SessionStore] skipping unsafe subpath from list_subkeys: {subpath:?}");

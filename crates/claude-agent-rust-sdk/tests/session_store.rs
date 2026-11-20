@@ -201,6 +201,42 @@ async fn a_delete_that_does_not_cascade_fails_contract_10() {
     assert_eq!(failure.contract, 10, "{failure}");
 }
 
+/// [`NonCascadingStore`] without its declaration.
+#[derive(Default, Clone)]
+struct UndeclaredNonCascadingStore(NonCascadingStore);
+
+impl SessionStore for UndeclaredNonCascadingStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    async fn delete(&self, key: &SessionKey) -> Result<(), SessionStoreError> {
+        self.0.delete(key).await
+    }
+}
+
+#[tokio::test]
+async fn conformance_checks_an_optional_method_the_store_implements_without_declaring_it() {
+    let store = UndeclaredNonCascadingStore::default();
+    assert_eq!(store.capabilities(), SessionStoreCapabilities::none());
+    let failure =
+        run_session_store_conformance(|| async { UndeclaredNonCascadingStore::default() })
+            .await
+            .unwrap_err();
+    assert_eq!(failure.contract, 10, "{failure}");
+}
+
 #[tokio::test]
 async fn in_memory_store_semantics() {
     let store = InMemorySessionStore::new();

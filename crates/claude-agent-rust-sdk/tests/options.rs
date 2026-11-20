@@ -771,6 +771,44 @@ fn continue_conversation_needs_a_store_that_lists_sessions() {
         .unwrap();
 }
 
+/// Implements `list_sessions` but keeps the default `capabilities`.
+struct UndeclaredListingStore;
+
+impl SessionStore for UndeclaredListingStore {
+    async fn append(
+        &self,
+        _key: &SessionKey,
+        _entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        Ok(())
+    }
+
+    async fn load(
+        &self,
+        _key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        Ok(None)
+    }
+
+    async fn list_sessions(
+        &self,
+        _project_key: &str,
+    ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        Ok(Vec::new())
+    }
+}
+
+#[test]
+fn continue_conversation_reads_the_declaration_of_list_sessions() {
+    let message = config_error(
+        ClaudeAgentOptions::builder()
+            .session_store(UndeclaredListingStore)
+            .continue_conversation(true)
+            .build(),
+    );
+    assert!(message.contains("list_sessions()"), "{message}");
+}
+
 #[tokio::test]
 async fn session_store_option_reaches_the_store() {
     let options = ClaudeAgentOptions::builder()

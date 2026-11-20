@@ -393,6 +393,15 @@ category = "deliberate"
 reason = "Parsing, cloning, and dropping a `serde_json::Value` recurse once per level; 512 levels fit in the 2 MiB stack of a tokio worker thread even in a debug build, where about 700 levels of parsing overflow it."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::framing::tests::nesting_up_to_the_limit_is_read_and_deeper_fails"
 
+[behavior.store-declaration-for-continue]
+summary = "`continue_conversation` with a store that implements `list_sessions` without declaring it"
+python = "Option validation sees that the store class overrides `list_sessions` and accepts the options."
+rust = "Every other path calls an optional method and takes `UnsupportedStoreOperation` as its absence, but option validation runs before any call can be made and reads `SessionStore::capabilities`: a store that does not declare `list_sessions` is refused with the same `Config` error as one that lacks it."
+ref = "src/claude_agent_sdk/_internal/session_store_validation.py:8-38"
+category = "deliberate"
+reason = "Rust cannot see whether a trait method is overridden, and building options is synchronous, so the declaration is the only answer available before the child starts."
+test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_reads_the_declaration_of_list_sessions"
+
 [unclassified.conformance-duplicate-summaries]
 source = "4.1, stricter conformance check"
 summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."
