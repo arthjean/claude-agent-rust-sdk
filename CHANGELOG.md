@@ -76,6 +76,7 @@
 - `Error::is_retryable()` is true for a CLI killed by a signal, as documented: the exit code the SDK records for it is negative on Unix (`-9` for `SIGKILL`), which the check now reads.
 - `#[tool]` compiles when the state argument has the name of the function, names a tool `type` for `fn r#type`, and says when a doc attribute it cannot read (such as one built with `include_str!`) is the reason a description is missing.
 - A typed tool reads its arguments as sent first, and turns integral floats into integers only when that fails, so an untagged enum keeps the variant whose field takes a float instead of losing the other fields.
+- The session readers, fork, and import read a transcript line with a lone surrogate escape or a nesting deeper than 128 levels, as the live session does, instead of dropping it and every message before it.
 
 ## 0.1.0 - 2026-11-18
 

@@ -77,7 +77,7 @@ fn mtime_from_jsonl_tail(jsonl: &str) -> i64 {
         .trim_end()
         .rsplit('\n')
         .next()
-        .and_then(|line| serde_json::from_str::<Value>(line).ok())
+        .and_then(|line| crate::transport::framing::parse_json(line).ok())
         .and_then(|entry| entry.get("timestamp")?.as_str().and_then(parse_iso_millis))
         .unwrap_or_else(now_millis)
 }
@@ -492,7 +492,7 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
         if line.is_empty() {
             continue;
         }
-        match serde_json::from_str::<Value>(line) {
+        match crate::transport::framing::parse_json(line) {
             Ok(Value::Object(entry)) => batch.push(entry),
             Ok(_) => {
                 tracing::warn!(

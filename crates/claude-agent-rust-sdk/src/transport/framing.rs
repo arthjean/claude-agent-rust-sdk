@@ -1,4 +1,6 @@
-//! Framing of the newline-delimited JSON the CLI writes to its output.
+//! Framing of the newline-delimited JSON the CLI writes to its output, and
+//! the one JSON line reader that the session readers share with it, so a
+//! transcript line the live session read is read again the same way.
 
 //!
 //! Two lines that `serde_json` refuses by default are still read, because
@@ -66,12 +68,16 @@ pub(crate) fn parse_stdout_line(line: &[u8]) -> Result<Option<Value>> {
         tracing::debug!(line = %preview, "skipping non-JSON line from CLI stdout");
         return Ok(None);
     }
-    match serde_json::from_str::<Value>(text) {
-        Ok(value) => Ok(Some(value)),
-        Err(source) => recover(text)
-            .map(Some)
-            .ok_or_else(|| Error::json_decode(text, source)),
-    }
+    parse_json(text)
+        .map(Some)
+        .map_err(|source| Error::json_decode(text, source))
+}
+
+/// Reads one JSON text as the CLI output is read: a lone surrogate escape
+/// and a nesting up to [`MAX_NESTING_DEPTH`] levels are accepted, and any
+/// other refusal keeps the error of `serde_json`.
+pub(crate) fn parse_json(text: &str) -> serde_json::Result<Value> {
+    serde_json::from_str::<Value>(text).or_else(|source| recover(text).ok_or(source))
 }
 
 /// Reads a line `serde_json` refused with its defaults, when the cause is

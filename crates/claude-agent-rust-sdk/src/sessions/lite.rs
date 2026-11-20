@@ -88,7 +88,10 @@ fn unescape_json_string(raw: &str) -> String {
     if !raw.contains('\\') {
         return raw.to_owned();
     }
-    serde_json::from_str::<String>(&format!("\"{raw}\"")).unwrap_or_else(|_| raw.to_owned())
+    match crate::transport::framing::parse_json(&format!("\"{raw}\"")) {
+        Ok(Value::String(text)) => text,
+        _ => raw.to_owned(),
+    }
 }
 
 /// Finds the end of the string value starting at `start`: the index of the
@@ -197,7 +200,7 @@ pub(crate) fn extract_first_prompt_from_head(head: &str) -> String {
         {
             continue;
         }
-        let Ok(Value::Object(entry)) = serde_json::from_str::<Value>(line) else {
+        let Ok(Value::Object(entry)) = crate::transport::framing::parse_json(line) else {
             continue;
         };
         if entry.get("type").and_then(Value::as_str) != Some("user") {

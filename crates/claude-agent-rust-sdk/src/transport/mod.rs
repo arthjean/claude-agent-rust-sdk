@@ -8,7 +8,7 @@
 
 mod command;
 mod environment;
-mod framing;
+pub(crate) mod framing;
 mod subprocess;
 
 use std::fmt;

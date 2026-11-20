@@ -278,7 +278,7 @@ fn parse_fork_transcript(content: &str, session_id: &str) -> (Vec<Entry>, Vec<Va
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok());
+        .filter_map(|line| crate::transport::framing::parse_json(line).ok());
     partition_fork_entries(entries, session_id)
 }
 

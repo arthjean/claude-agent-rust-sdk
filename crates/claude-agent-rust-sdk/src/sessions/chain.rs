@@ -55,7 +55,7 @@ pub(crate) fn parse_transcript_entries(content: &str) -> Vec<Entry> {
         .split('\n')
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .filter_map(|line| match serde_json::from_str::<Value>(line) {
+        .filter_map(|line| match crate::transport::framing::parse_json(line) {
             Ok(Value::Object(entry)) if is_transcript_entry(&entry) => Some(entry),
             _ => None,
         })

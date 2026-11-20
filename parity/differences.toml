@@ -494,6 +494,16 @@ category = "deliberate"
 reason = "Rust cannot see whether a trait method is overridden, and building options is synchronous, so the declaration is the only answer available before the child starts."
 test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_reads_the_declaration_of_list_sessions"
 
+[behavior.transcript-line-json-reading]
+summary = "A transcript line that escapes a lone UTF-16 surrogate, or nests more than 128 levels deep"
+python = "`json.loads` reads the line, keeps the lone surrogate in the string, and reads any depth until the interpreter runs out of recursion."
+rust = "The session readers, fork, and import read the line with the reader of the CLI output: a lone surrogate becomes U+FFFD, and a line nested more than 512 levels deep is skipped as corrupt (import fails on it)."
+ref = "src/claude_agent_sdk/_internal/sessions.py:918"
+anchor = "entry = json.loads(line)"
+category = "deliberate"
+reason = "A line the live session read must stay readable afterwards; a Rust string cannot hold a lone surrogate, and the depth limit is the one the transport applies for the stack of a tokio worker thread."
+test = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_before_it"
+
 [behavior.transcript-invalid-utf8]
 summary = "A transcript that is not valid UTF-8"
 python = "Reading the session or a subagent from disk, and importing it into a store, decode it strictly: one byte such as `0xff` raises `UnicodeDecodeError`. Credentials that are not UTF-8 fail a resume the same way."

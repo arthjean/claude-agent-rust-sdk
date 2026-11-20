@@ -1313,3 +1313,45 @@ fn import_session_options_default_to_upstream_keyword_defaults() {
     assert_eq!(set.directory.as_deref(), Some(Path::new("/project")));
     assert_eq!((set.include_subagents, set.batch_size), (false, 2));
 }
+
+#[test]
+fn a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_before_it() {
+    let deep = format!("{}{}", "[".repeat(130), "]".repeat(130));
+    for (marker, raw) in [("LONE", "\\ud83d"), ("DEEP", deep.as_str())] {
+        let project = Project::new();
+        let id = new_id();
+        let mut middle = user(
+            "c1",
+            Some("a1"),
+            &id,
+            Value::from(format!("output {marker}")),
+        );
+        if marker == "DEEP" {
+            middle["toolUseResult"] = Value::from("DEEP_VALUE");
+        }
+        let lines = vec![
+            user("u1", None, &id, Value::from(format!("prompt {marker}"))),
+            assistant("a1", Some("u1"), &id, "b"),
+            middle,
+            assistant("a2", Some("c1"), &id, "d"),
+        ];
+        let path = project.write(&id, &lines);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let text = if marker == "DEEP" {
+            text.replace("\"DEEP_VALUE\"", raw)
+        } else {
+            text.replace("LONE", raw)
+        };
+        std::fs::write(&path, text).unwrap();
+
+        let messages =
+            get_session_messages(&id, SessionMessagesOptions::new().directory(project.path()));
+        assert_eq!(uuids(&messages), ["u1", "a1", "c1", "a2"], "{marker}");
+        let info =
+            get_session_info(&id, Some(project.path())).unwrap_or_else(|| panic!("{marker}"));
+        if marker == "LONE" {
+            assert_eq!(info.summary, "prompt \u{fffd}");
+            assert_eq!(messages[2].message["content"], "output \u{fffd}");
+        }
+    }
+}
