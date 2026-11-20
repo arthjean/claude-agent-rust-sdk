@@ -15,6 +15,7 @@
 - `SdkMcpTool::call` runs a tool as the in-process server does and returns the result the model would see, so a tool can be tested without a session; `#[tool]` functions take an optional state before their arguments (a `&S` shared through an `Arc`, or a `Clone` value).
 - `ToolAnnotations::extra_field` lists an annotation key the crate does not model, and `McpServerConfig::Raw` passes a server configuration of a kind the crate does not model to the CLI as written, next to in-process servers in the same map. **Breaking:** `McpServerConfig::type_name` returns `&str`.
 - The crate re-exports `indexmap`, `schemars`, and, with the `rmcp` feature, `rmcp`, the three crates whose types appear in its public API, and its docs state that a major release of one of them is a major release of this crate.
+- `MockTransport::end_input_count` returns how many times the input was ended.
 
 ### Changed
 
@@ -68,6 +69,7 @@
 - Permission callbacks, hooks, in-process MCP tools, session stores, and the stderr callback run in the `tracing` span and, with `otel`, the OpenTelemetry context current when the session connected. Without a global propagator, the `otel` feature hands the CLI the W3C trace context and baggage, following `OTEL_PROPAGATORS`, as the Python SDK does.
 - `connect`, a resume from a session store, and `import_session_to_store` no longer block the async runtime: file access, the macOS Keychain read, and the user lookup run on the blocking pool, so a `current_thread` runtime keeps its other tasks and timers going.
 - Control responses, hooks, and permission requests keep flowing while up to 16 MiB of messages wait unread, so `interrupt()` called from the loop that reads the messages no longer times out after 60 s; past that budget the session stops reading the CLI output until the application catches up.
+- The temporary config directory of a store-backed resume is created readable by its owner only (0700) on Unix, as upstream, since it holds the credentials.
 
 ## 0.1.0 - 2026-11-18
 
