@@ -6,7 +6,7 @@ use claude_agent_rust_sdk::{
     RateLimitEvent, RateLimitStatus, RateLimitType, ResultMessage, ServerToolName, SessionKey,
     StreamEvent, SystemMessage, TERMINAL_TASK_STATUSES, TaskNotificationOriginSubkind,
     TaskNotificationStatus, TaskUpdatedMessage, TaskUpdatedStatus, TaskUsage, TextBlock,
-    ToolResultContent, UserContent, UserMessage, is_terminal_task_status, parse_message,
+    ToolResultContent, Usage, UserContent, UserMessage, is_terminal_task_status, parse_message,
 };
 use serde_json::{Value, json};
 
@@ -610,7 +610,17 @@ fn parse_assistant_message_with_usage() {
             "usage": usage,
         },
     }));
-    assert_eq!(message.usage, Some(usage));
+    let read = message.usage.expect("usage");
+    assert_eq!(
+        (
+            read.input_tokens(),
+            read.output_tokens(),
+            read.cache_read_input_tokens(),
+            read.cache_creation_input_tokens()
+        ),
+        (Some(100), Some(50), Some(2000), Some(500))
+    );
+    assert_eq!(read.into_value(), usage);
 }
 
 #[test]
@@ -1723,7 +1733,7 @@ fn parse_assistant_message_with_all_fields() {
         Some("0dbd2453-1209-4fe9-bd51-4102f64e33df")
     );
     assert_eq!(
-        message.usage,
+        message.usage.map(Usage::into_value),
         Some(json!({"input_tokens": 10, "output_tokens": 5}))
     );
     assert_eq!(message.parent_tool_use_id.as_deref(), Some("toolu_parent"));
@@ -1787,7 +1797,7 @@ fn parse_result_message_with_model_usage() {
     );
     assert_eq!(message.total_cost_usd, Some(0.0106));
     assert_eq!(
-        message.usage,
+        message.usage.map(Usage::into_value),
         Some(json!({"input_tokens": 3, "output_tokens": 24}))
     );
 }

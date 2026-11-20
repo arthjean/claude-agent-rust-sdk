@@ -267,8 +267,8 @@ pub struct AssistantMessage {
     pub parent_tool_use_id: Option<String>,
     /// Error category, when the turn failed.
     pub error: Option<AssistantMessageError>,
-    /// Token usage of this turn, as raw JSON.
-    pub usage: Option<Value>,
+    /// Token usage of this turn.
+    pub usage: Option<Usage>,
     /// API id of the message (`message.id` on the wire).
     pub message_id: Option<String>,
     /// Why the model stopped.
@@ -775,6 +775,94 @@ pub struct DeferredToolUse {
     pub input: Value,
 }
 
+/// Token usage of a turn or of a run, as the CLI reports it.
+///
+/// It holds the JSON the CLI sent, so no key is ever lost (the Python SDK
+/// passes the same dictionary through), and reads the counts the Messages
+/// API documents. A count that is missing or not a number reads as `None`;
+/// a fraction is truncated, as the message parser reads counts.
+///
+/// ```
+/// use claude_agent_rust_sdk::Usage;
+///
+/// let usage = Usage::from(serde_json::json!({"input_tokens": 12, "service_tier": "standard"}));
+/// assert_eq!(usage.input_tokens(), Some(12));
+/// assert_eq!(usage.output_tokens(), None);
+/// assert_eq!(usage.service_tier(), Some("standard"));
+/// ```
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Usage(Value);
+
+impl Usage {
+    fn count(&self, key: &str) -> Option<u64> {
+        let value = self.0.get(key)?;
+        value
+            .as_u64()
+            .or_else(|| value.as_f64().map(|number| number as u64))
+    }
+
+    /// Input tokens not read from or written to the cache.
+    #[must_use]
+    pub fn input_tokens(&self) -> Option<u64> {
+        self.count("input_tokens")
+    }
+
+    /// Output tokens.
+    #[must_use]
+    pub fn output_tokens(&self) -> Option<u64> {
+        self.count("output_tokens")
+    }
+
+    /// Input tokens written to the cache.
+    #[must_use]
+    pub fn cache_creation_input_tokens(&self) -> Option<u64> {
+        self.count("cache_creation_input_tokens")
+    }
+
+    /// Input tokens read from the cache.
+    #[must_use]
+    pub fn cache_read_input_tokens(&self) -> Option<u64> {
+        self.count("cache_read_input_tokens")
+    }
+
+    /// Service tier that served the request, such as `standard`.
+    #[must_use]
+    pub fn service_tier(&self) -> Option<&str> {
+        self.0.get("service_tier").and_then(Value::as_str)
+    }
+
+    /// The value of any key, modeled or not.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.0.get(key)
+    }
+
+    /// The JSON the CLI sent.
+    #[must_use]
+    pub fn as_value(&self) -> &Value {
+        &self.0
+    }
+
+    /// Returns the JSON the CLI sent.
+    #[must_use]
+    pub fn into_value(self) -> Value {
+        self.0
+    }
+}
+
+impl From<Value> for Usage {
+    fn from(value: Value) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Usage> for Value {
+    fn from(usage: Usage) -> Self {
+        usage.0
+    }
+}
+
 /// Token usage and cost of one model.
 ///
 /// The wire keys are camelCase; a missing key takes its default value, and
@@ -833,8 +921,8 @@ pub struct ResultMessage {
     pub stop_reason: Option<String>,
     /// Total cost in US dollars.
     pub total_cost_usd: Option<f64>,
-    /// Aggregate token usage, as raw JSON.
-    pub usage: Option<Value>,
+    /// Aggregate token usage.
+    pub usage: Option<Usage>,
     /// Result text.
     pub result: Option<String>,
     /// Structured output, when an output format was requested.

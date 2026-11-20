@@ -1701,3 +1701,21 @@ fn a_hook_output_keeps_the_keys_of_a_known_event_the_crate_does_not_model() {
         wire
     );
 }
+
+#[test]
+fn usage_keeps_every_key_and_reads_the_documented_counts() {
+    let wire = json!({
+        "input_tokens": 7.9,
+        "output_tokens": "many",
+        "cache_creation": {"ephemeral_5m_input_tokens": 3},
+        "server_tool_use": {"web_search_requests": 1},
+    });
+    let usage = claude_agent_rust_sdk::Usage::from(wire.clone());
+    assert_eq!(usage.input_tokens(), Some(7));
+    assert_eq!(usage.output_tokens(), None);
+    assert_eq!(
+        usage.get("server_tool_use"),
+        Some(&json!({"web_search_requests": 1}))
+    );
+    assert_eq!(serde_json::to_value(&usage).unwrap(), wire);
+}

@@ -43,6 +43,32 @@
 //!   It is outside the compatibility promise: its items may change in a
 //!   patch release.
 //!
+//! # Public dependencies
+//!
+//! Three crates appear in the public API, and each is re-exported so a
+//! program uses the version this crate was built with: [`indexmap`]
+//! (`IndexMap` keeps the order of options such as `env` and `extra_args`),
+//! [`schemars`] (the `JsonSchema` bound of a typed tool), and, with the
+//! `rmcp` feature, `rmcp` (the `ServerHandler` that `sdk_rmcp` serves). A
+//! major release of one of them is a major release of this crate. A typed
+//! tool can derive its schema without a direct dependency:
+//!
+//! ```
+//! use claude_agent_rust_sdk::schemars::{self, JsonSchema};
+//!
+//! #[derive(serde::Deserialize, JsonSchema)]
+//! #[schemars(crate = "claude_agent_rust_sdk::schemars")]
+//! struct Divide {
+//!     a: f64,
+//!     b: f64,
+//! }
+//! # let _ = schemars::schema_for!(Divide);
+//! ```
+//!
+//! With the default `jsonschema` feature the build compiles about twice as
+//! many crates (109 against 57 without default features); turning it off
+//! keeps the `serde` check of typed tools.
+//!
 //! # Platform support
 //!
 //! Linux, macOS, and Windows are supported and tested on every change.
@@ -152,6 +178,11 @@ mod test_capture;
 pub mod testing;
 pub mod transport;
 pub mod types;
+
+pub use indexmap;
+#[cfg(feature = "rmcp")]
+pub use rmcp;
+pub use schemars;
 
 pub use client::{ClaudeSdkClient, Messages};
 pub use error::{BoxError, Error, ErrorKind, Result, ResultErrorData};

@@ -34,7 +34,7 @@ use crate::types::{
     ResultMessage, ServerToolName, ServerToolResultBlock, ServerToolUseBlock, StreamEvent,
     SystemMessage, TaskNotificationMessage, TaskNotificationStatus, TaskProgressMessage,
     TaskStartedMessage, TaskUpdatedMessage, TaskUpdatedStatus, TaskUsage, TextBlock, ThinkingBlock,
-    ToolResultBlock, ToolResultContent, ToolUseBlock, UserContent, UserMessage,
+    ToolResultBlock, ToolResultContent, ToolUseBlock, Usage, UserContent, UserMessage,
 };
 
 type Parsed<T> = Result<T, String>;
@@ -338,7 +338,7 @@ fn parse_assistant(fields: &Fields<'_>) -> Parsed<AssistantMessage> {
         error: fields
             .optional_str("error")
             .map(AssistantMessageError::from),
-        usage: message.optional_value("usage"),
+        usage: message.optional_value("usage").map(Usage::from),
         message_id: message.optional_str("id"),
         stop_reason: message.optional_str("stop_reason"),
         session_id: fields.optional_str("session_id"),
@@ -512,7 +512,7 @@ fn parse_result(fields: &Fields<'_>) -> Parsed<ResultMessage> {
         session_id: fields.required_str("session_id")?,
         stop_reason: fields.optional_str("stop_reason"),
         total_cost_usd: fields.get("total_cost_usd").and_then(Value::as_f64),
-        usage: fields.optional_value("usage"),
+        usage: fields.optional_value("usage").map(Usage::from),
         result: fields.optional_str("result"),
         structured_output: fields.optional_value("structured_output"),
         model_usage,

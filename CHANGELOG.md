@@ -14,6 +14,7 @@
 - `cargo xtask upstream-diff` lists the upstream tests rewritten in place, which keep their names, with the Rust tests to review, and every `ref` of `parity/differences.toml` carries an `anchor` the cited lines must hold, so a ref that drifts when the pin moves fails `parity-check`. Five refs that had drifted since the sync to 0.2.186 now point at the code they describe.
 - `SdkMcpTool::call` runs a tool as the in-process server does and returns the result the model would see, so a tool can be tested without a session; `#[tool]` functions take an optional state before their arguments (a `&S` shared through an `Arc`, or a `Clone` value).
 - `ToolAnnotations::extra_field` lists an annotation key the crate does not model, and `McpServerConfig::Raw` passes a server configuration of a kind the crate does not model to the CLI as written, next to in-process servers in the same map. **Breaking:** `McpServerConfig::type_name` returns `&str`.
+- The crate re-exports `indexmap`, `schemars`, and, with the `rmcp` feature, `rmcp`, the three crates whose types appear in its public API, and its docs state that a major release of one of them is a major release of this crate.
 
 ### Changed
 
@@ -33,6 +34,7 @@
 - `cargo xtask parity-check` fails when a ledger names an `#[ignore]`d test, a test compiled on this platform under another platform's suffix, or, for a test of another platform, a function that is not a test; CI runs it on Linux, macOS, and Windows.
 - **Breaking:** `ClaudeSdkClient::get_server_info`, `get_mcp_status`, and `get_context_usage` are renamed `server_info`, `mcp_status`, and `context_usage`, and `ToolResult::is_error(bool)` is renamed `with_error_flag(bool)`.
 - The product is named Claude Code throughout the docs, logs, and package descriptions, and the errors about hooks set to block on failure use upstream's words (`remove on_failure="block" from your hooks`).
+- **Breaking:** `AssistantMessage::usage` and `ResultMessage::usage` are a `Usage`, which keeps the JSON the CLI sent and reads `input_tokens`, `output_tokens`, the two cache counts, and `service_tier`; `Usage::into_value` gives the JSON back.
 
 ### Removed
 
