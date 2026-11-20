@@ -45,6 +45,25 @@ impl Case {
         replace(&self.value["scenario"], work)
     }
 
+    /// The case with the option `name` removed, or `None` when the case
+    /// does not set it.
+    pub fn without_option(&self, name: &str) -> Option<Self> {
+        let remove = |case: &mut Value| {
+            case.get_mut("options")
+                .and_then(Value::as_object_mut)
+                .and_then(|options| options.shift_remove(name))
+        };
+        let mut text: Value = serde_json::from_str(&self.text).ok()?;
+        remove(&mut text)?;
+        let mut value = self.value.clone();
+        remove(&mut value)?;
+        Some(Self {
+            text: serde_json::to_string_pretty(&text).ok()?,
+            value,
+            ..self.clone()
+        })
+    }
+
     /// The option names the case sets.
     pub fn option_names(&self) -> Vec<String> {
         self.value
@@ -271,5 +290,32 @@ mod tests {
         );
         let error = load_all(directory.path(), directory.path(), &schema()).unwrap_err();
         assert!(error.contains("named after its file"), "{error}");
+    }
+
+    #[test]
+    fn a_case_without_one_option_keeps_the_others_in_their_order() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("a.json"),
+            r#"{"name": "a", "scenario": {}, "prompt": "x",
+                "options": {"model": "m", "hooks": {"Stop": [], "PreToolUse": []}, "cwd": "${WORK}"}}"#,
+        )
+        .unwrap();
+        let case = &load_all(directory.path(), directory.path(), &schema()).unwrap()[0];
+        let probe = case.without_option("model").unwrap();
+        assert_eq!(probe.option_names(), ["hooks", "cwd"]);
+        let text: serde_json::Value = serde_json::from_str(&probe.text).unwrap();
+        let events: Vec<&String> = text["options"]["hooks"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
+        assert_eq!(
+            events,
+            ["Stop", "PreToolUse"],
+            "hook order decides the callback ids"
+        );
+        assert!(probe.text.contains("${WORK}"));
+        assert!(case.without_option("tools").is_none());
     }
 }

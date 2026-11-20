@@ -1,7 +1,90 @@
 {
   "name": "session-store-memory",
-  "description": "A session store, which asks the CLI to mirror the transcript, flushed eagerly.",
-  "scenario": "one-shot",
+  "description": "A session store, which asks the CLI to mirror the transcript, flushed eagerly: each transcript_mirror frame is appended on its own, where the default batches the frames of a turn into one append before the result.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/.home/.claude/projects/-work-app/sess-1.jsonl",
+          "entries": [
+            {
+              "type": "user",
+              "uuid": "u-1",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z"
+            }
+          ]
+        }
+      },
+      {
+        "sleep_ms": 300
+      },
+      {
+        "emit": {
+          "type": "transcript_mirror",
+          "filePath": "${WORK}/.home/.claude/projects/-work-app/sess-1.jsonl",
+          "entries": [
+            {
+              "type": "user",
+              "uuid": "u-2",
+              "sessionId": "sess-1",
+              "timestamp": "2026-11-20T10:00:00.000Z"
+            }
+          ]
+        }
+      },
+      {
+        "sleep_ms": 300
+      },
+      {
+        "emit": {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "model": "m",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          },
+          "session_id": "sess-1"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "sess-1",
+          "result": "hello"
+        }
+      }
+    ]
+  },
   "options": {
     "session_store": "memory",
     "session_store_flush": "eager"

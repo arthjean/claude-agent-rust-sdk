@@ -14,7 +14,9 @@
 //! Options: `--python <path>` (default: `PARITY_PYTHON`, then `python3`,
 //! then `python`), `--timeout <seconds>` (default 30), `--repeat <n>` (run
 //! the corpus `n` times and require identical results), `--coverage`
-//! (report which option fields the cases set, see `coverage`),
+//! (report which option fields the cases set and which they make
+//! observable, see `coverage` and `observe`; it runs every case several
+//! times, so it needs Python too),
 //! `--upstream <path>`, `--parity <path>`, and case names to run only those
 //! cases (the stale-entry check is then skipped).
 
@@ -23,6 +25,7 @@ mod compare;
 pub(crate) mod coverage;
 mod journal;
 pub(crate) mod ledger;
+mod observe;
 mod requirements;
 mod runner;
 
@@ -505,6 +508,23 @@ fn run_corpus(settings: &Settings) -> Result<bool, String> {
     Ok(passed)
 }
 
+fn run_coverage(settings: &Settings) -> Result<bool, String> {
+    // Fail on the static check first: it needs no run.
+    let measure = coverage::measure(&settings.upstream, &settings.parity)?;
+    if !measure.report.problems.is_empty() {
+        return coverage::run(
+            &settings.upstream,
+            &settings.parity,
+            &observe::Observed::default(),
+        );
+    }
+    let cases = load_cases(settings)?;
+    let (drivers, cli) = drivers(settings)?;
+    let directory = prepare_directory(&settings.root)?.join("coverage");
+    let observed = observe::measure(&cases, &drivers, &cli, &directory, settings.timeout);
+    coverage::run(&settings.upstream, &settings.parity, &observed)
+}
+
 /// Runs `cargo xtask parity-diff`.
 pub fn run(arguments: &[String]) -> ExitCode {
     let settings = match parse(arguments) {
@@ -521,7 +541,7 @@ pub fn run(arguments: &[String]) -> ExitCode {
                 &settings.parity.join("requirements.txt"),
             )
         } else if settings.coverage {
-            coverage::run(&settings.upstream, &settings.parity)
+            run_coverage(&settings)
         } else {
             run_corpus(&settings)
         }

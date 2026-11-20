@@ -322,6 +322,7 @@ fn page_facts(locations: &Locations, loaded: &Loaded) -> Result<page::Facts, Str
         fields: coverage.fields.len(),
         covered_fields: coverage.report.covered,
         excluded_fields: coverage.report.excluded,
+        unobservable_fields: coverage.report.unobservable,
         differences: differences(locations)?,
     })
 }

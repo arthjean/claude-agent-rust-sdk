@@ -43,7 +43,7 @@ PARITY_PYTHON=~/.venvs/parity/bin/python cargo xtask parity-diff
 | `cargo xtask parity-diff` | Runs every case; fails on any unexplained difference or stale entry |
 | `cargo xtask parity-diff <case>...` | Runs the named cases only; stale entries are not checked |
 | `cargo xtask parity-diff --repeat 20` | Runs the corpus 20 times and fails unless every run gives the same results |
-| `cargo xtask parity-diff --coverage` | Lists every option field with the cases that set it; fails on a field neither set nor excluded |
+| `cargo xtask parity-diff --coverage` | Lists every option field with the cases that set it and those in which its effect is observable; fails on a field neither set nor excluded, and on a field set but observable in no case and not listed as unobservable. It plays every case several times, so it needs Python too and takes a few minutes |
 | `cargo xtask parity-diff --check-requirements` | Fails when `requirements.txt` and the submodule's `pyproject.toml` disagree on a dependency |
 
 `--python <path>` (or `PARITY_PYTHON`) picks the interpreter; the default tries `python3`, then `python`. `--timeout <seconds>` changes the limit per driver run.
@@ -201,11 +201,13 @@ The `[unclassified]` table names, with `source` (the section of `docs/research/p
 
 ## The parity page
 
-`cargo xtask parity-page` writes the region between `<!-- parity:page:begin -->` and `<!-- parity:page:end -->` of `docs/parity.md`: the upstream version, commit, and commit date (read from the submodule with `git`), the counts of both ledgers, the number of cases and of option fields they cover, one table per category of `differences.toml`, the exclusions of both ledgers, and the `[unclassified]` list with its count. `--check` only compares, and `cargo xtask parity-check` runs that comparison, so CI fails on a stale page. The text outside the region is written by hand; the check also fails when it claims "100%" or "full parity", which only the generated counts may state.
+`cargo xtask parity-page` writes the region between `<!-- parity:page:begin -->` and `<!-- parity:page:end -->` of `docs/parity.md`: the upstream version, commit, and commit date (read from the submodule with `git`), the counts of both ledgers, the number of cases, of option fields they set, and of fields set but listed as unobservable, one table per category of `differences.toml`, the exclusions of both ledgers, and the `[unclassified]` list with its count. `--check` only compares, and `cargo xtask parity-check` runs that comparison, so CI fails on a stale page. The text outside the region is written by hand; the check also fails when it claims "100%" or "full parity", which only the generated counts may state.
 
 ## Coverage of the options
 
 `cargo xtask parity-diff --coverage` reads the fields of `ClaudeAgentOptions` from the submodule's `types.py` and lists, for each, the cases that set it. A field no case sets must be listed in the `[excluded]` table of `cases/coverage.toml` with the reason no case can set it. The command fails on a field neither set nor excluded (such as a field a submodule bump adds), on an exclusion of a field a case now sets, and on a name that is not a field.
+
+Setting a field is not enough: a case covers a field only when the field's effect reaches the recording or the journal, otherwise an SDK could ignore it and the case would still match. The command measures it directly. It plays each case twice per side as written, which must give the same recording and journal (a case that does not is reported, since the measure would mean nothing), then once per side for each field the case sets, with that field removed. The field is observable in the case when, on either side, the run without it differs from the run with it, or no longer completes. Each field is listed as `observable in <cases>`, followed by `set without effect in <cases>` for the cases where removing it changes nothing (`max_thinking_tokens` next to a `thinking` option, for example, which overrides it). A field set by cases but observable in none fails, unless the `[unobservable]` table of `cases/coverage.toml` lists it with the reason no case can observe it; an entry there fails once a case observes the field, and an entry for a field no case sets belongs in `[excluded]` instead. The runs stay in `target/parity-diff/coverage`. The parity page counts the fields the cases set, which needs no run.
 
 ## Python dependencies
 

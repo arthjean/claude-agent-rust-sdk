@@ -112,6 +112,9 @@ pub struct Facts {
     pub covered_fields: usize,
     /// Fields excluded from the cases with a reason.
     pub excluded_fields: usize,
+    /// Fields some case sets whose effect no case observes, listed with a
+    /// reason.
+    pub unobservable_fields: usize,
     /// The ledger of differences.
     pub differences: differences::Ledger,
 }
@@ -408,14 +411,18 @@ pub fn render(facts: &Facts) -> String {
          and what each handed the application (every message, the outcome of every call, and \
          the arguments of every callback). \
          The cases set {} of the {} fields of `ClaudeAgentOptions`; {} are excluded with a \
-         reason in `parity/cases/coverage.toml`, and {} are neither.\n",
+         reason in `parity/cases/coverage.toml`, and {} are neither. Of the fields set, {} \
+         have an effect no case can observe, listed with the reason in the same file; \
+         `cargo xtask parity-diff --coverage` checks that each of the others changes the \
+         recording or the journal of a case when it is removed.\n",
         facts.cases,
         facts.covered_fields,
         facts.fields,
         facts.excluded_fields,
         facts
             .fields
-            .saturating_sub(facts.covered_fields + facts.excluded_fields)
+            .saturating_sub(facts.covered_fields + facts.excluded_fields),
+        facts.unobservable_fields
     );
     render_differences(&mut page, &facts.differences);
     render_not_ported(&mut page, facts);
@@ -528,6 +535,7 @@ summary = "Budget spelling."
             fields: 10,
             covered_fields: 8,
             excluded_fields: 1,
+            unobservable_fields: 2,
             differences,
         }
     }
@@ -543,7 +551,7 @@ summary = "Budget spelling."
             "| Total | 4 | 8 |",
             "plays 7 cases",
             "The cases set 8 of the 10 fields of `ClaudeAgentOptions`; 1 are excluded",
-            "and 1 are neither",
+            "and 1 are neither. Of the fields set, 2 have an effect no case can observe",
             "4 differences are reviewed and accepted: 2 on the wire and 1 in what the application observes",
             "| `journal message Unknown` observed by the application | nothing | `{\"message\":{\"$type\":\"Unknown\"}}` | Kept raw. | differential case `two` |",
             "### Deliberate choices (1)",

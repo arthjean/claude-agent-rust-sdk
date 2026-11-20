@@ -1,4 +1,4 @@
-# Option fields of ClaudeAgentOptions that no differential case can set,
+# [excluded]: option fields of ClaudeAgentOptions that no differential case can set,
 # with the reason. `cargo xtask parity-diff --coverage` fails on a field
 # that no case sets and that is not listed here, and on a listed field that
 # a case sets. See parity/README.md.
@@ -7,3 +7,12 @@
 cli_path = "Each driver sets it to the fake-claude binary on both sides, so every case uses it and none can choose it."
 debug_stderr = "Deprecated in Python and no longer read (types.py:2572-2573), and absent from the Rust options: it never reaches the CLI, and the Rust driver has nothing to set."
 user = "Switching the operating-system user needs a privilege the harness does not have; the field changes which user runs the CLI, not what it receives."
+
+# Option fields that cases set but whose effect no case can observe: removing
+# the field from every case that sets it changes neither the recording nor
+# the journal. `cargo xtask parity-diff --coverage` measures this by playing
+# each case without each field it sets; it fails on a field set but never
+# observable that is not listed here, and on a listed field a case observes.
+
+[unobservable]
+load_timeout_ms = "Bounds each load() and list_subkeys() call on the session store while a resumed session is read back from it (session_resume.py:149). The in-memory store of the drivers answers at once, so no case reaches the limit."

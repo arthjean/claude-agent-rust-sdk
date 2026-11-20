@@ -233,8 +233,12 @@ jobs:
         env:
           PARITY_PYTHON: ${{ runner.temp }}/parity-venv/bin/python
 
+      # Plays each case again without each option it sets, to tell an
+      # option whose effect a case observes from one it only sets.
       - name: Option coverage
         run: cargo xtask parity-diff --coverage
+        env:
+          PARITY_PYTHON: ${{ runner.temp }}/parity-venv/bin/python
 
   minimal-versions:
     name: Minimum dependency versions
