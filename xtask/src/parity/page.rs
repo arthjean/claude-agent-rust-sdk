@@ -191,6 +191,11 @@ pub fn excluded_items(ledger: &Ledger) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The form of a verb that agrees with a count.
+fn verb(count: usize, one: &'static str, many: &'static str) -> &'static str {
+    if count == 1 { one } else { many }
+}
+
 fn cell(text: &str) -> String {
     text.replace('|', "\\|").replace('\n', " ")
 }
@@ -403,26 +408,32 @@ pub fn render(facts: &Facts) -> String {
         facts.surface.total(),
         facts.tests.total()
     );
+    let neither = facts
+        .fields
+        .saturating_sub(facts.covered_fields + facts.excluded_fields);
     let _ = writeln!(
         page,
         "### The differential harness\n\n\
-         `cargo xtask parity-diff` plays {} cases through both SDKs against `fake-claude` and \
+         `cargo xtask parity-diff` plays {} {} through both SDKs against `fake-claude` and \
          compares what each sent the CLI (the command line, the environment, and every frame) \
          and what each handed the application (every message, the outcome of every call, and \
-         the arguments of every callback). \
-         The cases set {} of the {} fields of `ClaudeAgentOptions`; {} are excluded with a \
-         reason in `parity/cases/coverage.toml`, and {} are neither. Of the fields set, {} \
-         have an effect no case can observe, listed with the reason in the same file; \
+         the arguments of every callback, as each driver maps them to JSON, with keys whose \
+         value is null left out). \
+         The cases set {} of the {} fields of `ClaudeAgentOptions`; {} {} excluded with a \
+         reason in `parity/cases/coverage.toml`, and {} {} neither. Of the fields set, {} \
+         {} an effect no case can observe, listed with the reason in the same file; \
          `cargo xtask parity-diff --coverage` checks that each of the others changes the \
          recording or the journal of a case when it is removed.\n",
         facts.cases,
+        verb(facts.cases, "case", "cases"),
         facts.covered_fields,
         facts.fields,
         facts.excluded_fields,
-        facts
-            .fields
-            .saturating_sub(facts.covered_fields + facts.excluded_fields),
-        facts.unobservable_fields
+        verb(facts.excluded_fields, "is", "are"),
+        neither,
+        verb(neither, "is", "are"),
+        facts.unobservable_fields,
+        verb(facts.unobservable_fields, "has", "have")
     );
     render_differences(&mut page, &facts.differences);
     render_not_ported(&mut page, facts);
@@ -550,8 +561,8 @@ summary = "Budget spelling."
             "| Not ported | 0 (0.0%) | 2 (25.0%) |",
             "| Total | 4 | 8 |",
             "plays 7 cases",
-            "The cases set 8 of the 10 fields of `ClaudeAgentOptions`; 1 are excluded",
-            "and 1 are neither. Of the fields set, 2 have an effect no case can observe",
+            "The cases set 8 of the 10 fields of `ClaudeAgentOptions`; 1 is excluded",
+            "and 1 is neither. Of the fields set, 2 have an effect no case can observe",
             "4 differences are reviewed and accepted: 2 on the wire and 1 in what the application observes",
             "| `journal message Unknown` observed by the application | nothing | `{\"message\":{\"$type\":\"Unknown\"}}` | Kept raw. | differential case `two` |",
             "### Deliberate choices (1)",

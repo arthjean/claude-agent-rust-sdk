@@ -30,7 +30,7 @@ EffortLevel = { rust = "claude_agent_rust_sdk::EffortLevel" }
 McpServerConfig = { rust = "claude_agent_rust_sdk::McpServerConfig" }
 McpSdkServerConfig = { rust = "claude_agent_rust_sdk::McpSdkServerConfig" }
 McpServerStatus = { rust = "claude_agent_rust_sdk::McpServerStatus" }
-McpServerStatusConfig = { rust = "claude_agent_rust_sdk::McpServerStatusConfig", note = "Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable." }
+McpServerStatusConfig = { rust = "claude_agent_rust_sdk::McpServerStatusConfig", note = "Enum where Python returns the dictionary. A configuration of a known type keeps the keys it does not model in the `extra` of its variant; one of an unknown type, or one that does not read as its type, is kept whole as `Unknown`." }
 McpServerConnectionStatus = { rust = "claude_agent_rust_sdk::McpServerConnectionStatus" }
 McpServerInfo = { rust = "claude_agent_rust_sdk::McpServerInfo" }
 McpStatusResponse = { rust = "claude_agent_rust_sdk::McpStatusResponse", note = "Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`." }

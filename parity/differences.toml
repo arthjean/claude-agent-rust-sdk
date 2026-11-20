@@ -362,7 +362,7 @@ ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1052-1059"
 anchor = "return self._read_messages_impl()"
 category = "rust-stricter"
 reason = "Two readers of one output would each miss messages the other took."
-test = "crates/claude-agent-rust-sdk/tests/transport.rs::connect_read_and_close"
+test = "crates/claude-agent-rust-sdk/tests/transport.rs::reading_before_connecting_yields_one_connection_error"
 
 [behavior.message-limit-in-bytes]
 summary = "The size limit of one message from the CLI"

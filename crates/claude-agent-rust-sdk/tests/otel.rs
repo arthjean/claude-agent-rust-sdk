@@ -273,6 +273,16 @@ async fn otel_propagators_chooses_what_is_written_without_a_global_propagator() 
     assert_eq!(reported["TRACEPARENT"], trace_parent());
     assert_eq!(reported["BAGGAGE"], Value::Null);
 
+    unsafe { std::env::set_var(PROPAGATORS_VARIABLE, "b3, tracecontext, jaeger") };
+    let fake = scenario();
+    let reported = environment_seen_by_the_cli(fake.options()).await;
+    assert_eq!(
+        reported["TRACEPARENT"],
+        trace_parent(),
+        "b3 and jaeger are skipped, tracecontext is written"
+    );
+    assert_eq!(reported["BAGGAGE"], Value::Null);
+
     unsafe { std::env::set_var(PROPAGATORS_VARIABLE, "tracecontext, None") };
     let fake = scenario();
     let reported = environment_seen_by_the_cli(fake.options()).await;

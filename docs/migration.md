@@ -239,7 +239,7 @@ shape, not only spelling.
 | `McpServerConnectionStatus` | `claude_agent_rust_sdk::McpServerConnectionStatus` |  |
 | `McpServerInfo` | `claude_agent_rust_sdk::McpServerInfo` |  |
 | `McpServerStatus` | `claude_agent_rust_sdk::McpServerStatus` |  |
-| `McpServerStatusConfig` | `claude_agent_rust_sdk::McpServerStatusConfig` | Enum where Python returns the dictionary. A configuration of a known type that carries a key the type does not model is kept whole as `Unknown`, so the key stays reachable. |
+| `McpServerStatusConfig` | `claude_agent_rust_sdk::McpServerStatusConfig` | Enum where Python returns the dictionary. A configuration of a known type keeps the keys it does not model in the `extra` of its variant; one of an unknown type, or one that does not read as its type, is kept whole as `Unknown`. |
 | `McpStatusResponse` | `claude_agent_rust_sdk::McpStatusResponse` | Typed struct where Python returns the dictionary; every nested struct keeps the keys it does not model in `extra`. |
 | `McpToolAnnotations` | `claude_agent_rust_sdk::McpToolAnnotations` |  |
 | `McpToolInfo` | `claude_agent_rust_sdk::McpToolInfo` |  |

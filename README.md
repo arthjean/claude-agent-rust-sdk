@@ -52,12 +52,15 @@ Budget for API usage accordingly.
 cargo add claude-agent-rust-sdk
 ```
 
-Or in `Cargo.toml`, with the two crates the examples below also use:
+Or in `Cargo.toml`, with the crates the examples below also use (`serde` and
+`schemars` only for the typed tool):
 
 ```toml
 [dependencies]
 claude-agent-rust-sdk = "0.1"
 futures-util = "0.3"
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
