@@ -236,6 +236,8 @@ On `ee1062a`: `cargo xtask gates`, `parity-check --deny-pending` (159 exports, 1
 
 `cargo xtask semver-check` against the branch as is compares 0.1.0 with 0.1.0 and reports the intended breaking changes. Run with `--root` on a throwaway worktree of `ee1062a` whose only change is the version bump to 0.2.0 (what `release prepare minor` writes in the manifests), it passes: "claude-agent-rust-sdk v0.1.0 -> v0.2.0 (major change)", "no semver update required". Below 1.0, Cargo treats a minor bump as major. The bump itself is left to the owner's `cargo xtask release prepare minor`.
 
+Cross-checked here without running: `cargo clippy --workspace --all-targets --all-features --target <t> -- -D warnings` passes for `x86_64-pc-windows-msvc` and `aarch64-apple-darwin` on the default toolchain, so the Windows and macOS branches of the library and of every test compile clean. The counter-audit commits cited above are all ancestors of HEAD.
+
 Left to CI, with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
 
 ## Upstream releases during the run
