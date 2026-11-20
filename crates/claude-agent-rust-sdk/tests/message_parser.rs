@@ -2096,3 +2096,63 @@ fn a_known_content_block_keeps_the_keys_it_does_not_model() {
     );
     assert!(!block.extra.contains_key("type"));
 }
+
+#[test]
+fn messages_keep_the_frame_and_message_keys_they_do_not_model() {
+    let Message::Assistant(assistant) = parse_message(json!({
+        "type": "assistant",
+        "message": {"role": "assistant", "model": "m", "content": [], "container": {"id": "c"}},
+        "parent_tool_use_id": null,
+        "request_id": "req_1",
+    }))
+    .unwrap() else {
+        panic!("an assistant message");
+    };
+    assert_eq!(
+        assistant.message_extra,
+        *json!({"role": "assistant", "container": {"id": "c"}})
+            .as_object()
+            .unwrap()
+    );
+    assert_eq!(
+        assistant.extra,
+        *json!({"request_id": "req_1"}).as_object().unwrap()
+    );
+
+    let Message::User(user) = parse_message(json!({
+        "type": "user",
+        "message": {"role": "user", "content": "hi"},
+        "isSynthetic": true,
+    }))
+    .unwrap() else {
+        panic!("a user message");
+    };
+    assert_eq!(
+        user.message_extra,
+        *json!({"role": "user"}).as_object().unwrap()
+    );
+    assert_eq!(
+        user.extra,
+        *json!({"isSynthetic": true}).as_object().unwrap()
+    );
+
+    let Message::Result(result) = parse_message(json!({
+        "type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+        "is_error": false, "num_turns": 1, "session_id": "s", "fast_mode_state": "off",
+    }))
+    .unwrap() else {
+        panic!("a result message");
+    };
+    assert_eq!(
+        result.extra,
+        *json!({"fast_mode_state": "off"}).as_object().unwrap()
+    );
+
+    let Message::StreamEvent(event) = parse_message(json!({
+        "type": "stream_event", "uuid": "u", "session_id": "s", "event": {}, "ttft_ms": 12,
+    }))
+    .unwrap() else {
+        panic!("a stream event");
+    };
+    assert_eq!(event.extra, *json!({"ttft_ms": 12}).as_object().unwrap());
+}

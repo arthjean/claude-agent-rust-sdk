@@ -18,6 +18,7 @@
 - `MockTransport::end_input_count` returns how many times the input was ended.
 - `PermissionUpdate` and the content blocks the crate models (`TextBlock`, `ThinkingBlock`, `ToolUseBlock`, `ToolResultBlock`, `ServerToolUseBlock`, `ServerToolResultBlock`) keep the keys they do not model in an `extra` field, such as the `citations` of a text block, and a permission suggestion sent back to the CLI keeps them.
 - `SessionStore` is implemented for an `Arc` of a store, so a program can keep a handle on the store it passes to the options.
+- `UserMessage`, `AssistantMessage`, `ResultMessage`, and `StreamEvent` keep the frame keys they do not model in `extra`, and the user and assistant messages keep the unmodeled keys of their nested `message` object in `message_extra`.
 
 ### Changed
 

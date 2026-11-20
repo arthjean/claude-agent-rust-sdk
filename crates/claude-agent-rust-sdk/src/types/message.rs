@@ -239,6 +239,10 @@ pub struct UserMessage {
     pub tool_use_result: Option<Value>,
     /// Provenance of the message, absent when the CLI did not attribute it.
     pub origin: Option<MessageOrigin>,
+    /// Keys of the nested `message` object other than `content`.
+    pub message_extra: Map<String, Value>,
+    /// Keys of the frame the crate does not model, as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl UserMessage {
@@ -251,6 +255,8 @@ impl UserMessage {
             parent_tool_use_id: None,
             tool_use_result: None,
             origin: None,
+            message_extra: Map::new(),
+            extra: Map::new(),
         }
     }
 }
@@ -282,6 +288,11 @@ pub struct AssistantMessage {
     pub user_message_uuid: Option<String>,
     /// `uuid` of every user message this turn has taken in so far.
     pub user_message_uuids: Option<Vec<String>>,
+    /// Keys of the nested `message` object the crate does not model, such
+    /// as `role` or a field the API added.
+    pub message_extra: Map<String, Value>,
+    /// Keys of the frame the crate does not model, as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl AssistantMessage {
@@ -300,6 +311,8 @@ impl AssistantMessage {
             uuid: None,
             user_message_uuid: None,
             user_message_uuids: None,
+            message_extra: Map::new(),
+            extra: Map::new(),
         }
     }
 }
@@ -954,6 +967,8 @@ pub struct ResultMessage {
     /// `uuid` of every user message this turn took in, in order. The CLI
     /// lists at most 64.
     pub user_message_uuids: Option<Vec<String>>,
+    /// Keys of the frame the crate does not model, as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ResultMessage {
@@ -989,6 +1004,7 @@ impl ResultMessage {
             origin: None,
             user_message_uuid: None,
             user_message_uuids: None,
+            extra: Map::new(),
         }
     }
 }
@@ -1009,6 +1025,8 @@ pub struct StreamEvent {
     pub user_message_uuid: Option<String>,
     /// `uuid` of every user message this turn has taken in so far.
     pub user_message_uuids: Option<Vec<String>>,
+    /// Keys of the frame the crate does not model, as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 wire_enum! {

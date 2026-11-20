@@ -301,8 +301,8 @@ fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<Conten
     Ok(parsed)
 }
 
-/// The keys of a content block outside `modeled`, kept for the block's
-/// `extra` field.
+/// The keys of an object outside `modeled`, kept for the `extra` field of
+/// the block or message read from it.
 fn extra_keys(object: &Map<String, Value>, modeled: &[&str]) -> Map<String, Value> {
     object
         .iter()
@@ -337,6 +337,18 @@ fn parse_user(fields: &Fields<'_>) -> Parsed<UserMessage> {
         parent_tool_use_id: fields.optional_str("parent_tool_use_id"),
         tool_use_result: fields.optional_value("tool_use_result"),
         origin: MessageOrigin::from_wire(fields.get("origin")),
+        message_extra: extra_keys(fields.required_object("message")?.object, &["content"]),
+        extra: extra_keys(
+            fields.object,
+            &[
+                "type",
+                "message",
+                "uuid",
+                "parent_tool_use_id",
+                "tool_use_result",
+                "origin",
+            ],
+        ),
     })
 }
 
@@ -365,6 +377,23 @@ fn parse_assistant(fields: &Fields<'_>) -> Parsed<AssistantMessage> {
         uuid: fields.optional_str("uuid"),
         user_message_uuid: fields.optional_str("user_message_uuid"),
         user_message_uuids: fields.optional_string_list("user_message_uuids"),
+        message_extra: extra_keys(
+            message.object,
+            &["content", "model", "usage", "id", "stop_reason"],
+        ),
+        extra: extra_keys(
+            fields.object,
+            &[
+                "type",
+                "message",
+                "parent_tool_use_id",
+                "error",
+                "session_id",
+                "uuid",
+                "user_message_uuid",
+                "user_message_uuids",
+            ],
+        ),
     })
 }
 
@@ -548,8 +577,35 @@ fn parse_result(fields: &Fields<'_>) -> Parsed<ResultMessage> {
         origin: MessageOrigin::from_wire(fields.get("origin")),
         user_message_uuid: fields.optional_str("user_message_uuid"),
         user_message_uuids: fields.optional_string_list("user_message_uuids"),
+        extra: extra_keys(fields.object, RESULT_KEYS),
     })
 }
+
+/// The keys of a `result` frame [`ResultMessage`] models.
+const RESULT_KEYS: &[&str] = &[
+    "type",
+    "subtype",
+    "duration_ms",
+    "duration_api_ms",
+    "is_error",
+    "num_turns",
+    "session_id",
+    "stop_reason",
+    "total_cost_usd",
+    "usage",
+    "result",
+    "structured_output",
+    "modelUsage",
+    "permission_denials",
+    "deferred_tool_use",
+    "errors",
+    "api_error_status",
+    "uuid",
+    "terminal_reason",
+    "origin",
+    "user_message_uuid",
+    "user_message_uuids",
+];
 
 fn parse_stream_event(fields: &Fields<'_>) -> Parsed<StreamEvent> {
     Ok(StreamEvent {
@@ -559,6 +615,18 @@ fn parse_stream_event(fields: &Fields<'_>) -> Parsed<StreamEvent> {
         parent_tool_use_id: fields.optional_str("parent_tool_use_id"),
         user_message_uuid: fields.optional_str("user_message_uuid"),
         user_message_uuids: fields.optional_string_list("user_message_uuids"),
+        extra: extra_keys(
+            fields.object,
+            &[
+                "type",
+                "uuid",
+                "session_id",
+                "event",
+                "parent_tool_use_id",
+                "user_message_uuid",
+                "user_message_uuids",
+            ],
+        ),
     })
 }
 
