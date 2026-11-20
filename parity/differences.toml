@@ -643,7 +643,7 @@ summary = "Rust skips the search in `PATH` when it is not set; Python falls back
 [behavior.typed-tool-schema-shape]
 summary = "The input schema of a tool whose arguments are a Rust type"
 python = "A `TypedDict` becomes `{\"type\": \"object\", \"properties\": ..., \"required\": ...}` with bare types: an optional `int` is `{\"type\": \"integer\"}`, with no `format`, bound, or title; any other class is listed as an object with no property."
-rust = "`SdkMcpTool::typed` lists the schema `schemars` derives: an `Option` field is `[\"integer\", \"null\"]`, and `format`, bounds, and the title of the type stay. The variants of an enum are merged into one object listing every field, with the tags as one `enum`, instead of a `oneOf` at the top level."
+rust = "`SdkMcpTool::typed` lists the schema `schemars` derives: an `Option` field is `[\"integer\", \"null\"]`, and `format`, bounds, and the title of the type stay. The variants of an enum are merged into one object listing every field, with the tags as one `enum` whose description lists the doc comment of each variant, instead of a `oneOf` at the top level."
 ref = "src/claude_agent_sdk/__init__.py:364-456"
 anchor = 'def _python_type_to_json_schema(py_type: Any) -> dict[str, Any]:'
 category = "deliberate"

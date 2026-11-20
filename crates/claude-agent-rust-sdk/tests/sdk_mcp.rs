@@ -292,7 +292,7 @@ fn typed_tool_of_an_enum_lists_every_field_of_every_variant_in_one_object() {
     );
     assert_eq!(
         properties["kind"],
-        json!({"type": "string", "enum": ["A", "B"]})
+        json!({"type": "string", "enum": ["A", "B"], "description": "`A`: Variant A."})
     );
     assert_eq!(properties["a"]["type"], "integer");
     assert_eq!(schema["required"], json!(["kind", "shared"]));
@@ -708,6 +708,20 @@ async fn arguments_that_are_not_an_object_are_jsonrpc_invalid_params_as_upstream
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_message_with_a_wrong_jsonrpc_envelope_is_an_internal_error_as_upstream() {
+    let client = SdkMcpClient::connected(server([])).await;
+    for message in [
+        json!({"id": 11, "method": "tools/list"}),
+        json!({"jsonrpc": "1.0", "id": 12, "method": "tools/list"}),
+        json!({"jsonrpc": "2.0", "id": 13, "method": "tools/list", "params": [1]}),
+    ] {
+        let response = client.send("srv", message.clone()).await;
+        assert_eq!(response["error"]["code"], -32603, "{message}: {response}");
+        assert_eq!(response["id"], message["id"], "{response}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn initialize_without_its_required_params_is_jsonrpc_invalid_params_as_upstream() {
     let client = SdkMcpClient::connected(server([])).await;
     let complete = initialize_params();
@@ -723,8 +737,19 @@ async fn initialize_without_its_required_params_is_jsonrpc_invalid_params_as_ups
         .shift_remove("version");
     for params in [json!({}), Value::Null, without_client, without_version] {
         let response = client.request("srv", "initialize", params.clone()).await;
-        assert_eq!(response["error"]["code"], -32602, "{params}: {response}");
+        assert_eq!(
+            response["error"],
+            json!({"code": -32602, "message": "Invalid request parameters", "data": ""}),
+            "{params}: {response}"
+        );
     }
+    let mut integer_version = complete.clone();
+    integer_version["protocolVersion"] = json!(5);
+    let response = client.request("srv", "initialize", integer_version).await;
+    assert_eq!(
+        response["result"]["protocolVersion"], "2025-11-25",
+        "{response}"
+    );
     let response = client.request("srv", "initialize", complete).await;
     assert_eq!(
         response["result"]["serverInfo"]["name"], "srv",
@@ -1189,7 +1214,7 @@ async fn cancelled_notification_ends_the_running_tool_call() {
 
     let response = client.answer(&call).await;
     assert_eq!(response["id"], 77);
-    assert_eq!(response["error"]["code"], -32800);
+    assert_eq!(response["error"]["code"], 0);
     assert!(
         response["error"]["message"]
             .as_str()
@@ -1742,6 +1767,21 @@ mod rmcp_servers {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn an_rmcp_request_with_a_float_id_is_acknowledged_as_a_notification() {
+        let threaded = Threaded::default();
+        let client = SdkMcpClient::connected(threaded.config()).await;
+        let float = client
+            .send(
+                "srv",
+                json!({"jsonrpc": "2.0", "id": 2.0, "method": "ping"}),
+            )
+            .await;
+        assert_eq!(float, json!({"jsonrpc": "2.0", "result": {}}));
+        let ping = client.request("srv", "ping", json!({})).await;
+        assert_eq!(ping["result"], json!({}));
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn message_arriving_after_close_is_not_answered_and_starts_no_new_session() {
         let threaded = Threaded::default();
         let client = SdkMcpClient::connected(threaded.config()).await;
@@ -1793,7 +1833,7 @@ mod rmcp_servers {
             json!({
                 "jsonrpc": "2.0",
                 "id": 31,
-                "error": {"code": -32800, "message": "Request cancelled"},
+                "error": {"code": 0, "message": "Request cancelled"},
             })
         );
         while threaded.cancelled.load(Ordering::SeqCst) == 0 {
@@ -1837,7 +1877,7 @@ mod rmcp_servers {
 
         let reply = client.answer(&blocking).await;
         assert_eq!(reply["id"], 21);
-        assert_eq!(reply["error"]["code"], -32800);
+        assert_eq!(reply["error"]["code"], 0);
         assert_eq!(reply["error"]["message"], "Request cancelled");
         assert!(reply.get("result").is_none());
 
@@ -1847,4 +1887,27 @@ mod rmcp_servers {
         assert_eq!(warnings.all(), Vec::<String>::new());
         client.close().await;
     }
+}
+
+#[test]
+fn a_merged_tag_keeps_the_doc_comment_of_each_variant() {
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(tag = "op")]
+    #[expect(dead_code, reason = "only the schema is read")]
+    enum Edit {
+        /// Append an item.
+        Add { item: String },
+        /// Delete an item.
+        Remove { item: String },
+    }
+    let tool =
+        SdkMcpTool::typed::<Edit>("edit", "Edit", |_| async move { Ok(ToolResult::text("")) });
+    assert_eq!(
+        tool.input_schema()["properties"]["op"],
+        json!({
+            "type": "string",
+            "enum": ["Add", "Remove"],
+            "description": "`Add`: Append an item.\n`Remove`: Delete an item.",
+        })
+    );
 }

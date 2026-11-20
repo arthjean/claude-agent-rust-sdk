@@ -35,7 +35,9 @@ use crate::types::BoxFuture;
 pub(crate) use super::server::SHUTDOWN_GRACE;
 
 const METHOD_NOT_FOUND: i64 = -32601;
-const REQUEST_CANCELLED: i64 = -32800;
+/// The code of the answer to a cancelled call: the Python `mcp` package
+/// (1.x, which upstream runs) answers `0`, not the `-32800` of MCP 2.
+const REQUEST_CANCELLED: i64 = 0;
 
 #[derive(Debug, thiserror::Error)]
 #[error("the in-process MCP channel is closed")]
@@ -435,6 +437,17 @@ impl RmcpBridge {
     pub(crate) async fn handle(&self, message: &Value) -> Result<Option<Value>, String> {
         if self.closed.load(Ordering::Acquire) {
             return Err(format!("SDK MCP server '{}' is closed", self.name));
+        }
+        if message.get("method").is_some()
+            && message.get("id").is_some()
+            && super::server::request_id(message).is_none()
+        {
+            tracing::debug!(
+                "SDK MCP server '{}' got a request whose id is neither an integer nor a string; \
+                 it is acknowledged as a notification, as upstream does",
+                self.name
+            );
+            return Ok(None);
         }
         let session = {
             let mut slot = self.session.lock().await;

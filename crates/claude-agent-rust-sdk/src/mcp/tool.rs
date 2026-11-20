@@ -427,7 +427,8 @@ impl SdkMcpTool {
     /// listed with the type `object`. The alternatives of an enum are
     /// merged into that object, because the Claude API refuses a tool
     /// schema with `oneOf` or `anyOf` at the top level: the model sees
-    /// every field of every variant, and `serde` checks the exact shape. A
+    /// every field of every variant, the tag lists the doc comment of each
+    /// variant in its description, and `serde` checks the exact shape. A
     /// type whose schema describes no object (`serde_json::Value`, a scalar,
     /// a sequence, an enum of unit variants) is listed with the schema of an
     /// object that states no property; use [`SdkMcpTool::raw`] to describe

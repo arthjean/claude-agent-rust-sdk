@@ -40,6 +40,8 @@
 - **Breaking:** `AssistantMessage::usage` and `ResultMessage::usage` are a `Usage`, which keeps the JSON the CLI sent and reads `input_tokens`, `output_tokens`, the two cache counts, and `service_tier`; `Usage::into_value` gives the JSON back.
 - **Breaking:** `list_sessions`, `list_sessions_from_store`, `get_session_messages`, `get_subagent_messages`, `get_session_messages_from_store`, `get_subagent_messages_from_store`, `fork_session`, `fork_session_via_store`, and `import_session_to_store` take an options struct (`ListSessionsOptions`, `SessionMessagesOptions`, `ForkSessionOptions`, `ImportSessionOptions`) built with `new()` and chainable setters, in place of their positional optional parameters; the defaults are upstream's keyword defaults.
 - `import_session_to_store` reads the transcript in blocks of 1 MiB instead of loading it whole.
+- A cancelled call to an in-process MCP server is answered with the error code `0`, as the Python `mcp` package does, instead of `-32800`.
+- An in-process MCP server answers invalid parameters with exactly `Invalid request parameters` and an empty `data`, as the Python `mcp` package does, accepts an integer `protocolVersion`, and refuses a message whose `jsonrpc` is not `"2.0"` or whose `params` is not an object with a `-32603` error.
 
 ### Removed
 
@@ -83,6 +85,8 @@
 - `rename_session` and `tag_session` strip what Python's `str.strip()` strips, the separators U+001C to U+001F included, and so does the reading of a first prompt.
 - The 5-second limit on `git worktree list` and the macOS Keychain read holds when a process the command started keeps its output open.
 - A `close` or `flush` of a client dropped while the transcript mirror appends to the store, as under a timeout, no longer loses the batch being sent: the sending runs in a task of its own, as upstream shields it.
+- A request with a float id (`2.0`) sent to an `rmcp` server is acknowledged as a notification, as upstream does, where it was never answered.
+- The tag of a typed tool whose arguments are a tagged enum lists the doc comment of each variant in its description; the merge of the variants dropped them.
 
 ## 0.1.0 - 2026-11-18
 

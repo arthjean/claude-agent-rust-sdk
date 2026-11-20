@@ -33,7 +33,9 @@ pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 const INTERNAL_ERROR: i64 = -32603;
-const REQUEST_CANCELLED: i64 = -32800;
+/// The code of the answer to a cancelled call: the Python `mcp` package
+/// (1.x, which upstream runs) answers `0`, not the `-32800` of MCP 2.
+const REQUEST_CANCELLED: i64 = 0;
 
 /// Creates an MCP server that runs inside this process and serves these
 /// tools to the CLI over the control channel.
@@ -123,11 +125,13 @@ impl SdkMcpServer {
     }
 
     /// Answers the handshake. Its parameters are checked as the `mcp`
-    /// package checks them: a `protocolVersion` string, a `capabilities`
+    /// package checks them: a `protocolVersion` string or integer, a `capabilities`
     /// object, and a `clientInfo` with a `name` and a `version`.
     fn initialize(&self, params: &Value) -> std::result::Result<Value, RpcError> {
         let client = params.get("clientInfo");
-        let well_formed = params.get("protocolVersion").is_some_and(Value::is_string)
+        let well_formed = params
+            .get("protocolVersion")
+            .is_some_and(|version| version.is_string() || version.is_i64() || version.is_u64())
             && params.get("capabilities").is_some_and(Value::is_object)
             && client
                 .and_then(|client| client.get("name"))
@@ -188,6 +192,7 @@ impl SdkMcpServer {
             other => Err(RpcError {
                 code: METHOD_NOT_FOUND,
                 message: format!("Method not found: {other}"),
+                data: None,
             }),
         }
     }
@@ -196,25 +201,31 @@ impl SdkMcpServer {
 struct RpcError {
     code: i64,
     message: String,
+    data: Option<Value>,
 }
 
 /// The `-32602` error the `mcp` package answers for parameters it cannot
-/// read.
+/// read: the same message and an empty `data` whatever the cause, which
+/// goes to the debug log.
 fn invalid_params(detail: &str) -> RpcError {
+    tracing::debug!("SDK MCP request with invalid parameters: {detail}");
     RpcError {
         code: INVALID_PARAMS,
-        message: format!("Invalid request parameters: {detail}"),
+        message: "Invalid request parameters".to_owned(),
+        data: Some(Value::from("")),
     }
 }
 
 fn response(id: &Value, outcome: std::result::Result<Value, RpcError>) -> Value {
     match outcome {
         Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-        Err(error) => json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {"code": error.code, "message": error.message},
-        }),
+        Err(error) => {
+            let mut body = json!({"code": error.code, "message": error.message});
+            if let Some(data) = error.data {
+                body["data"] = data;
+            }
+            json!({"jsonrpc": "2.0", "id": id, "error": body})
+        }
     }
 }
 
@@ -291,7 +302,13 @@ impl NativeSession {
         &self,
         message: &Value,
     ) -> std::result::Result<Option<Value>, String> {
+        if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+            return Err("Invalid JSON-RPC message: jsonrpc must be \"2.0\"".to_owned());
+        }
         let params = message.get("params").unwrap_or(&Value::Null);
+        if !(params.is_null() || params.is_object()) {
+            return Err("Invalid JSON-RPC message: params must be an object".to_owned());
+        }
         let Some(method) = message.get("method").and_then(Value::as_str) else {
             if message.get("result").is_some() || message.get("error").is_some() {
                 return Ok(None);
@@ -330,6 +347,7 @@ impl NativeSession {
                 Ok(()) = cancelled => Err(RpcError {
                     code: REQUEST_CANCELLED,
                     message: "Request cancelled".to_owned(),
+                    data: None,
                 }),
                 outcome = server.dispatch(&method, &params) => outcome,
             };
@@ -340,6 +358,7 @@ impl NativeSession {
             Err(RpcError {
                 code: INTERNAL_ERROR,
                 message: "The request was stopped before it was answered".to_owned(),
+                data: None,
             })
         });
         Ok(Some(response(id, outcome)))

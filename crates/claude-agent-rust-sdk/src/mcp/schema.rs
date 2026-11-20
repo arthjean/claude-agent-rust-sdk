@@ -93,6 +93,7 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
     let definitions = root.get("$defs").cloned().unwrap_or(Value::Null);
     let mut properties: Vec<(String, Vec<Value>)> = Vec::new();
     let mut required: Vec<String> = strings(root.get("required"));
+    let mut variant_docs: Vec<(String, String)> = Vec::new();
     let mut found_an_object = false;
     if let Some(Value::Object(own)) = root.get("properties") {
         for (name, schema) in own {
@@ -116,6 +117,12 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
             if let Some(Value::Object(stated)) = object.get("properties") {
                 for (name, schema) in stated {
                     add_property(&mut properties, name, schema);
+                    if let (Some(tag), Some(Value::String(doc))) =
+                        (schema.get("const"), object.get("description"))
+                    {
+                        let tag = tag.as_str().map_or_else(|| tag.to_string(), str::to_owned);
+                        variant_docs.push((name.clone(), format!("`{tag}`: {doc}")));
+                    }
                 }
             }
         }
@@ -141,7 +148,11 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
     }
     let merged: Map<String, Value> = properties
         .into_iter()
-        .map(|(name, schemas)| (name, union_of(schemas)))
+        .map(|(name, schemas)| {
+            let mut schema = union_of(schemas);
+            describe_variants(&mut schema, &name, &variant_docs);
+            (name, schema)
+        })
         .collect();
     root.insert("properties".to_owned(), Value::Object(merged));
     if required.is_empty() {
@@ -150,6 +161,30 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
         root.insert("required".to_owned(), json!(required));
     }
     true
+}
+
+/// Gives a merged tag the doc comments of the variants it selects, one
+/// line per variant (`` `Add`: Append an item. ``), after the description
+/// the tag already has: the merge drops the variant objects that held them.
+fn describe_variants(schema: &mut Value, name: &str, variant_docs: &[(String, String)]) {
+    let lines: Vec<&str> = variant_docs
+        .iter()
+        .filter(|(property, _)| property == name)
+        .map(|(_, line)| line.as_str())
+        .collect();
+    let Value::Object(fields) = schema else {
+        return;
+    };
+    if lines.is_empty() || !fields.contains_key("enum") {
+        return;
+    }
+    let mut text: Vec<&str> = Vec::new();
+    if let Some(Value::String(own)) = fields.get("description") {
+        text.push(own);
+    }
+    text.extend(lines);
+    let description = text.join("\n");
+    fields.insert("description".to_owned(), Value::String(description));
 }
 
 /// An alternative as an object schema, following a local `$ref` into the
