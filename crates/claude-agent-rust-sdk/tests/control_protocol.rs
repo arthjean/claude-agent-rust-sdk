@@ -472,6 +472,40 @@ async fn cancel_request_aborts_the_handler_which_writes_no_response() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn two_control_requests_with_one_id_are_both_answered_as_upstream() {
+    let release = Arc::new(tokio::sync::Notify::new());
+    let slow = {
+        let release = Arc::clone(&release);
+        HookCallback::new(move |_input, _tool_use_id, _context| {
+            let release = Arc::clone(&release);
+            async move {
+                release.notified().await;
+                Ok(HookOutput::default())
+            }
+        })
+    };
+    let options = ClaudeAgentOptions::builder()
+        .hook("PreToolUse", HookMatcher::new().hook(slow))
+        .build()
+        .unwrap();
+    let transport = cli();
+    let client = connected(&transport, options).await;
+
+    transport.push_frame(hook_request("dup", "hook_0"));
+    transport.push_frame(hook_request("dup", "hook_0"));
+    settle().await;
+    assert!(responses(&transport).is_empty());
+    release.notify_waiters();
+    settle().await;
+    let answered = responses(&transport)
+        .iter()
+        .filter(|response| response["request_id"] == "dup")
+        .count();
+    assert_eq!(answered, 2, "{:?}", responses(&transport));
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_hook_is_answered_while_unread_messages_wait_for_the_application() {
     let transport = cli();
     let client = connected(&transport, options_with_hook()).await;

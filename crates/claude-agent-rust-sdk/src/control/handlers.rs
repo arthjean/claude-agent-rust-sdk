@@ -33,22 +33,34 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
         return;
     };
     let (cancel, cancelled) = oneshot::channel::<()>();
-    {
+    let number = {
         let mut state = shared.state();
         if state.closed {
             return;
         }
-        state.inflight.insert(request_id.clone(), cancel);
-    }
+        let number = state.next_handler;
+        state.next_handler += 1;
+        state.inflight.insert(request_id.clone(), (number, cancel));
+        number
+    };
     let shared = Arc::clone(shared);
     crate::caller_context::spawn(async move {
         let request = frame.get("request").cloned().unwrap_or(Value::Null);
         let outcome = tokio::select! {
             biased;
-            _ = cancelled => None,
+            Ok(()) = cancelled => None,
             outcome = AssertUnwindSafe(answer(&shared, &request)).catch_unwind() => Some(outcome),
         };
-        shared.state().inflight.remove(&request_id);
+        {
+            let mut state = shared.state();
+            if state
+                .inflight
+                .get(&request_id)
+                .is_some_and(|(owner, _)| *owner == number)
+            {
+                state.inflight.remove(&request_id);
+            }
+        }
         let Some(outcome) = outcome else {
             return;
         };
@@ -81,7 +93,7 @@ pub(super) fn cancel(shared: &Shared, frame: &Value) {
     let Some(request_id) = frame.get("request_id").and_then(Value::as_str) else {
         return;
     };
-    if let Some(cancel) = shared.state().inflight.remove(request_id) {
+    if let Some((_, cancel)) = shared.state().inflight.remove(request_id) {
         let _ = cancel.send(());
     }
 }

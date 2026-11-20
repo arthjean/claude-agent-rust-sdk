@@ -167,7 +167,12 @@ struct Shared {
 struct State {
     outbox: Option<mpsc::Sender<Result<Value>>>,
     pending: HashMap<String, oneshot::Sender<Result<Value>>>,
-    inflight: HashMap<String, oneshot::Sender<()>>,
+    /// The cancel handle of each running control request handler, with
+    /// the number of the handler, so a handler that ends removes its own
+    /// entry and not the one of a later request with the same id.
+    inflight: HashMap<String, (u64, oneshot::Sender<()>)>,
+    /// Number of the next control request handler.
+    next_handler: u64,
     tasks: Vec<AbortHandle>,
     reader: Option<JoinHandle<()>>,
     reader_end: Option<ReaderEnd>,
@@ -665,6 +670,7 @@ impl ControlSession {
                 outbox: Some(outbox),
                 pending: HashMap::new(),
                 inflight: HashMap::new(),
+                next_handler: 0,
                 tasks: Vec::new(),
                 reader: None,
                 reader_end: None,
@@ -908,7 +914,9 @@ impl ControlSession {
         for task in tasks {
             task.abort();
         }
-        drop(inflight);
+        for (_, (_, cancel)) in inflight {
+            let _ = cancel.send(());
+        }
         drop(outbox);
         if let Some(reader) = reader {
             reader.abort();
