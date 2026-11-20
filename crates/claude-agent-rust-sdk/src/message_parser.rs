@@ -12,9 +12,13 @@
 //!   In a user message only `text`, `tool_use`, and `tool_result` blocks
 //!   are read, as upstream reads them; any other block, `thinking`
 //!   included, is kept as [`ContentBlock::Unknown`], where upstream drops
-//!   it, so its fields are never required;
+//!   it, so its fields are never required. A block the crate models keeps
+//!   the keys it does not model (the `citations` of a text block, for
+//!   example) in its `extra` field, where upstream drops them;
 //! - a required field of the wrong JSON type is an error, and an optional
-//!   field of the wrong JSON type reads as absent. An integer field accepts
+//!   field of the wrong JSON type reads as absent, where upstream passes
+//!   the value through; an optional list of strings keeps its strings and
+//!   leaves out its other elements. An integer field accepts
 //!   any JSON number: a fraction is truncated and a value out of range
 //!   saturates, so a negative count reads as zero;
 //! - `modelUsage` is typed as [`ModelUsage`] per model, where upstream keeps
@@ -260,15 +264,18 @@ fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<Conten
     let parsed = match kind {
         Some("text") => ContentBlock::Text(TextBlock {
             text: fields.required_str("text")?,
+            extra: extra_keys(object, &["type", "text"]),
         }),
         Some("thinking") => ContentBlock::Thinking(ThinkingBlock {
             thinking: fields.required_str("thinking")?,
             signature: fields.required_str("signature")?,
+            extra: extra_keys(object, &["type", "thinking", "signature"]),
         }),
         Some("tool_use") => ContentBlock::ToolUse(ToolUseBlock {
             id: fields.required_str("id")?,
             name: fields.required_str("name")?,
             input: fields.required("input")?.clone(),
+            extra: extra_keys(object, &["type", "id", "name", "input"]),
         }),
         Some("tool_result") => ContentBlock::ToolResult(ToolResultBlock {
             tool_use_id: fields.required_str("tool_use_id")?,
@@ -276,19 +283,32 @@ fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<Conten
                 .optional_value("content")
                 .map(ToolResultContent::from),
             is_error: fields.get("is_error").and_then(Value::as_bool),
+            extra: extra_keys(object, &["type", "tool_use_id", "content", "is_error"]),
         }),
         Some("server_tool_use") => ContentBlock::ServerToolUse(ServerToolUseBlock {
             id: fields.required_str("id")?,
             name: ServerToolName::from(fields.required_str("name")?),
             input: fields.required("input")?.clone(),
+            extra: extra_keys(object, &["type", "id", "name", "input"]),
         }),
         Some("advisor_tool_result") => ContentBlock::ServerToolResult(ServerToolResultBlock {
             tool_use_id: fields.required_str("tool_use_id")?,
             content: fields.required("content")?.clone(),
+            extra: extra_keys(object, &["type", "tool_use_id", "content"]),
         }),
         _ => ContentBlock::Unknown(block.clone()),
     };
     Ok(parsed)
+}
+
+/// The keys of a content block outside `modeled`, kept for the block's
+/// `extra` field.
+fn extra_keys(object: &Map<String, Value>, modeled: &[&str]) -> Map<String, Value> {
+    object
+        .iter()
+        .filter(|(key, _)| !modeled.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
 fn parse_blocks(blocks: &[Value], family: &'static str, turn: Turn) -> Parsed<Vec<ContentBlock>> {

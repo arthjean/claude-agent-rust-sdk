@@ -2061,3 +2061,38 @@ fn init_frame_optional_fields_are_typed() {
     assert_eq!(init.agents.unwrap(), ["general-purpose"]);
     assert_eq!(init.mcp_servers[0].source.as_deref(), Some("plugin"));
 }
+
+#[test]
+fn an_optional_field_of_the_wrong_type_reads_as_absent_and_a_list_keeps_its_strings() {
+    let message = result(with(
+        base_result(),
+        json!({"result": {"x": 1}, "api_error_status": "500", "errors": ["a", 5]}),
+    ));
+    assert_eq!(message.result, None);
+    assert_eq!(message.api_error_status, None);
+    assert_eq!(message.errors, Some(vec!["a".to_owned()]));
+}
+
+#[test]
+fn a_known_content_block_keeps_the_keys_it_does_not_model() {
+    let message = assistant(json!({
+        "type": "assistant",
+        "message": {
+            "content": [{
+                "type": "text",
+                "text": "Paris.",
+                "citations": [{"type": "web_search_result_location", "url": "https://example.test"}],
+            }],
+            "model": "claude-opus-4-5",
+        },
+    }));
+    let ContentBlock::Text(block) = &message.content[0] else {
+        panic!("expected a text block");
+    };
+    assert_eq!(block.text, "Paris.");
+    assert_eq!(
+        block.extra.get("citations"),
+        Some(&json!([{"type": "web_search_result_location", "url": "https://example.test"}]))
+    );
+    assert!(!block.extra.contains_key("type"));
+}

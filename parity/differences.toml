@@ -364,6 +364,26 @@ category = "deliberate"
 reason = "The limit bounds the memory a line takes, which bytes measure."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::the_limit_counts_bytes_not_characters"
 
+[behavior.content-block-extra-keys]
+summary = "A key a known content block carries but the SDK does not model, such as the `citations` of a text block"
+python = "The block is built from the fields it models, so the key is dropped."
+rust = "Kept in the `extra` field of the block, as the CLI sent it."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:168-172"
+anchor = 'content_blocks.append(TextBlock(text=block["text"]))'
+category = "rust-more-robust"
+reason = "A newer CLI must not make an older program lose data."
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::a_known_content_block_keeps_the_keys_it_does_not_model"
+
+[behavior.optional-field-wrong-type]
+summary = "An optional message field of the wrong JSON type"
+python = "Passed through as sent: `data.get(...)` keeps a dict in `result` or a number in a list of strings."
+rust = "Reads as absent (`None`); an optional list of strings keeps its strings and leaves out its other elements."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:334-336"
+anchor = 'errors=data.get("errors"),'
+category = "deliberate"
+reason = "The fields are typed; a value of another type cannot be held in them, and failing the whole message over an optional field would lose the rest of it."
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::an_optional_field_of_the_wrong_type_reads_as_absent_and_a_list_keeps_its_strings"
+
 [behavior.integer-fields-coerced]
 summary = "A fractional or negative number in an integer field"
 python = "Kept as sent."

@@ -1732,3 +1732,18 @@ fn usage_keeps_every_key_and_reads_the_documented_counts() {
     );
     assert_eq!(serde_json::to_value(&usage).unwrap(), wire);
 }
+
+#[test]
+fn a_permission_suggestion_keeps_the_keys_a_newer_cli_adds_when_it_is_sent_back() {
+    let wire = json!({
+        "type": "setMode",
+        "mode": "acceptEdits",
+        "destination": "session",
+        "futureKey": {"a": 1},
+    });
+    let update = PermissionUpdate::from_wire(&wire).unwrap();
+    assert_eq!(update.extra.get("futureKey"), Some(&json!({"a": 1})));
+    assert_eq!(update.to_wire().unwrap(), wire);
+    let shadowing = update.extra_field("mode", "plan");
+    assert_eq!(shadowing.to_wire().unwrap()["mode"], "acceptEdits");
+}

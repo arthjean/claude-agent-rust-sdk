@@ -119,7 +119,21 @@ pub struct PermissionUpdate {
     /// Where the update applies and is kept. `None` is sent as
     /// [`PermissionUpdateDestination::Session`].
     pub destination: Option<PermissionUpdateDestination>,
+    /// Keys this version of the crate does not model, kept from the CLI
+    /// and sent back after the modeled ones, so a suggestion a newer CLI
+    /// makes reaches it whole when the callback returns it.
+    pub extra: Map<String, Value>,
 }
+
+/// Keys of the wire form that [`PermissionUpdate`] models.
+const PERMISSION_UPDATE_KEYS: [&str; 6] = [
+    "type",
+    "rules",
+    "behavior",
+    "mode",
+    "directories",
+    "destination",
+];
 
 impl PermissionUpdate {
     /// Creates an update of the given kind with every other field unset.
@@ -132,6 +146,7 @@ impl PermissionUpdate {
             mode: None,
             directories: None,
             destination: None,
+            extra: Map::new(),
         }
     }
 
@@ -254,6 +269,11 @@ impl PermissionUpdate {
                 )));
             }
         }
+        for (key, value) in &self.extra {
+            if !PERMISSION_UPDATE_KEYS.contains(&key.as_str()) {
+                wire.insert(key.clone(), value.clone());
+            }
+        }
         Ok(Value::Object(wire))
     }
 
@@ -311,9 +331,16 @@ impl PermissionUpdate {
             mode: string("mode").map(PermissionMode::from),
             directories,
             destination: string("destination").map(PermissionUpdateDestination::from),
+            extra: object
+                .iter()
+                .filter(|(key, _)| !PERMISSION_UPDATE_KEYS.contains(&key.as_str()))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
         })
     }
 }
+
+super::macros::extra_field!(PermissionUpdate);
 
 impl Serialize for PermissionUpdate {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

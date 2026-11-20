@@ -1,6 +1,6 @@
 //! Content blocks carried by user and assistant messages.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::macros::wire_enum;
 
@@ -42,13 +42,19 @@ impl ContentBlock {
 pub struct TextBlock {
     /// The text.
     pub text: String,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl TextBlock {
     /// Creates a text block.
     #[must_use]
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
+        Self {
+            text: text.into(),
+            extra: Map::new(),
+        }
     }
 }
 
@@ -60,6 +66,9 @@ pub struct ThinkingBlock {
     pub thinking: String,
     /// Signature that authenticates the reasoning.
     pub signature: String,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ThinkingBlock {
@@ -69,6 +78,7 @@ impl ThinkingBlock {
         Self {
             thinking: thinking.into(),
             signature: signature.into(),
+            extra: Map::new(),
         }
     }
 }
@@ -83,6 +93,9 @@ pub struct ToolUseBlock {
     pub name: String,
     /// Tool input, normally a JSON object.
     pub input: Value,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ToolUseBlock {
@@ -93,6 +106,7 @@ impl ToolUseBlock {
             id: id.into(),
             name: name.into(),
             input,
+            extra: Map::new(),
         }
     }
 }
@@ -107,6 +121,9 @@ pub struct ToolResultBlock {
     pub content: Option<ToolResultContent>,
     /// Whether the tool call failed, when reported.
     pub is_error: Option<bool>,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ToolResultBlock {
@@ -121,6 +138,7 @@ impl ToolResultBlock {
             tool_use_id: tool_use_id.into(),
             content,
             is_error,
+            extra: Map::new(),
         }
     }
 }
@@ -205,6 +223,9 @@ pub struct ServerToolUseBlock {
     pub name: ServerToolName,
     /// Tool input, normally a JSON object.
     pub input: Value,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ServerToolUseBlock {
@@ -215,6 +236,7 @@ impl ServerToolUseBlock {
             id: id.into(),
             name: name.into(),
             input,
+            extra: Map::new(),
         }
     }
 }
@@ -229,6 +251,9 @@ pub struct ServerToolResultBlock {
     pub tool_use_id: String,
     /// Raw result, normally a JSON object.
     pub content: Value,
+    /// Keys this version of the crate does not model, such as the
+    /// `citations` of a text block, kept as the CLI sent them.
+    pub extra: Map<String, Value>,
 }
 
 impl ServerToolResultBlock {
@@ -238,6 +263,7 @@ impl ServerToolResultBlock {
         Self {
             tool_use_id: tool_use_id.into(),
             content,
+            extra: Map::new(),
         }
     }
 }
