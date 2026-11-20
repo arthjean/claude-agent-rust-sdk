@@ -569,8 +569,15 @@ async fn read_output<R>(
     let mut chunk = vec![0_u8; STDOUT_CHUNK_SIZE];
     loop {
         let read = match stdout.read(&mut chunk).await {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
             Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) if context.shared.closing.load(Ordering::SeqCst) => break,
+            Err(error) => {
+                let error = Error::io("Failed to read the output of the CLI", error);
+                let _ = sender.send(Err(error)).await;
+                return;
+            }
         };
         for line in framer.push(&chunk[..read]) {
             if line.len() > limit {
@@ -911,6 +918,59 @@ mod tests {
     }
 
     const MEBIBYTE: usize = 1024 * 1024;
+
+    struct Failing(Option<Vec<u8>>);
+
+    impl AsyncRead for Failing {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+            buffer: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            match self.0.take() {
+                Some(chunk) => {
+                    buffer.put_slice(&chunk);
+                    Poll::Ready(Ok(()))
+                }
+                None => Poll::Ready(Err(std::io::Error::other("pipe broke"))),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_read_error_on_the_output_ends_the_stream_with_that_error() {
+        let (sender, mut receiver) = mpsc::channel(16);
+        let (_exit_sender, exit) = watch::channel(Some(Exit {
+            code: 0,
+            forced: false,
+        }));
+        let context = OutputContext {
+            shared: Arc::new(SharedState::default()),
+            exit,
+            max_buffer_size: MEBIBYTE,
+            version_check: VersionCheck {
+                done: true,
+                cli_path: PathBuf::from("/usr/bin/claude"),
+                verbatim_prompts: false,
+            },
+        };
+        let first = json!({"type": "system", "subtype": "init"});
+        read_output(
+            Failing(Some(format!("{first}\n").into_bytes())),
+            sender,
+            context,
+        )
+        .await;
+        assert_eq!(receiver.recv().await.unwrap().unwrap(), first);
+        let error = receiver.recv().await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Io);
+        assert_eq!(error.to_string(), "Failed to read the output of the CLI");
+        assert_eq!(
+            std::error::Error::source(&error).map(ToString::to_string),
+            Some("pipe broke".to_owned())
+        );
+        assert!(receiver.recv().await.is_none());
+    }
 
     #[tokio::test]
     async fn multiple_json_objects_in_one_read() {
