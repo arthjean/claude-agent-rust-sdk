@@ -480,37 +480,42 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
     key: &SessionKey,
     batch_size: usize,
 ) -> Result<()> {
+    let cannot_read = |error| Error::io(format!("Cannot read {}", path.display()), error);
     let owned = path.to_path_buf();
-    let content = crate::blocking::run(move || std::fs::read(owned))
+    let file = crate::blocking::run(move || std::fs::File::open(owned))
         .await?
-        .map_err(|error| Error::io(format!("Cannot read {}", path.display()), error))?;
-    let content = String::from_utf8_lossy(&content);
+        .map_err(cannot_read)?;
+    let mut reader = std::io::BufReader::new(file);
     let mut batch: Vec<SessionStoreEntry> = Vec::new();
     let mut bytes = 0;
-    for line in content.split('\n') {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() {
-            continue;
-        }
-        match crate::transport::framing::parse_json(line) {
-            Ok(Value::Object(entry)) => batch.push(entry),
-            Ok(_) => {
-                tracing::warn!(
-                    "Skipping a transcript line that is not a JSON object in {}",
-                    path.display()
-                );
-                continue;
+    loop {
+        let (returned, lines, done) = crate::blocking::run(move || read_line_chunk(reader)).await?;
+        reader = returned;
+        for line in lines.map_err(cannot_read)? {
+            let line = String::from_utf8_lossy(&line);
+            match crate::transport::framing::parse_json(&line) {
+                Ok(Value::Object(entry)) => batch.push(entry),
+                Ok(_) => {
+                    tracing::warn!(
+                        "Skipping a transcript line that is not a JSON object in {}",
+                        path.display()
+                    );
+                    continue;
+                }
+                Err(error) => return Err(Error::json_decode(line, error)),
             }
-            Err(error) => return Err(Error::json_decode(line, error)),
+            bytes += line.len();
+            if batch.len() >= batch_size || bytes >= MAX_PENDING_BYTES {
+                store
+                    .append(key, &batch)
+                    .await
+                    .map_err(store_error("Session store append failed"))?;
+                batch.clear();
+                bytes = 0;
+            }
         }
-        bytes += line.len();
-        if batch.len() >= batch_size || bytes >= MAX_PENDING_BYTES {
-            store
-                .append(key, &batch)
-                .await
-                .map_err(store_error("Session store append failed"))?;
-            batch.clear();
-            bytes = 0;
+        if done {
+            break;
         }
     }
     if !batch.is_empty() {
@@ -520,6 +525,46 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
             .map_err(store_error("Session store append failed"))?;
     }
     Ok(())
+}
+
+/// Bytes of transcript read from disk at a time by an import, so a large
+/// transcript is never held whole in memory.
+const IMPORT_READ_CHUNK: usize = 1024 * 1024;
+
+/// Reads the next non-empty lines of a transcript, about
+/// [`IMPORT_READ_CHUNK`] bytes of them, without their `\n` or `\r\n`
+/// ending. Returns the reader, the lines, and whether the end was reached.
+fn read_line_chunk(
+    mut reader: std::io::BufReader<std::fs::File>,
+) -> (
+    std::io::BufReader<std::fs::File>,
+    std::io::Result<Vec<Vec<u8>>>,
+    bool,
+) {
+    use std::io::BufRead;
+
+    let mut lines = Vec::new();
+    let mut read = 0;
+    loop {
+        let mut line = Vec::new();
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) => return (reader, Ok(lines), true),
+            Ok(count) => read += count,
+            Err(error) => return (reader, Err(error), true),
+        }
+        if line.last() == Some(&b'\n') {
+            line.pop();
+        }
+        if line.last() == Some(&b'\r') {
+            line.pop();
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+        if read >= IMPORT_READ_CHUNK {
+            return (reader, Ok(lines), false);
+        }
+    }
 }
 
 /// Copies a local session into a store, so it can be read or resumed from
