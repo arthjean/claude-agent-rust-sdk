@@ -32,7 +32,6 @@
 //! "canUseTool"), so a program that matches on a message keeps matching.
 
 use std::fmt;
-use std::ops::Deref;
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -603,9 +602,10 @@ impl std::error::Error for Error {
 
 /// Raw `result` payload carried by [`ErrorKind::ResultError`].
 ///
-/// Dereferences to the JSON object emitted by the CLI. A payload that is not
-/// a JSON object is replaced by an empty one. The accessors return `None`
-/// for a missing or mistyped field.
+/// Holds the JSON object emitted by the CLI, read through the accessors,
+/// [`get`](Self::get) for any other key, or [`as_map`](Self::as_map). A
+/// payload that is not a JSON object is replaced by an empty one. The
+/// accessors return `None` for a missing or mistyped field.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ResultErrorData(Map<String, Value>);
 
@@ -679,6 +679,18 @@ impl ResultErrorData {
         }
     }
 
+    /// The value of a key of the payload, modeled by an accessor or not.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.0.get(key)
+    }
+
+    /// The whole JSON object of the payload.
+    #[must_use]
+    pub fn as_map(&self) -> &Map<String, Value> {
+        &self.0
+    }
+
     /// Consumes the wrapper and returns the JSON object.
     #[must_use]
     pub fn into_inner(self) -> Map<String, Value> {
@@ -687,14 +699,6 @@ impl ResultErrorData {
 
     fn string(&self, key: &str) -> Option<&str> {
         self.0.get(key).and_then(Value::as_str)
-    }
-}
-
-impl Deref for ResultErrorData {
-    type Target = Map<String, Value>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 

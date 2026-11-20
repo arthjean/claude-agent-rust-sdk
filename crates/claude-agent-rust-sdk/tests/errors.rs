@@ -145,7 +145,7 @@ fn result_error_carries_payload() {
     assert_eq!(payload.api_error_status(), None);
     assert_eq!(payload.terminal_reason(), Some("api_error"));
     assert_eq!(payload.session_id(), Some("s-1"));
-    assert_eq!(payload["terminal_reason"], "api_error");
+    assert_eq!(payload.get("terminal_reason").unwrap(), "api_error");
     assert_eq!(
         error.to_string(),
         "Claude Code returned an error result: API Error: Stream idle timeout - no chunks \
@@ -182,7 +182,7 @@ fn result_error_tolerates_missing_or_malformed_fields() {
     assert_eq!(error.exit_code(), None);
 
     let error = Error::result_error(json!("not an object"), None);
-    assert!(result_error_data(&error).is_empty());
+    assert!(result_error_data(&error).as_map().is_empty());
 }
 
 #[test]

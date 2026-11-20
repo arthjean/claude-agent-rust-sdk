@@ -42,6 +42,7 @@
 - `import_session_to_store` reads the transcript in blocks of 1 MiB instead of loading it whole.
 - A cancelled call to an in-process MCP server is answered with the error code `0`, as the Python `mcp` package does, instead of `-32800`.
 - An in-process MCP server answers invalid parameters with exactly `Invalid request parameters` and an empty `data`, as the Python `mcp` package does, accepts an integer `protocolVersion`, and refuses a message whose `jsonrpc` is not `"2.0"` or whose `params` is not an object with a `-32603` error.
+- `ResultErrorData` no longer dereferences to the JSON object: read other keys with `get` and the whole object with `as_map`, as the Rust API guidelines keep `Deref` for smart pointers.
 
 ### Removed
 
