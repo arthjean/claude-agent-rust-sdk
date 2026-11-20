@@ -63,7 +63,7 @@ pub struct ClaudeAgentOptions {
     /// forces this to `stdio`.
     pub permission_prompt_tool_name: Option<String>,
     /// Working directory of the session. Defaults to the directory of this
-    /// process.
+    /// process, as does an empty path.
     pub cwd: Option<PathBuf>,
     /// Path of the CLI executable. Discovered when not set.
     pub cli_path: Option<PathBuf>,

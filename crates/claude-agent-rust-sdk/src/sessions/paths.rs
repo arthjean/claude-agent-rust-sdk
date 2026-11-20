@@ -105,7 +105,8 @@ pub(crate) fn projects_dir(env: Option<&IndexMap<String, String>>) -> PathBuf {
 /// symbolic links (`/var` on macOS) and Windows short names (`RUNNER~1`)
 /// above it give the same key as once it exists. In the missing tail `.`
 /// is dropped and `..` removes the segment before it; resolution starts
-/// again from an existing directory a `..` leads back to.
+/// again from an existing directory a `..` leads back to. The empty path,
+/// like `.`, names the current directory.
 pub(crate) fn canonicalize_path(directory: &Path) -> String {
     let directory = if directory.as_os_str().is_empty() {
         Path::new(".")
@@ -290,6 +291,15 @@ pub fn project_key_for_directory(directory: Option<&Path>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_empty_directory_has_the_project_key_of_the_current_directory() {
+        assert_eq!(
+            project_key_for_directory(Some(Path::new(""))),
+            project_key_for_directory(None)
+        );
+        assert_ne!(project_key_for_directory(None), "");
+    }
 
     #[test]
     fn hash_matches_the_javascript_reference() {

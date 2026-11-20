@@ -239,7 +239,7 @@ impl SubprocessTransport {
             } else {
                 Stdio::inherit()
             });
-        if let Some(cwd) = &self.options.cwd {
+        if let Some(cwd) = self.working_directory() {
             command.current_dir(cwd);
         }
         if let Some(user) = &self.options.user {
@@ -429,6 +429,15 @@ impl SubprocessTransport {
         Ok(())
     }
 
+    /// The working directory of the CLI. An empty path is unset, as
+    /// upstream treats it: the CLI runs in the directory of this process.
+    fn working_directory(&self) -> Option<&Path> {
+        self.options
+            .cwd
+            .as_deref()
+            .filter(|cwd| !cwd.as_os_str().is_empty())
+    }
+
     fn max_buffer_size(&self) -> usize {
         self.options
             .max_buffer_size
@@ -436,7 +445,7 @@ impl SubprocessTransport {
     }
 
     fn spawn_error(&self, cli_path: &Path, error: std::io::Error) -> Error {
-        if let Some(cwd) = &self.options.cwd
+        if let Some(cwd) = self.working_directory()
             && !cwd.exists()
         {
             return Error::spawn(format!(

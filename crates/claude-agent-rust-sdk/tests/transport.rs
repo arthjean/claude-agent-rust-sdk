@@ -75,6 +75,15 @@ async fn connect_after_close_starts_a_new_process() {
 }
 
 #[tokio::test]
+async fn an_empty_working_directory_runs_the_cli_in_the_current_directory() {
+    let transport = SubprocessTransport::new(stand_in_options().cwd("").build().unwrap());
+    transport.connect().await.unwrap();
+    let mut stream = transport.read_messages();
+    assert_eq!(next_message(&mut stream).await["subtype"], "init");
+    transport.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn a_client_over_a_supplied_subprocess_transport_connects_again() {
     let fake = Fake::new(json!({"auto_reply": true}));
     let options = fake.build();
