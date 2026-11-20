@@ -31,9 +31,14 @@
 //!   the `rmcp` crate inside this process.
 //! - `otel`: OpenTelemetry trace propagation. When a span is active as the
 //!   CLI starts, its context is handed to the CLI through the `TRACEPARENT`
-//!   and `TRACESTATE` environment variables, so the spans of the CLI join
-//!   the trace of the caller. Variables set in the `env` option are never
-//!   overwritten.
+//!   and `TRACESTATE` environment variables (and `BAGGAGE`), so the spans
+//!   of the CLI join the trace of the caller. The global propagator of the
+//!   application writes them; when none is installed, the W3C trace
+//!   context and baggage are written, as the Python SDK does by default,
+//!   following `OTEL_PROPAGATORS` (`tracecontext`, `baggage`, `none`).
+//!   Variables set in the `env` option are never overwritten. Callbacks,
+//!   hooks, and in-process MCP tools run in the OpenTelemetry context that
+//!   was current when the session connected.
 //! - `testing`: the `testing` module, with a scriptable transport for tests.
 //!   It is outside the compatibility promise: its items may change in a
 //!   patch release.
@@ -48,6 +53,11 @@
 //! session, unless it leaves the group (`setsid` on Unix). When the program
 //! returns from `main` with a session still open, the CLI gets `SIGTERM` on
 //! Unix, so it writes the end of its transcript before it exits.
+//!
+//! The tasks a session spawns run in the `tracing` span that is current
+//! when the session connects, so what a permission callback, a hook, an
+//! in-process MCP tool, or a session store logs lands under the span of
+//! the caller, as Python callbacks see the `contextvars` of the caller.
 //!
 //! # Claude Code CLI
 //!
@@ -118,6 +128,7 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+mod caller_context;
 pub mod cli;
 mod client;
 mod control;

@@ -148,6 +148,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-core",
  "trybuild",
  "unicode-normalization",
  "unicode-properties",

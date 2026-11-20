@@ -283,7 +283,7 @@ impl SubprocessTransport {
             .map(|(callback, stream)| {
                 let (stop, stopped) = oneshot::channel();
                 shared.stderr_tail.start();
-                let task = tokio::spawn(forward_stderr(
+                let task = crate::caller_context::spawn(forward_stderr(
                     stream,
                     callback,
                     self.max_buffer_size(),

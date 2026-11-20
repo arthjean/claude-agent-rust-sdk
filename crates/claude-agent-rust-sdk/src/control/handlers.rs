@@ -41,7 +41,7 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
         state.inflight.insert(request_id.clone(), cancel);
     }
     let shared = Arc::clone(shared);
-    tokio::spawn(async move {
+    crate::caller_context::spawn(async move {
         let request = frame.get("request").cloned().unwrap_or(Value::Null);
         let outcome = tokio::select! {
             biased;

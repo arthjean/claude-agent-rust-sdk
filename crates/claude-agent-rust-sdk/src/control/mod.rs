@@ -230,7 +230,7 @@ impl Shared {
     async fn submit(&self, what: Outgoing) -> Result<()> {
         let jobs = self.state().writer_jobs.take();
         if let Some(jobs) = jobs {
-            let task = tokio::spawn(write_jobs(self.transport.clone(), jobs));
+            let task = crate::caller_context::spawn(write_jobs(self.transport.clone(), jobs));
             let mut state = self.state();
             if state.closed {
                 task.abort();
@@ -572,11 +572,11 @@ impl ControlSession {
     /// Closes the session on a detached task, for the paths that cannot
     /// wait: a dropped stream or a dropped client.
     pub(crate) fn close_detached(self, runtime: &tokio::runtime::Handle) {
-        runtime.spawn(async move {
+        runtime.spawn(crate::caller_context::in_current_context(async move {
             if let Err(error) = self.close().await {
                 tracing::debug!("Error closing the session: {error}");
             }
-        });
+        }));
     }
 
     /// Connects the transport, starts the reader, and performs the
@@ -594,7 +594,7 @@ impl ControlSession {
             return;
         }
         if let Some(outbox) = state.outbox.take() {
-            state.reader = Some(tokio::spawn(read_messages(
+            state.reader = Some(crate::caller_context::spawn(read_messages(
                 Arc::clone(&self.shared),
                 outbox,
             )));
@@ -691,7 +691,7 @@ impl ControlSession {
     /// Closes the standard input once the run has ended, in the background.
     pub(crate) fn end_input_after_run(&self) {
         let shared = Arc::clone(&self.shared);
-        self.track(tokio::spawn(async move {
+        self.track(crate::caller_context::spawn(async move {
             shared.wait_for_run_end_and_end_input().await;
         }));
     }
@@ -700,7 +700,7 @@ impl ControlSession {
     /// closes the standard input once the run of the last one has ended.
     pub(crate) fn stream_input(&self, input: InputStream) {
         let shared = Arc::clone(&self.shared);
-        self.track(tokio::spawn(async move {
+        self.track(crate::caller_context::spawn(async move {
             shared.stream_input(input).await;
         }));
     }

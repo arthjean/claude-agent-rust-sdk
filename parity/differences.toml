@@ -273,6 +273,15 @@ category = "rust-stricter"
 reason = "The identifier becomes a file name; a newline in it names a file the CLI never wrote."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::tests::a_session_id_followed_by_a_newline_is_refused"
 
+[behavior.otel-propagators-names]
+summary = "A propagator name in `OTEL_PROPAGATORS` other than `tracecontext`, `baggage`, or `none`"
+python = "The propagator registered under that entry point name is loaded, and an unknown name raises at import."
+rust = "Without a global propagator only `tracecontext` and `baggage` are written, and other names are skipped with a debug log; an application that needs another format installs it with `opentelemetry::global::set_text_map_propagator`, which then takes over."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:785-806"
+category = "deliberate"
+reason = "Rust has no entry point registry, and a library depends on the OpenTelemetry API alone, which ships no propagator."
+test = "crates/claude-agent-rust-sdk/tests/otel.rs::otel_propagators_chooses_what_is_written_without_a_global_propagator"
+
 [behavior.malformed-stream-close-timeout]
 summary = "A `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that is not an integer"
 python = "`int()` raises `ValueError`, so the connect fails."

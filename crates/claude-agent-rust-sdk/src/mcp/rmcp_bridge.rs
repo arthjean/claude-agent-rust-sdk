@@ -162,7 +162,7 @@ impl Session {
         let (outgoing, from_server) = mpsc::unbounded_channel();
         let state = Arc::new(Mutex::new(SessionState::default()));
         let serve = (server.serve)(ChannelTransport { incoming, outgoing });
-        let task = tokio::spawn(run(
+        let task = crate::caller_context::spawn(run(
             name.to_owned(),
             serve,
             from_server,

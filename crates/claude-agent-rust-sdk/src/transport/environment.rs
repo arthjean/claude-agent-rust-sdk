@@ -20,13 +20,25 @@ const INHERITED_TRACE_VARIABLES: [&str; 2] = ["TRACEPARENT", "TRACESTATE"];
 /// Keys and values the OpenTelemetry propagator writes for the context
 /// active on the calling thread. Empty without the `otel` feature, and when
 /// the propagator panics.
+///
+/// The global propagator of the application is used when one is
+/// installed. Without one, the `opentelemetry` crate falls back to a
+/// propagator that declares no field and writes nothing, where the Python
+/// SDK writes the W3C trace context and baggage, so this writes those two
+/// itself, following `OTEL_PROPAGATORS` as the Python SDK does.
 #[cfg(feature = "otel")]
 pub(crate) fn active_trace_context() -> Vec<(String, String)> {
     let injected = std::panic::catch_unwind(|| {
+        let context = opentelemetry::Context::current();
         let mut carrier = std::collections::HashMap::new();
-        opentelemetry::global::get_text_map_propagator(|propagator| {
-            propagator.inject_context(&opentelemetry::Context::current(), &mut carrier);
+        let installed = opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.inject_context(&context, &mut carrier);
+            propagator.fields().next().is_some()
         });
+        if carrier.is_empty() && !installed {
+            let configured = std::env::var(PROPAGATORS_VARIABLE).ok();
+            w3c::inject(&context, configured.as_deref(), &mut carrier);
+        }
         carrier
     });
     match injected {
@@ -41,6 +53,119 @@ pub(crate) fn active_trace_context() -> Vec<(String, String)> {
 #[cfg(not(feature = "otel"))]
 pub(crate) fn active_trace_context() -> Vec<(String, String)> {
     Vec::new()
+}
+
+#[cfg(feature = "otel")]
+const PROPAGATORS_VARIABLE: &str = "OTEL_PROPAGATORS";
+
+/// The propagators the Python SDK installs by default, W3C trace context
+/// and W3C baggage, written against the OpenTelemetry API alone, as a
+/// library should depend on it.
+#[cfg(feature = "otel")]
+mod w3c {
+    use std::collections::HashMap;
+    use std::fmt::Write as _;
+
+    use opentelemetry::Context;
+    use opentelemetry::baggage::BaggageExt;
+    use opentelemetry::trace::{TraceContextExt, TraceFlags};
+
+    const DEFAULT_PROPAGATORS: &str = "tracecontext,baggage";
+
+    /// Writes the context with the propagators `configured` names, in the
+    /// syntax of `OTEL_PROPAGATORS`: `tracecontext` and `baggage` are
+    /// written, `none` turns propagation off, and any other name is
+    /// skipped. Unset, both are written.
+    pub(super) fn inject(
+        context: &Context,
+        configured: Option<&str>,
+        carrier: &mut HashMap<String, String>,
+    ) {
+        let names: Vec<&str> = configured
+            .unwrap_or(DEFAULT_PROPAGATORS)
+            .split(',')
+            .map(str::trim)
+            .collect();
+        if names.iter().any(|name| name.eq_ignore_ascii_case("none")) {
+            return;
+        }
+        for name in names {
+            match name {
+                "tracecontext" => trace_context(context, carrier),
+                "baggage" => baggage(context, carrier),
+                "" => {}
+                other => tracing::debug!(
+                    "Skipping the OpenTelemetry propagator {other:?}: only tracecontext and \
+                     baggage are written without a global propagator"
+                ),
+            }
+        }
+    }
+
+    /// The `traceparent` and `tracestate` fields of the W3C trace context.
+    /// An empty trace state is left out, as the Python propagator does.
+    fn trace_context(context: &Context, carrier: &mut HashMap<String, String>) {
+        let span = context.span();
+        let span_context = span.span_context();
+        if !span_context.is_valid() {
+            return;
+        }
+        carrier.insert(
+            "traceparent".to_owned(),
+            format!(
+                "00-{}-{}-{:02x}",
+                span_context.trace_id(),
+                span_context.span_id(),
+                span_context.trace_flags() & TraceFlags::SAMPLED
+            ),
+        );
+        let state = span_context.trace_state().header();
+        if !state.is_empty() {
+            carrier.insert("tracestate".to_owned(), state);
+        }
+    }
+
+    /// The `baggage` field of W3C baggage: `name=value` pairs joined by
+    /// commas and encoded as the Python propagator encodes them, each with
+    /// its metadata, which Python baggage cannot hold, after a semicolon.
+    fn baggage(context: &Context, carrier: &mut HashMap<String, String>) {
+        let baggage = context.baggage();
+        if baggage.is_empty() {
+            return;
+        }
+        let entries: Vec<String> = baggage
+            .iter()
+            .map(|(name, (value, metadata))| {
+                let mut entry = quote_plus(name.as_str());
+                entry.push('=');
+                entry.push_str(&quote_plus(value.as_str()));
+                let metadata = metadata.as_str().trim();
+                if !metadata.is_empty() {
+                    entry.push(';');
+                    entry.push_str(metadata);
+                }
+                entry
+            })
+            .collect();
+        carrier.insert("baggage".to_owned(), entries.join(","));
+    }
+
+    /// Encodes text as Python's `urllib.parse.quote_plus`: the unreserved
+    /// characters of RFC 3986 stay, a space becomes `+`, and every other
+    /// byte of the UTF-8 text is percent-encoded.
+    fn quote_plus(text: &str) -> String {
+        let mut encoded = String::with_capacity(text.len());
+        for byte in text.bytes() {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                encoded.push(char::from(byte));
+            } else if byte == b' ' {
+                encoded.push('+');
+            } else {
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+        encoded
+    }
 }
 
 #[derive(Debug)]

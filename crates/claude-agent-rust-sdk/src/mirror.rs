@@ -243,7 +243,9 @@ impl TranscriptMirror for TranscriptMirrorBatcher {
             && let Some(this) = self.this.upgrade()
             && let Ok(runtime) = tokio::runtime::Handle::try_current()
         {
-            runtime.spawn(async move { this.drain().await });
+            runtime.spawn(crate::caller_context::in_current_context(async move {
+                this.drain().await;
+            }));
         }
     }
 
