@@ -315,6 +315,9 @@ fn the_process_dies_when_its_parent_dies_abruptly() {
     }
 }
 
+/// The wrapper only ends through its `TERM` trap, or by being killed: it
+/// does not wait on the CLI, whose death by the same signal could let a
+/// shell such as the bash of macOS leave before it runs the pending trap.
 #[cfg(unix)]
 #[test]
 fn dropping_the_runtime_lets_the_process_handle_termination() {
@@ -324,7 +327,7 @@ fn dropping_the_runtime_lets_the_process_handle_termination() {
     std::fs::write(
         &wrapper,
         format!(
-            "#!/bin/sh\ntrap 'echo flushed > \"{}\"; exit 0' TERM\n\"{}\" \"$@\" &\nwait $!\n",
+            "#!/bin/sh\ntrap 'echo flushed > \"{}\"; exit 0' TERM\n\"{}\" \"$@\" &\nwhile :; do sleep 1 & wait $!; done\n",
             marker.display(),
             fake_claude().display()
         ),
