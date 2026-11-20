@@ -351,6 +351,12 @@ fn dropping_the_runtime_lets_the_process_handle_termination() {
         );
         std::thread::sleep(Duration::from_millis(50));
     }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read_to_string(&marker).ok().as_deref() != Some("flushed\n")
+        && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(
         std::fs::read_to_string(&marker).ok().as_deref(),
         Some("flushed\n"),
