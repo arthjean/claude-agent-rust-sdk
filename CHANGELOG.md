@@ -89,6 +89,8 @@
 - A request with a float id (`2.0`) sent to an `rmcp` server is acknowledged as a notification, as upstream does, where it was never answered.
 - The tag of a typed tool whose arguments are a tagged enum lists the doc comment of each variant in its description; the merge of the variants dropped them.
 - With `PATH` unset, the CLI is searched in the search path of the system (`confstr(_CS_PATH)`, else `/bin:/usr/bin`) on Unix, as Python's `shutil.which` does.
+- `file_path_to_session_key` resolves `.` and `..` segments and, on Windows, compares the projects directory without regard to case, as Python's `os.path.relpath` does.
+- The conformance suite counts a summary a store lists twice once, as upstream does, instead of failing contract 14.
 
 ## 0.1.0 - 2026-11-18
 

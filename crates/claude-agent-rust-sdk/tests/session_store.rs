@@ -534,3 +534,105 @@ fn store_options_are_validated() {
         .unwrap();
     assert!(options.session_store.unwrap().capabilities().list_sessions);
 }
+
+/// An in-memory store that lists every summary twice.
+#[derive(Default, Clone)]
+struct DuplicatingSummariesStore(InMemorySessionStore);
+
+impl SessionStore for DuplicatingSummariesStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    fn capabilities(&self) -> SessionStoreCapabilities {
+        self.0.capabilities()
+    }
+
+    async fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<claude_agent_rust_sdk::SessionStoreListEntry>, SessionStoreError> {
+        self.0.list_sessions(project_key).await
+    }
+
+    async fn list_session_summaries(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<claude_agent_rust_sdk::SessionSummaryEntry>, SessionStoreError> {
+        let summaries = self.0.list_session_summaries(project_key).await?;
+        Ok(summaries.iter().chain(&summaries).cloned().collect())
+    }
+
+    async fn delete(&self, key: &SessionKey) -> Result<(), SessionStoreError> {
+        self.0.delete(key).await
+    }
+
+    async fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        self.0.list_subkeys(key).await
+    }
+}
+
+#[tokio::test]
+async fn conformance_counts_a_summary_listed_twice_once_as_upstream() {
+    run_session_store_conformance(|| async { DuplicatingSummariesStore::default() })
+        .await
+        .unwrap();
+}
+
+#[test]
+fn file_paths_with_dot_segments_map_to_keys_as_python_relpath_does() {
+    let projects = Path::new("/home/me/.claude/projects");
+    let key = Some(SessionKey::new("proj", "sess"));
+    for path in [
+        "/home/me/.claude/projects/proj/x/../sess.jsonl",
+        "/home/me/.claude/projects/./proj/sess.jsonl",
+        "/home/me/.claude/projects/../projects/proj/sess.jsonl",
+        "/home/me/.claude/projects/proj/../../projects/proj/sess.jsonl",
+    ] {
+        assert_eq!(
+            file_path_to_session_key(Path::new(path), projects),
+            key,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        file_path_to_session_key(
+            Path::new("/home/me/.claude/projects/proj/sess.jsonl"),
+            Path::new("/home/me/.claude/projects/./")
+        ),
+        key
+    );
+    assert_eq!(
+        file_path_to_session_key(
+            Path::new("/home/me/.claude/projects/../proj/s.jsonl"),
+            projects
+        ),
+        None
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn file_paths_differing_in_case_from_the_projects_directory_map_to_keys_on_windows() {
+    assert_eq!(
+        file_path_to_session_key(
+            Path::new(r"C:\Users\Me\.claude\Projects\Proj\sess.jsonl"),
+            Path::new(r"c:\users\me\.claude\projects")
+        ),
+        Some(SessionKey::new("Proj", "sess"))
+    );
+}

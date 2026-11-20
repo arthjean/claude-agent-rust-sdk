@@ -41,20 +41,29 @@ pub use memory::InMemorySessionStore;
 /// subagent transcript whose subpath joins the segments after the session
 /// with `/` on every platform, without the `.jsonl` suffix. `None` for a
 /// path outside the projects directory or of another shape.
+///
+/// Both paths are made absolute and their `.` and `..` segments resolved
+/// without reading the disk, and on Windows they are compared without
+/// regard to case, as Python's `os.path.relpath` does.
 #[must_use]
 pub fn file_path_to_session_key(
     file_path: &std::path::Path,
     projects_dir: &std::path::Path,
 ) -> Option<SessionKey> {
-    let relative = file_path.strip_prefix(projects_dir).ok()?;
-    let mut parts: Vec<String> = Vec::new();
-    for component in relative.components() {
-        match component {
-            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
-            std::path::Component::CurDir => {}
-            _ => return None,
-        }
+    let file = lexical_components(file_path);
+    let projects = lexical_components(projects_dir);
+    if file.len() < projects.len()
+        || !projects
+            .iter()
+            .zip(&file)
+            .all(|(base, part)| same_component(base, part))
+    {
+        return None;
     }
+    let parts: Vec<String> = file[projects.len()..]
+        .iter()
+        .map(|part| part.to_string_lossy().into_owned())
+        .collect();
     match parts.as_slice() {
         [project_key, file] => {
             let session_id = file.strip_suffix(".jsonl")?;
@@ -73,6 +82,43 @@ pub fn file_path_to_session_key(
             )
         }
         _ => None,
+    }
+}
+
+/// The components of a path made absolute against the working directory,
+/// with `.` dropped and each `..` removing the segment before it, as
+/// `os.path.normpath(os.path.abspath(path))` does.
+fn lexical_components(path: &std::path::Path) -> Vec<std::ffi::OsString> {
+    use std::path::Component;
+
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut parts: Vec<std::ffi::OsString> = Vec::new();
+    let mut anchored = 0;
+    for component in absolute.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                parts.push(component.as_os_str().to_owned());
+                anchored = parts.len();
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if parts.len() > anchored {
+                    parts.pop();
+                }
+            }
+            Component::Normal(part) => parts.push(part.to_owned()),
+        }
+    }
+    parts
+}
+
+/// Whether two path components name the same entry: equal, or on Windows
+/// equal once lowercased, as `ntpath.normcase` compares them.
+fn same_component(left: &std::ffi::OsStr, right: &std::ffi::OsStr) -> bool {
+    if cfg!(windows) {
+        left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase()
+    } else {
+        left == right
     }
 }
 

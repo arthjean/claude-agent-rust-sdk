@@ -112,7 +112,9 @@ async fn implemented_optional_methods(store: &impl SessionStore) -> SessionStore
 /// call on an empty store does not return the
 /// [`UnsupportedStoreOperation`](crate::UnsupportedStoreOperation) of the
 /// default implementation; a declared method left unimplemented breaks its
-/// first contract. Returns the first contract broken.
+/// first contract. Returns the first contract broken. As upstream reads the
+/// summaries into a dict keyed by session id, a summary listed twice counts
+/// once, the last one.
 ///
 /// ```
 /// use claude_agent_rust_sdk::InMemorySessionStore;
@@ -352,14 +354,23 @@ where
             "list_session_summaries",
             store.list_session_summaries("proj").await,
         )?;
-        let ids: Vec<&str> = summaries
+        let mut ids: Vec<&str> = summaries
             .iter()
             .map(|summary| summary.session_id.as_str())
             .collect();
+        ids.sort_unstable();
+        ids.dedup();
         check(14, ids == ["summ-sess"], || {
             format!("list_session_summaries returned {ids:?}")
         })?;
-        let summary = summaries[0].clone();
+        let Some(summary) = summaries
+            .iter()
+            .rev()
+            .find(|summary| summary.session_id == "summ-sess")
+            .cloned()
+        else {
+            return Err(fail(14, format!("list_session_summaries returned {ids:?}")));
+        };
         check(14, summary.mtime > MTIME_FLOOR, || {
             format!(
                 "summary mtime is not in epoch milliseconds: {}",
