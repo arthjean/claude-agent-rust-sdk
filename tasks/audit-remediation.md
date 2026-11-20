@@ -25,7 +25,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A08 | major | Isolate SessionStore panics, always signal reader end | todo | |
 | A09 | major | Keep unknown data on types the user sends | todo | |
 | A10 | major | CLI version warning, private `managed_install_dir` | todo | |
-| A11 | major | Evolvable public surface before 1.0 (error design: owner approval) | todo | |
+| A11 | major | Evolvable public surface before 1.0 (error design: owner approval) | blocked | Error design proposed below, waiting for the owner; the non-error items go ahead. |
 | A12 | major | Let the CLI stop cleanly when the program ends | todo | |
 | A13 | major | Align public claims with what is measured | todo | |
 | A14 | minor | Propagate the tracing span and OTel context | todo | |
@@ -72,7 +72,97 @@ Total spent: 0.00 USD.
 
 ## A11 proposal (error design, waiting for the owner)
 
-To be written.
+Problem (audit A11, A29): `Error::CliConnection { message }` covers about 18
+causes, `io::Error` is flattened to text by `duplicate()`, nothing says what
+is retryable, every variant exposes its fields (adding one breaks callers),
+and `Display` repeats the source.
+
+### Recommended: an opaque `Error` with a `kind()` (the `std::io::Error` shape)
+
+```rust
+#[derive(Clone)]                       // cheap: Arc inside, no more duplicate()
+pub struct Error(Arc<Inner>);          // Send + Sync + 'static, std::error::Error
+struct Inner {
+    kind: ErrorKind,
+    message: String,                   // Display shows this only
+    source: Option<Arc<dyn std::error::Error + Send + Sync>>, // io::Error kept typed
+    detail: Detail,                    // exit code, stderr tail, result payload, line...
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorKind {
+    CliNotFound,      // no executable found (today CliNotFound)
+    Spawn,            // the process could not start: io error, missing cwd,
+                      // unreadable settings, refused .bat (today CliConnection)
+    NotConnected,     // call before connect / after disconnect (today CliConnection)
+    ConnectionClosed, // the CLI exited or closed its pipes before answering:
+                      // write to a dead process, output ended, session closed
+                      // (today CliConnection; also A15's "control request after
+                      // the CLI died")
+    Unsupported,      // the CLI cannot do what the options need: on_failure not
+                      // honored, hooks not applied (today CliConnection)
+    Process,          // the CLI exited with an error code (today Process)
+    ResultError,      // the CLI reported an error result, then exited
+    JsonDecode,       // a line of output is not JSON
+    MessageParse,     // a JSON message lacks an expected part
+    ControlTimeout,   // no answer to a control request in time
+    Control,          // the CLI answered a control request with an error
+    Config,           // invalid or contradictory options (incl. PermissionUpdate)
+    SessionNotFound,
+    Io,               // transcript or temporary directory I/O
+    SessionStore,     // the store failed or timed out
+    StoreUnsupported, // the store lacks an optional method the call needs
+}
+```
+
+Accessors instead of public fields: `kind()`, `exit_code()`, `stderr()` (a
+bounded tail of the real stderr, A29), `result()` (`&ResultErrorData`),
+`line()` (JsonDecode), `data()` (MessageParse), `control_subtype()`,
+`io_kind()`; `source()` returns the typed `io::Error` or store error.
+The predicates stay: `is_process()` (Process | ResultError) and
+`is_cli_connection()` (CliNotFound | Spawn | NotConnected | ConnectionClosed
+| Unsupported), which keep the meaning of the Python `except` clauses.
+
+`is_retryable()`: true when the same call, or a new session, can succeed
+without a change of code or options:
+
+| Kind | Retryable |
+|---|---|
+| ControlTimeout, ConnectionClosed | yes |
+| ResultError | when `api_error_status` is 429, 529 or 5xx |
+| Process | when no exit code (killed by a signal) |
+| Io, Spawn | when the io kind is `Interrupted`, `TimedOut`, `WouldBlock` |
+| SessionStore | when the store timed out |
+| every other kind | no |
+
+Constructors stay public for what a custom `Transport` or `SessionStore`
+returns (`Error::connection_closed`, `Error::not_connected`,
+`Error::process`, `Error::json_decode`, `Error::io`, `Error::config`,
+`Error::session_store`); the others become `pub(crate)`.
+
+Migration of callers (CHANGELOG, migration.md, one example):
+
+```rust
+// 0.1                                        // 0.2
+match error {                                 match error.kind() {
+    Error::CliConnection { message } => ..,       ErrorKind::ConnectionClosed => ..,
+    Error::Process { exit_code, .. } => ..,       ErrorKind::Process => error.exit_code(),
+    _ => ..,                                      _ => ..,
+}                                             }
+```
+
+The other A11 items, which do not depend on this choice and go ahead now:
+`#[non_exhaustive]` on every variant with fields (`PermissionResult`,
+`ToolContent`, `ThinkingConfig`...), `wire_enum` equality on the wire text
+(`Unknown("PreToolUse") == PreToolUse`), and a sealed `McpSdkServerInstance`.
+
+### Alternative: keep the enum, split it
+
+The same variants as `ErrorKind`, each `#[non_exhaustive]` with public
+fields, `io::Error` in an `Arc`, `Error: Clone`. Callers keep `match error {
+Error::Process { exit_code, .. } => .. }`, but every field is public API
+forever, and a variant cannot gain data without a semver-major release.
 
 ## Counter-audit
 
