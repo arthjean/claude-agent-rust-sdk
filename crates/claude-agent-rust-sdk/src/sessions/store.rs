@@ -11,7 +11,10 @@ use super::chain::{
     entries_to_session_messages, entries_to_subagent_messages, filter_transcript_entries,
     parent_ids_from_agent_metadata, split_agent_metadata,
 };
-use super::disk::{read_agent_metadata_sidecar, resolve_session_file_path, sort_and_paginate};
+use super::disk::{
+    agent_metadata_sidecar_path, read_agent_metadata_sidecar_strictly, resolve_session_file_path,
+    sort_and_paginate,
+};
 use super::jsonl::entries_to_jsonl;
 use super::lite::{LiteSessionFile, parse_session_info_from_lite};
 use super::mutations::require_uuid;
@@ -507,7 +510,9 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
 /// project directory the transcript was found in, as the live mirror names
 /// it. With `include_subagents`, every transcript under
 /// `<session>/subagents/` is copied under its subpath, followed by its
-/// `.meta.json` sidecar as an `agent_metadata` entry. Stores should treat
+/// `.meta.json` sidecar as an `agent_metadata` entry; a sidecar that is
+/// missing or not a JSON object is left out, and one that cannot be read
+/// fails the import. Stores should treat
 /// `uuid` as an idempotency key, so importing again is safe.
 ///
 /// # Errors
@@ -560,7 +565,16 @@ pub async fn import_session_to_store<S: SessionStore + ?Sized>(
         }
         let key = SessionKey::new(project_key.clone(), session_id).with_subpath(parts.join("/"));
         append_file_in_batches(store, &file, &key, batch_size).await?;
-        if let Some(mut metadata) = read_agent_metadata_sidecar(&file) {
+        let sidecar = read_agent_metadata_sidecar_strictly(&file).map_err(|error| {
+            Error::io(
+                format!(
+                    "Cannot read {}",
+                    agent_metadata_sidecar_path(&file).display()
+                ),
+                error,
+            )
+        })?;
+        if let Some(mut metadata) = sidecar {
             metadata.insert("type".to_owned(), Value::from("agent_metadata"));
             store
                 .append(&key, &[metadata])

@@ -328,11 +328,27 @@ pub(crate) fn agent_metadata_sidecar_path(transcript: &Path) -> PathBuf {
 /// Reads the sidecar of a subagent transcript. A missing, unreadable, or
 /// invalid sidecar, or one that is not a JSON object, is absent.
 pub(crate) fn read_agent_metadata_sidecar(transcript: &Path) -> Option<Map<String, Value>> {
-    let text = std::fs::read(agent_metadata_sidecar_path(transcript)).ok()?;
-    match serde_json::from_slice(&text) {
+    read_agent_metadata_sidecar_strictly(transcript)
+        .ok()
+        .flatten()
+}
+
+/// Reads the sidecar of a subagent transcript as upstream does on import:
+/// a missing sidecar, or one that is not valid UTF-8, not valid JSON, or not
+/// a JSON object, is absent; any other read failure, such as a denied
+/// permission, is returned.
+pub(crate) fn read_agent_metadata_sidecar_strictly(
+    transcript: &Path,
+) -> std::io::Result<Option<Map<String, Value>>> {
+    let text = match std::fs::read(agent_metadata_sidecar_path(transcript)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    Ok(match serde_json::from_slice(&text) {
         Ok(Value::Object(metadata)) => Some(metadata),
         _ => None,
-    }
+    })
 }
 
 /// Lists the ids of the subagents of a session, from the

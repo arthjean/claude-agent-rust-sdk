@@ -1234,6 +1234,45 @@ async fn a_type_key_in_a_sidecar_cannot_replace_the_agent_metadata_marker() {
 }
 
 #[tokio::test]
+async fn an_unreadable_sidecar_fails_the_import() {
+    let project = Project::new();
+    let (id, _) = subagent_with_sidecar(&project, "{}");
+    let sidecar = project
+        .dir
+        .join(&id)
+        .join("subagents")
+        .join("agent-abc.meta.json");
+    std::fs::remove_file(&sidecar).unwrap();
+    std::fs::create_dir(&sidecar).unwrap();
+    let store = InMemorySessionStore::new();
+    let error = import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Io, "{error:?}");
+    assert!(error.to_string().contains("agent-abc.meta.json"), "{error}");
+}
+
+#[tokio::test]
+async fn a_sidecar_that_is_not_utf8_is_imported_as_if_it_were_absent() {
+    let project = Project::new();
+    let (id, key) = subagent_with_sidecar(&project, "{}");
+    std::fs::write(
+        project
+            .dir
+            .join(&id)
+            .join("subagents")
+            .join("agent-abc.meta.json"),
+        b"{\"agentType\": \"\xff\"}",
+    )
+    .unwrap();
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    assert_eq!(store.get_entries(&key), plain_entries([10]));
+}
+
+#[tokio::test]
 async fn a_corrupt_or_non_object_sidecar_is_imported_as_if_it_were_absent() {
     let project = Project::new();
     for sidecar in ["not json {", "[1, 2]", "42"] {
