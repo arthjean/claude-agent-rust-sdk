@@ -910,7 +910,7 @@ fn ci_runs_the_four_quality_gates_on_three_operating_systems() {
     assert!(workflow.contains("runs-on: ${{ matrix.os }}"));
     for gate in [
         "run: cargo fmt --all --check",
-        "run: cargo clippy --workspace --all-targets --all-features --no-deps",
+        "run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings",
         "run: cargo test --workspace --all-features",
         "run: cargo doc --workspace --all-features --no-deps",
         "RUSTDOCFLAGS: -D warnings",

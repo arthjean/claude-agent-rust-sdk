@@ -41,7 +41,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Lint
-        run: cargo clippy --workspace --all-targets --all-features --no-deps
+        run: cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
 
       - name: Examples (default features)
         run: cargo check --package claude-agent-rust-sdk --examples
@@ -74,9 +74,13 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   msrv:
-    name: Minimum supported Rust version
-    runs-on: ubuntu-latest
+    name: Minimum supported Rust version (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7.0.1
 
