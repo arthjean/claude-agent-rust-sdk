@@ -37,9 +37,10 @@
 use std::path::PathBuf;
 
 use claude_agent_rust_sdk::{
-    AgentDefinition, AsyncHookOutput, CanUseTool, ClaudeAgentOptions, ClaudeAgentOptionsBuilder,
-    HookCallback, HookMatcher, HookOutput, McpRemoteServerConfig, McpServerConfig, McpServers,
-    McpStdioServerConfig, PermissionResult, PermissionUpdate, SandboxSettings, SdkBeta, SdkMcpTool,
+    AgentDefinition, AgentEffort, AgentMcpServer, AgentMemory, AsyncHookOutput, CanUseTool,
+    ClaudeAgentOptions, ClaudeAgentOptionsBuilder, EffortLevel, HookCallback, HookMatcher,
+    HookOutput, McpRemoteServerConfig, McpServerConfig, McpServers, McpStdioServerConfig,
+    PermissionMode, PermissionResult, PermissionUpdate, SandboxSettings, SdkBeta, SdkMcpTool,
     SdkPluginConfig, SettingSource, Skills, StderrCallback, SyncHookOutput, SystemPrompt,
     SystemPromptCustom, SystemPromptFile, SystemPromptPreset, TaskBudget, ThinkingConfig,
     ToolAnnotations, ToolContent, ToolResult, Tools, ToolsPreset, create_sdk_mcp_server,
@@ -68,6 +69,9 @@ pub(crate) fn build(text: &str, cli: PathBuf) -> Result<ClaudeAgentOptions, Fail
         .map_err(|error| Failure::Failed(format!("invalid options: {error}")))
 }
 
+/// Sets one option of a case on the builder. A `tools` object maps to the
+/// `claude_code` preset whatever it holds: Python writes `--tools default`
+/// for any object, and that preset, the one Rust models, writes the same.
 fn apply(
     builder: ClaudeAgentOptionsBuilder,
     name: &str,
@@ -129,10 +133,7 @@ fn apply(
         "fork_session" => builder.fork_session(field.flag()?),
         "resume_session_at" => builder.resume_session_at(field.text()?),
         "resume_drops_turn" => builder.resume_drops_turn(field.text()?),
-        "agents" => {
-            let agents: IndexMap<String, AgentDefinition> = field.decode()?;
-            builder.agents(agents)
-        }
+        "agents" => builder.agents(agents(&field)?),
         "setting_sources" => {
             builder.setting_sources(field.strings()?.into_iter().map(SettingSource::from))
         }
@@ -226,6 +227,83 @@ impl Field<'_> {
     fn decode<T: serde::de::DeserializeOwned>(&self) -> Result<T, Failure> {
         serde_json::from_value(self.value.clone()).map_err(|_| self.malformed())
     }
+}
+
+/// Builds each agent with the setters a program calls, not through
+/// `serde`, so the case shows what those setters send.
+fn agents(field: &Field<'_>) -> Result<IndexMap<String, AgentDefinition>, Failure> {
+    let Some(agents) = field.value.as_object() else {
+        return Err(field.malformed());
+    };
+    let mut built = IndexMap::new();
+    for (name, agent) in agents {
+        let agent = agent.as_object().ok_or_else(|| field.malformed())?;
+        let text = |key: &str| agent.get(key).and_then(Value::as_str).map(str::to_owned);
+        let list = |key: &str| -> Option<Vec<String>> {
+            agent.get(key).and_then(Value::as_array).map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+        };
+        let mut definition = AgentDefinition::new(
+            text("description").ok_or_else(|| field.malformed())?,
+            text("prompt").ok_or_else(|| field.malformed())?,
+        );
+        for key in agent.keys() {
+            definition = match key.as_str() {
+                "description" | "prompt" => definition,
+                "tools" => definition.tools(list(key).ok_or_else(|| field.malformed())?),
+                "disallowedTools" => {
+                    definition.disallowed_tools(list(key).ok_or_else(|| field.malformed())?)
+                }
+                "model" => definition.model(text(key).ok_or_else(|| field.malformed())?),
+                "skills" => definition.skills(list(key).ok_or_else(|| field.malformed())?),
+                "memory" => definition.memory(AgentMemory::from(
+                    text(key).ok_or_else(|| field.malformed())?.as_str(),
+                )),
+                "mcpServers" => {
+                    let servers = agent[key].as_array().ok_or_else(|| field.malformed())?;
+                    let mut converted = Vec::new();
+                    for server in servers {
+                        converted.push(match server {
+                            Value::String(name) => AgentMcpServer::from(name.as_str()),
+                            Value::Object(inline) => AgentMcpServer::Inline(inline.clone()),
+                            _ => return Err(field.malformed()),
+                        });
+                    }
+                    definition.mcp_servers(converted)
+                }
+                "initialPrompt" => {
+                    definition.initial_prompt(text(key).ok_or_else(|| field.malformed())?)
+                }
+                "maxTurns" => definition.max_turns(
+                    agent[key]
+                        .as_u64()
+                        .and_then(|turns| u32::try_from(turns).ok())
+                        .ok_or_else(|| field.malformed())?,
+                ),
+                "background" => {
+                    definition.background(agent[key].as_bool().ok_or_else(|| field.malformed())?)
+                }
+                "effort" => definition.effort(match &agent[key] {
+                    Value::String(level) => AgentEffort::Level(EffortLevel::from(level.as_str())),
+                    Value::Number(tokens) => {
+                        AgentEffort::Tokens(tokens.as_u64().ok_or_else(|| field.malformed())?)
+                    }
+                    _ => return Err(field.malformed()),
+                }),
+                "permissionMode" => definition.permission_mode(PermissionMode::from(
+                    text(key).ok_or_else(|| field.malformed())?.as_str(),
+                )),
+                _ => return Err(field.malformed()),
+            };
+        }
+        built.insert(name.clone(), definition);
+    }
+    Ok(built)
 }
 
 fn system_prompt(field: &Field<'_>, prompt: &Map<String, Value>) -> Result<SystemPrompt, Failure> {
