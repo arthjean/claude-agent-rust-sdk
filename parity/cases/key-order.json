@@ -1,0 +1,32 @@
+{
+  "name": "key-order",
+  "description": "Values whose key order reaches the model or the CLI: the properties of an output schema, the order of MCP servers and their fields, and settings merged with a sandbox.",
+  "scenario": "one-shot",
+  "options": {
+    "output_format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "reasoning": {"type": "string", "description": "Think first"},
+          "answer": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "required": ["reasoning", "answer"],
+        "additionalProperties": false
+      }
+    },
+    "mcp_servers": {
+      "zeta": {"command": "node", "args": ["zeta.js"], "env": {"Z_KEY": "1", "A_KEY": "2"}},
+      "alpha": {"type": "sse", "url": "https://example.com/sse", "headers": {"X-Trace": "1", "Authorization": "Bearer t"}},
+      "middle": {"type": "http", "url": "https://example.com/mcp"}
+    },
+    "settings": "{\"permissions\": {\"deny\": [\"Write\"], \"allow\": [\"Read\"]}, \"env\": {\"ZED\": \"1\", \"ALPHA\": \"2\"}}",
+    "sandbox": {
+      "enabled": true,
+      "autoAllowBashIfSandboxed": true,
+      "excludedCommands": ["git"]
+    }
+  },
+  "prompt": "Say hello"
+}

@@ -122,7 +122,7 @@ pub fn fold_session_summary(
                     data.insert("tag".to_owned(), Value::from(tag));
                 }
                 None => {
-                    data.remove("tag");
+                    data.shift_remove("tag");
                 }
             }
         }

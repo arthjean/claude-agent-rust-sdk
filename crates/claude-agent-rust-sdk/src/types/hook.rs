@@ -356,7 +356,7 @@ macro_rules! hook_input_variants {
                     $(
                         Some($wire) => match <$ty>::deserialize(&wire) {
                             Ok(mut input) => {
-                                input.base.extra.remove(HOOK_EVENT_NAME_KEY);
+                                input.base.extra.shift_remove(HOOK_EVENT_NAME_KEY);
                                 Self::$variant(input)
                             }
                             Err(_) => Self::Unknown(wire),

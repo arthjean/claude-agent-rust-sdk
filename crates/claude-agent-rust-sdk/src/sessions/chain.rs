@@ -733,7 +733,7 @@ mod tests {
     fn recovers_a_result_whose_parent_is_outside_the_turn() {
         let (calls, mut results) = parallel_tool_turn("prompt", 2, &[0, 1]);
         results[0].insert("parentUuid".to_owned(), Value::from("missing"));
-        results[0].remove("sourceToolAssistantUUID");
+        results[0].shift_remove("sourceToolAssistantUUID");
         let entries = turn(true, calls, results, Some("result-1"));
         assert_eq!(
             uuids(&build_conversation_chain(&entries)),
@@ -749,7 +749,7 @@ mod tests {
         let mut duplicate = results[1].clone();
         duplicate.insert("uuid".to_owned(), Value::from("result-1-copy"));
         duplicate.insert("parentUuid".to_owned(), Value::from("elsewhere"));
-        duplicate.remove("sourceToolAssistantUUID");
+        duplicate.shift_remove("sourceToolAssistantUUID");
         results.push(duplicate);
         let entries = turn(true, calls, results, Some("result-1"));
         assert_eq!(
@@ -766,7 +766,7 @@ mod tests {
         results[0].insert("parentUuid".to_owned(), Value::from("sidechain-call"));
         results[0].insert("isSidechain".to_owned(), Value::Bool(true));
         results[0].insert("agentId".to_owned(), Value::from("agent-1"));
-        results[0].remove("sourceToolAssistantUUID");
+        results[0].shift_remove("sourceToolAssistantUUID");
         let entries = turn(true, calls, results, Some("result-1"));
         assert_eq!(
             uuids(&build_conversation_chain(&entries)),

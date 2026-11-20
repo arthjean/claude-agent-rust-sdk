@@ -28,7 +28,7 @@ pub(crate) use disk::agent_metadata_sidecar_path;
 pub use disk::{
     get_session_info, get_session_messages, get_subagent_messages, list_sessions, list_subagents,
 };
-pub(crate) use jsonl::entries_to_jsonl;
+pub(crate) use jsonl::plain_line;
 pub use mutations::{
     ForkSessionResult, delete_session, delete_session_via_store, fork_session,
     fork_session_via_store, rename_session, rename_session_via_store, tag_session,

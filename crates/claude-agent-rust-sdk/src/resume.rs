@@ -28,7 +28,7 @@ use crate::session_store::{
     SessionKey, SessionListSubkeysKey, SessionStoreEntry, SessionStoreError, SharedSessionStore,
 };
 use crate::sessions::{
-    agent_metadata_sidecar_path, entries_to_jsonl, project_key_for_directory, split_agent_metadata,
+    agent_metadata_sidecar_path, plain_line, project_key_for_directory, split_agent_metadata,
     validate_uuid,
 };
 use crate::types::ClaudeAgentOptions;
@@ -318,8 +318,12 @@ fn write_jsonl(path: &Path, entries: &[SessionStoreEntry]) -> Result<()> {
     if let Some(parent) = path.parent() {
         create_dir(parent)?;
     }
-    let values: Vec<Value> = entries.iter().cloned().map(Value::Object).collect();
-    write_private(path, entries_to_jsonl(&values).as_bytes())
+    let mut text = String::new();
+    for entry in entries {
+        text.push_str(&plain_line(entry));
+        text.push('\n');
+    }
+    write_private(path, text.as_bytes())
         .map_err(|error| Error::io(format!("Cannot write {}", path.display()), error))
 }
 
@@ -390,10 +394,10 @@ pub(crate) fn strip_settings_for_resume(content: Vec<u8>) -> Vec<u8> {
     };
     let mut stripped = false;
     for key in STRIPPED_SETTINGS {
-        stripped |= settings.remove(key).is_some();
+        stripped |= settings.shift_remove(key).is_some();
     }
     if let Some(Value::Object(env)) = settings.get_mut("env") {
-        stripped |= env.remove(CONFIG_DIR_VARIABLE).is_some();
+        stripped |= env.shift_remove(CONFIG_DIR_VARIABLE).is_some();
     }
     if !stripped {
         return content;
@@ -410,7 +414,7 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
     let removed = data
         .get_mut("claudeAiOauth")
         .and_then(Value::as_object_mut)
-        .and_then(|oauth| oauth.remove("refreshToken"))
+        .and_then(|oauth| oauth.shift_remove("refreshToken"))
         .is_some();
     if !removed {
         return credentials.to_owned();
@@ -579,7 +583,7 @@ async fn materialize_subkeys(
             write_jsonl(&file, &transcript)?;
         }
         if let Some(mut metadata) = metadata {
-            metadata.remove("type");
+            metadata.shift_remove("type");
             let sidecar = agent_metadata_sidecar_path(&file);
             if let Some(parent) = sidecar.parent() {
                 create_dir(parent)?;

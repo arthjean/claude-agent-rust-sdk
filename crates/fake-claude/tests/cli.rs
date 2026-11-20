@@ -347,7 +347,10 @@ fn without_pid(records: &[Value]) -> Vec<Value> {
         .map(|record| {
             let mut record = record.clone();
             assert!(record["pid"].as_u64().is_some(), "{record}");
-            record.as_object_mut().unwrap().remove("pid");
+            record
+                .as_object_mut()
+                .unwrap()
+                .retain(|key, _| key != "pid");
             record
         })
         .collect()
@@ -386,11 +389,11 @@ fn run_recorded(
 fn a_recorded_run_writes_the_spawn_and_every_stdin_line_in_order() {
     let directory = tempfile::tempdir().unwrap();
     let record = directory.path().join("record.jsonl");
-    let input = format!(
-        "{}\nnot json\n{}\n",
-        json!({"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}}),
-        json!({"type": "user", "message": {"role": "user", "content": "hi"}}),
-    );
+    let initialize =
+        json!({"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}})
+            .to_string();
+    let user = json!({"type": "user", "message": {"role": "user", "content": "hi"}}).to_string();
+    let input = format!("{initialize}\nnot json\n{user}\n");
     let output = run_recorded(
         None,
         &record,
@@ -438,9 +441,9 @@ fn a_recorded_run_writes_the_spawn_and_every_stdin_line_in_order() {
     assert_eq!(
         without_pid(&records[1..]),
         [
-            json!({"record": "stdin", "frame": {"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}}}),
+            json!({"record": "stdin", "frame": {"type": "control_request", "request_id": "r1", "request": {"subtype": "initialize"}}, "text": initialize}),
             json!({"record": "stdin_raw", "text": "not json"}),
-            json!({"record": "stdin", "frame": {"type": "user", "message": {"role": "user", "content": "hi"}}}),
+            json!({"record": "stdin", "frame": {"type": "user", "message": {"role": "user", "content": "hi"}}, "text": user}),
             json!({"record": "stdin_eof"}),
         ]
     );
@@ -477,7 +480,9 @@ fn records_are_flushed_as_they_are_written() {
     assert_eq!(records[0]["record"], "spawn");
     assert_eq!(
         without_pid(&records[1..2]),
-        [json!({"record": "stdin", "frame": {"type": "user"}})]
+        [
+            json!({"record": "stdin", "frame": {"type": "user"}, "text": json!({"type": "user"}).to_string()})
+        ]
     );
     assert_eq!(records.len(), 2);
 }

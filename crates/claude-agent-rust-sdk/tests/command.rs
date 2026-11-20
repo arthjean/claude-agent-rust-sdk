@@ -955,6 +955,22 @@ fn output_format_emits_the_schema_only_for_json_schema() {
     }
 }
 
+#[test]
+fn json_values_reach_the_cli_with_their_keys_in_the_order_written() {
+    let schema = json!({
+        "type": "object",
+        "properties": {"reasoning": {"type": "string"}, "answer": {"type": "string"}},
+        "required": ["reasoning", "answer"],
+    });
+    let command =
+        build(options().output_format(json!({"type": "json_schema", "schema": schema.clone()})));
+    assert_eq!(value_of(&command, "--json-schema"), schema.to_string());
+    assert!(
+        value_of(&command, "--json-schema")
+            .starts_with(r#"{"type":"object","properties":{"reasoning""#)
+    );
+}
+
 struct NullStore;
 
 impl SessionStore for NullStore {

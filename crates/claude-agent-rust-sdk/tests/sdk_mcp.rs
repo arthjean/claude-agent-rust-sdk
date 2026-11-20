@@ -495,7 +495,7 @@ async fn tools_list_wire_format_omits_empty_fields() {
 
     let plain = tool("add");
     let keys: Vec<&String> = plain.as_object().unwrap().keys().collect();
-    assert_eq!(keys, ["description", "inputSchema", "name"]);
+    assert_eq!(keys, ["name", "description", "inputSchema"]);
     assert_eq!(plain["description"], "Add two numbers");
     assert_eq!(plain["inputSchema"]["required"], json!(["a", "b"]));
 

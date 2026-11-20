@@ -10,7 +10,7 @@
 //! | Record | Written when | Fields |
 //! |---|---|---|
 //! | `{"record": "spawn", ...}` | the process starts | `args`, the arguments after the program name; `cwd`, the working directory; `env`, the selected variables |
-//! | `{"record": "stdin", "frame": value}` | a stdin line holds valid JSON | `frame`, the parsed value |
+//! | `{"record": "stdin", "frame": value, "text": line}` | a stdin line holds valid JSON | `frame`, the parsed value; `text`, the line as received, which keeps the key order that `frame` may lose |
 //! | `{"record": "stdin_raw", "text": line}` | a stdin line is not valid JSON | `text`, the line without its line feed |
 //! | `{"record": "stdin_eof"}` | stdin closes | none |
 //!
@@ -74,7 +74,7 @@ impl Recorder {
     /// Writes the record of one stdin line.
     pub(crate) fn stdin_line(&self, line: &str, frame: Option<&Value>) {
         match frame {
-            Some(frame) => self.write(&json!({"record": "stdin", "frame": frame})),
+            Some(frame) => self.write(&json!({"record": "stdin", "frame": frame, "text": line})),
             None => self.write(&json!({"record": "stdin_raw", "text": line})),
         }
     }

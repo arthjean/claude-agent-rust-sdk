@@ -10,7 +10,7 @@ use tokio::runtime::Handle;
 use crate::control::{ControlSession, Inbox};
 use crate::error::{Error, Result};
 use crate::message_parser::parse_message;
-use crate::prompt::{Prompt, text_message};
+use crate::prompt::{Prompt, one_shot_text_message};
 use crate::transport::SharedTransport;
 use crate::types::{BoxFuture, ClaudeAgentOptions, Message};
 
@@ -102,7 +102,7 @@ async fn start(session: ControlSession, prompt: Prompt) -> Result<()> {
     match prompt {
         Prompt::Text(text) => {
             session
-                .write_user_message(text_message(&text, ONE_SHOT_SESSION_ID))
+                .write_user_message(one_shot_text_message(&text, ONE_SHOT_SESSION_ID))
                 .await?;
             session.end_input_after_run();
         }

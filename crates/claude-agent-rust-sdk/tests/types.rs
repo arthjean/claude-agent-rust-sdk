@@ -787,7 +787,7 @@ fn stop_and_subagent_stop_optional_fields_default_to_none() {
 
 fn without(value: &Value, key: &str) -> Value {
     let mut value = value.clone();
-    value.as_object_mut().unwrap().remove(key);
+    value.as_object_mut().unwrap().shift_remove(key);
     value
 }
 
@@ -1121,7 +1121,7 @@ fn hook_specific_output_key_sets_match_upstream() {
 
         for key in required {
             let mut missing = minimal.clone();
-            missing.as_object_mut().unwrap().remove(*key);
+            missing.as_object_mut().unwrap().shift_remove(*key);
             assert!(
                 serde_json::from_value::<HookSpecificOutput>(missing).is_err(),
                 "{event} should require {key}"

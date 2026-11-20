@@ -183,8 +183,20 @@ impl From<InputMessage> for Value {
     }
 }
 
-/// User message written for a text prompt.
+/// User message written by [`crate::ClaudeSdkClient`] for a text prompt,
+/// with its keys in the order upstream `ClaudeSDKClient.query` writes them.
 pub(crate) fn text_message(text: &str, session_id: &str) -> Value {
+    json!({
+        "type": "user",
+        "message": {"role": "user", "content": text},
+        "parent_tool_use_id": null,
+        "session_id": session_id,
+    })
+}
+
+/// User message written by [`crate::query`] for a text prompt, with its
+/// keys in the order upstream `InternalClient.process_query` writes them.
+pub(crate) fn one_shot_text_message(text: &str, session_id: &str) -> Value {
     json!({
         "type": "user",
         "session_id": session_id,

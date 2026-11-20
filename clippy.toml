@@ -1,3 +1,6 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests  = true
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it swaps the last key into the hole; use shift_remove to keep the order the CLI and upstream write" },
+]

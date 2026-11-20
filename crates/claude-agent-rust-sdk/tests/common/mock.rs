@@ -118,7 +118,7 @@ pub fn session_state(state: &str) -> Value {
 
 pub fn visible_session_state(state: &str) -> Value {
     let mut frame = session_state(state);
-    frame.as_object_mut().unwrap().remove("sdk_host_only");
+    frame.as_object_mut().unwrap().shift_remove("sdk_host_only");
     frame
 }
 

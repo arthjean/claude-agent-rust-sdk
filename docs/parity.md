@@ -41,13 +41,13 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ### The differential harness
 
-`cargo xtask parity-diff` plays 32 cases through both SDKs against `fake-claude` and compares what each sent the CLI: the command line, the environment, and every frame. The cases set 47 of the 50 fields of `ClaudeAgentOptions`; 3 are excluded with a reason in `parity/cases/coverage.toml`, and 0 are neither.
+`cargo xtask parity-diff` plays 33 cases through both SDKs against `fake-claude` and compares what each sent the CLI: the command line, the environment, and every frame. The cases set 47 of the 50 fields of `ClaudeAgentOptions`; 3 are excluded with a reason in `parity/cases/coverage.toml`, and 0 are neither.
 
 ## Deliberately different
 
-31 differences are reviewed and accepted: 5 on the wire, found by `cargo xtask parity-diff`, and 26 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+33 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 26 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
-### Deliberate choices (16)
+### Deliberate choices (18)
 
 Rust chose another form on purpose; the CLI accepts both.
 
@@ -55,6 +55,8 @@ Rust chose another form on purpose; the CLI accepts both.
 |---|---|---|---|---|
 | `arg --max-budget-usd` on the wire | `"1e-05"` | `"1e-5"` | Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for ordinary amounts and differ only in exponent form, which the CLI parses to the same number. | differential case `budget-in-exponent-form` |
 | `env CLAUDE_CODE_ENTRYPOINT` on the wire | `"sdk-py"` | `"sdk-rs"` | Each SDK names itself to the CLI, which reports the entrypoint in its telemetry (subprocess_cli.py:767 sets sdk-py). | every differential case |
+| `frame control_response:hook-1 /response/response (key order)` on the wire | `["decision","reason","systemMessage","hookSpecificOutput"]` | `["decision","systemMessage","reason","hookSpecificOutput"]` | Python sends the dict the callback built, in the order it wrote the keys (query.py:704-709); the typed Rust SyncHookOutput writes its fields in the order upstream SyncHookJSONOutput declares them (types.py:815-852). The CLI reads the object by key. | differential case `hook-callback` |
+| `frame control_response:hook-2 /response/response (key order)` on the wire | `["continue","stopReason","suppressOutput"]` | `["continue","suppressOutput","stopReason"]` | Same cause as hook-output-key-order: field declaration order of SyncHookJSONOutput on the Rust side, the callback's own order on the Python side. | differential case `hook-callback` |
 | `env CLAUDE_AGENT_SDK_VERSION` on the wire | `"0.2.186"` | `"0.1.0"` | Each SDK sends its own package version (subprocess_cli.py:769 sends __version__). | every differential case |
 | `arg --mcp-config /mcpServers/local/type` on the wire | `"stdio"` | nothing | Python passes the server dictionary as the caller wrote it; the typed Rust config never writes the type of a stdio server, which the CLI reads as stdio when missing. Documented in the module docs of src/types/config.rs. | differential case `every-cli-option` |
 | `frame control_response:mcp-4 /response/response/mcp_response/result/content/0/text` on the wire | `"Input validation error: 'b' is a required property"` | `"Input validation error: \"b\" is a required property"` | Both SDKs return the validator's message after the same prefix (__init__.py:630-632); Python's jsonschema quotes the property name with Python repr, the Rust jsonschema crate with JSON quotes. Message wording is not matched (a non-goal of tasks/prd-parity-hardening.md). | differential case `mcp-tools-call` |

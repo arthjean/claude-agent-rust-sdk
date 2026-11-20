@@ -29,7 +29,7 @@ fn entry(value: Value) -> SessionStoreEntry {
 fn transcript(session: &str) -> Vec<SessionStoreEntry> {
     vec![
         entry(
-            json!({"type": "user", "uuid": "u1", "parentUuid": null, "sessionId": session, "message": {"content": "hello"}}),
+            json!({"parentUuid": null, "type": "user", "uuid": "u1", "sessionId": session, "message": {"content": "hello"}}),
         ),
         entry(
             json!({"type": "assistant", "uuid": "a1", "parentUuid": "u1", "sessionId": session, "message": {"content": []}}),
@@ -252,6 +252,12 @@ async fn resume_runs_the_child_on_a_materialized_config_dir_and_removes_it() {
         .collect();
     let expected: Vec<Value> = transcript(&id).into_iter().map(Value::Object).collect();
     assert_eq!(lines, expected);
+    let expected_text: String = expected.iter().map(|line| format!("{line}\n")).collect();
+    assert_eq!(
+        std::fs::read_to_string(&written).unwrap(),
+        expected_text,
+        "each entry is written with its keys in store order, as upstream json.dumps does"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

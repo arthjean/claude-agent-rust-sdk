@@ -18,8 +18,13 @@
 //!   compared as JSON; the order of the labels both sides share is compared
 //!   too, except inside a group a case declares `unordered`.
 //!
-//! JSON values are compared as the CLI reads them: object key order never
-//! matters, and numbers are equal when their values are (`5` and `5.0`).
+//! JSON values are compared as the CLI reads them, numbers being equal when
+//! their values are (`5` and `5.0`), and then on the order of the keys the
+//! two sides share: key order reaches the model (the properties of an
+//! output schema) and the CLI (the order of MCP servers or subagents), so
+//! a different order is a difference at `<pointer> (key order)`. A stdin
+//! frame is read from the line as received (the record's `text`), because
+//! the parsed `frame` of `fake-claude` may have lost the order.
 //! Values are normalized first; the rules are those of `Normalizer`.
 //!
 //! A difference has a location: `processes`, `cwd`, `env <NAME>`,
@@ -107,7 +112,14 @@ impl Recording {
                 continue;
             }
             let input = match kind {
-                "stdin" => Input::Frame(record.get("frame").cloned().unwrap_or(Value::Null)),
+                "stdin" => Input::Frame(
+                    record
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .and_then(|text| serde_json::from_str(text.trim()).ok())
+                        .or_else(|| record.get("frame").cloned())
+                        .unwrap_or(Value::Null),
+                ),
                 "stdin_raw" => Input::Raw(
                     record
                         .get("text")
@@ -307,6 +319,20 @@ fn diff_values(
                     (Some(left), Some(right)) => diff_values(location, &path, left, right, found),
                     (left, right) => found.push(Difference::new(location(&path), left, right)),
                 }
+            }
+            let order = |own: &Map<String, Value>, other: &Map<String, Value>| -> Vec<Value> {
+                own.keys()
+                    .filter(|key| other.contains_key(*key))
+                    .map(|key| Value::String(key.clone()))
+                    .collect()
+            };
+            let (python_order, rust_order) = (order(left, right), order(right, left));
+            if python_order != rust_order {
+                found.push(Difference::new(
+                    location(&format!("{pointer} (key order)")),
+                    Some(&Value::Array(python_order)),
+                    Some(&Value::Array(rust_order)),
+                ));
             }
         }
         (Value::Array(left), Value::Array(right)) if left.len() == right.len() => {
@@ -728,6 +754,78 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn key_order_of_shared_keys_is_compared_at_every_depth() {
+        let python = recording(process(
+            &[
+                "--json-schema",
+                r#"{"properties": {"reasoning": 1, "answer": 2}}"#,
+            ],
+            json!({}),
+            vec![Input::Frame(
+                json!({"type": "user", "a": 1, "b": {"x": 1, "y": 2}}),
+            )],
+        ));
+        let rust = recording(process(
+            &[
+                "--json-schema",
+                r#"{"properties":{"answer":2,"reasoning":1}}"#,
+            ],
+            json!({}),
+            vec![Input::Frame(
+                json!({"type": "user", "b": {"x": 1, "y": 2}, "a": 1, "extra": true}),
+            )],
+        ));
+        let found: Vec<(String, String, String)> = differences(&python, &rust, &[])
+            .iter()
+            .map(|difference| {
+                (
+                    difference.location.clone(),
+                    super::show(difference.python.as_ref()),
+                    super::show(difference.rust.as_ref()),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (
+                    "arg --json-schema /properties (key order)".to_owned(),
+                    r#"["reasoning","answer"]"#.to_owned(),
+                    r#"["answer","reasoning"]"#.to_owned()
+                ),
+                (
+                    "frame user /extra".to_owned(),
+                    "<absent>".to_owned(),
+                    "true".to_owned()
+                ),
+                (
+                    "frame user  (key order)".to_owned(),
+                    r#"["type","a","b"]"#.to_owned(),
+                    r#"["type","b","a"]"#.to_owned()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_stdin_record_is_read_from_its_text_to_keep_the_key_order() {
+        let text = [
+            json!({"record": "spawn", "pid": 1, "args": [], "cwd": "/a", "env": {}}),
+            json!({"record": "stdin", "pid": 1, "frame": {"a": 1, "b": 2}, "text": "{\"b\":2,\"a\":1}"}),
+        ]
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let recording = Recording::parse(&text).unwrap();
+        let Input::Frame(frame) = &recording.processes[0].input[0] else {
+            panic!("expected a frame");
+        };
+        let keys: Vec<&String> = frame.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["b", "a"]);
     }
 
     #[test]

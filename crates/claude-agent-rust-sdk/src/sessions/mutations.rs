@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use super::chain::{Entry, truthy};
 use super::disk::candidate_project_dirs;
-use super::jsonl::{entries_to_jsonl, ordered_line, type_first_line};
+use super::jsonl::{entries_to_jsonl, ordered_line, plain_line};
 use super::lite::{
     LITE_READ_BUF_SIZE, extract_first_prompt_from_head, extract_last_json_string_field,
 };
@@ -431,7 +431,7 @@ pub(crate) fn build_fork_entries(
             json!({"sessionId": session_id, "messageUuid": original_uuid}),
         );
         for field in LEAKED_FIELDS {
-            forked.remove(field);
+            forked.shift_remove(field);
         }
         entries.push(forked);
     }
@@ -516,7 +516,7 @@ pub fn fork_session(
         || derive_title_from_bytes(&content),
     )?;
     let fork_path = project_dir.join(format!("{forked_session_id}.jsonl"));
-    let lines: Vec<String> = entries.iter().map(type_first_line).collect();
+    let lines: Vec<String> = entries.iter().map(plain_line).collect();
     let mut file = create_private(&fork_path)
         .map_err(|error| Error::io(format!("Cannot create {}", fork_path.display()), error))?;
     file.write_all(format!("{}\n", lines.join("\n")).as_bytes())

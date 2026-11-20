@@ -378,6 +378,58 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
 }
 
 #[test]
+fn fork_keeps_the_key_order_of_each_entry_as_upstream_does() {
+    let project = Project::new();
+    let id = new_id();
+    let first = new_id();
+    let entry = json!({
+        "parentUuid": null,
+        "isSidechain": false,
+        "userType": "external",
+        "cwd": "/work",
+        "sessionId": id,
+        "version": "2.1.329",
+        "gitBranch": "main",
+        "type": "user",
+        "message": {"role": "user", "content": "hello"},
+        "uuid": first,
+        "timestamp": "2026-11-20T10:00:00.000Z",
+        "slug": "leak",
+    });
+    let source = project.transcript(&id);
+    std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+    std::fs::write(&source, format!("{entry}\n")).unwrap();
+
+    let fork = fork_session(&id, Some(project.path()), None, None).unwrap();
+    let text = std::fs::read_to_string(project.transcript(&fork.session_id)).unwrap();
+    let first_line = text.lines().next().unwrap();
+    let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, Value>>(first_line)
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "parentUuid",
+            "isSidechain",
+            "userType",
+            "cwd",
+            "sessionId",
+            "version",
+            "gitBranch",
+            "type",
+            "message",
+            "uuid",
+            "timestamp",
+            "logicalParentUuid",
+            "forkedFrom",
+        ],
+        "the original keys keep their place, the new ones follow in upstream order: {first_line}"
+    );
+}
+
+#[test]
 fn fork_cuts_inclusively_and_honors_titles() {
     let project = Project::new();
     let id = new_id();

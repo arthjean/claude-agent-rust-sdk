@@ -10,10 +10,11 @@
 ### Changed
 
 - Upstream moved to Python SDK 0.2.186 and CLI 2.1.329.
-- **Breaking:** `PermissionUpdate::to_wire` returns `Result<Value, Error>`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `Error::Config`. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
+- **Breaking:** `PermissionUpdate::to_wire` returns a `Result`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `Error::Config`. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
 
 ### Fixed
 
+- JSON keeps its key order end to end, as the Python SDK and the CLI do: the properties of an output schema, the order of MCP servers and subagents, the keys of settings, and every line a fork or a resume from a store writes. The crate now enables the `preserve_order` feature of `serde_json`; since Cargo features add up, a `serde_json::Map` elsewhere in a program that uses this crate also keeps insertion order.
 - A `can_use_tool` allow decision whose permission updates cannot all be sent now sends none of them and logs a warning; the tool call is still allowed.
 
 ## 0.1.0 - 2026-11-18
