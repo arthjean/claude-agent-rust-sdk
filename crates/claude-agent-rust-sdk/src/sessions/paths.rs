@@ -233,7 +233,9 @@ fn git_worktree_list(cwd: &str) -> Option<String> {
 }
 
 /// Runs a command and returns its output when it succeeds within `limit`.
-/// A command still running at the limit is killed.
+/// A command still running at the limit is killed, and an output that a
+/// process it started keeps open past the limit is given up: the thread
+/// that reads it is left to end when that process closes it.
 pub(crate) fn run_with_limit(mut command: Command, limit: Duration) -> Option<String> {
     command
         .stdin(Stdio::null())
@@ -242,9 +244,11 @@ pub(crate) fn run_with_limit(mut command: Command, limit: Duration) -> Option<St
     hide_console_window(&mut command);
     let mut child = command.spawn().ok()?;
     let mut stdout = child.stdout.take()?;
-    let reader = std::thread::spawn(move || {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut buffer = Vec::new();
-        std::io::Read::read_to_end(&mut stdout, &mut buffer).map(|_| buffer)
+        let read = std::io::Read::read_to_end(&mut stdout, &mut buffer).map(|_| buffer);
+        let _ = sender.send(read);
     });
     let deadline = Instant::now() + limit;
     let status = loop {
@@ -258,7 +262,10 @@ pub(crate) fn run_with_limit(mut command: Command, limit: Duration) -> Option<St
             }
         }
     };
-    let output = reader.join().ok()?.ok()?;
+    let output = receiver
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .ok()?
+        .ok()?;
     if !status.success() || output.is_empty() {
         return None;
     }
@@ -485,6 +492,20 @@ mod tests {
         let started = Instant::now();
         assert_eq!(run_with_limit(command, Duration::from_millis(200)), None);
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_output_a_background_process_keeps_open_is_given_up_at_the_limit() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo hi; sleep 6 &"]);
+        let started = Instant::now();
+        assert_eq!(run_with_limit(command, Duration::from_secs(1)), None);
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

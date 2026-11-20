@@ -79,6 +79,7 @@
 - The session readers, fork, and import read a transcript line with a lone surrogate escape or a nesting deeper than 128 levels, as the live session does, instead of dropping it and every message before it.
 - `fork_session` ends on a transcript whose `progress` entries name each other as parents, where it looped forever (upstream has the same defect).
 - `rename_session` and `tag_session` strip what Python's `str.strip()` strips, the separators U+001C to U+001F included, and so does the reading of a first prompt.
+- The 5-second limit on `git worktree list` and the macOS Keychain read holds when a process the command started keeps its output open.
 
 ## 0.1.0 - 2026-11-18
 
