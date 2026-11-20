@@ -1194,6 +1194,49 @@ mod schema_validation {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn format_is_an_annotation_only_whatever_the_draft_of_the_schema() {
+        let drafts = [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+            "http://json-schema.org/draft-07/schema#",
+            "https://json-schema.org/draft/2019-09/schema",
+            "https://json-schema.org/draft/2020-12/schema",
+        ];
+        let tools = drafts.iter().enumerate().map(|(index, draft)| {
+            SdkMcpTool::raw(
+                format!("when{index}"),
+                "Takes a date",
+                json!({
+                    "$schema": draft,
+                    "type": "object",
+                    "properties": {
+                        "when": {"type": "string", "format": "date-time"},
+                        "mail": {"type": "string", "format": "email"},
+                    },
+                }),
+                |arguments| async move { Ok(ToolResult::text(arguments["when"].to_string())) },
+            )
+            .unwrap()
+        });
+        let client = SdkMcpClient::connected(server(tools)).await;
+        for (index, draft) in drafts.iter().enumerate() {
+            let outcome = client
+                .call_tool(
+                    "srv",
+                    &format!("when{index}"),
+                    json!({"when": "nope", "mail": "not an address"}),
+                )
+                .await;
+            assert_eq!(outcome["isError"], false, "{draft}: {outcome}");
+            assert_eq!(texts(&outcome), [r#""nope""#], "{draft}");
+            let wrong_type = client
+                .call_tool("srv", &format!("when{index}"), json!({"when": 3}))
+                .await;
+            assert_eq!(wrong_type["isError"], true, "{draft}: {wrong_type}");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn schema_the_validator_cannot_use_is_an_error_result() {
         let broken = SdkMcpTool::raw(
             "broken",

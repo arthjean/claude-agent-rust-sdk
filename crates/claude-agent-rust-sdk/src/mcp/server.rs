@@ -102,6 +102,18 @@ struct Tool {
     validator: Validator,
 }
 
+/// Compiles the validator of a tool schema. `format` is never asserted,
+/// whatever the draft: the Python SDK validates with no format checker, so
+/// a `"format": "date-time"` there is an annotation only, while the
+/// `jsonschema` crate checks formats by default for drafts 4, 6, and 7.
+#[cfg(feature = "jsonschema")]
+fn compile(schema: &Value) -> Validator {
+    jsonschema::options()
+        .should_validate_formats(false)
+        .build(schema)
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) struct SdkMcpServer {
     name: String,
     version: String,
@@ -125,8 +137,7 @@ impl SdkMcpServer {
             }
             tools.push(Tool {
                 #[cfg(feature = "jsonschema")]
-                validator: jsonschema::validator_for(definition.input_schema())
-                    .map_err(|error| error.to_string()),
+                validator: compile(definition.input_schema()),
                 definition,
             });
         }
