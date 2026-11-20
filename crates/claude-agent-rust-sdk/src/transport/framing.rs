@@ -108,7 +108,9 @@ fn recover(text: &str) -> Option<Value> {
 /// Reads `text`, whose nesting exceeds [`MAX_NESTING_DEPTH`], in one
 /// pass: each array or object that opens at that depth is replaced by the
 /// JSON string of its text, which leaves a value no deeper than the limit
-/// for a single parse.
+/// for a single parse. A text whose brackets or strings do not close is
+/// refused before that parse, which would otherwise recurse through every
+/// level left open.
 fn bounded(text: &str) -> Option<Value> {
     let mut flattened = String::with_capacity(text.len());
     let (mut depth, mut copied, mut opened_at) = (0_usize, 0_usize, None);
@@ -143,6 +145,9 @@ fn bounded(text: &str) -> Option<Value> {
             }
             _ => {}
         }
+    }
+    if depth != 0 || in_string || opened_at.is_some() {
+        return None;
     }
     flattened.push_str(&text[copied..]);
     let mut deserializer = serde_json::Deserializer::from_str(&flattened);
@@ -330,6 +335,29 @@ mod tests {
 
         let in_string = format!("{{\"a\": \"{}\"}}", "[".repeat(MAX_NESTING_DEPTH * 2));
         assert!(parse_stdout_line(in_string.as_bytes()).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_deep_line_whose_brackets_do_not_close_is_refused_on_a_small_stack() {
+        let unclosed = format!("{{\"a\": {}", "[".repeat(200_000));
+        let unclosed_string = format!("{{\"a\": {}\"x", "[".repeat(600));
+        let overclosed = format!("{{\"a\": {}{}}}", "[".repeat(600), "]".repeat(601));
+        let refused = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                [unclosed, unclosed_string, overclosed]
+                    .iter()
+                    .map(|line| {
+                        parse_stdout_line(line.as_bytes())
+                            .err()
+                            .map(|error| error.kind())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(refused, [Some(ErrorKind::JsonDecode); 3]);
     }
 
     #[test]
