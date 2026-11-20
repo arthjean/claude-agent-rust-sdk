@@ -275,6 +275,27 @@ pub(super) fn integral_floats_to_integers(schema: &Value, value: &mut Value) {
     coerce(schema, schema, value, 0, &mut budget);
 }
 
+/// Whether an alternative states every key of `value`, when `value` is an
+/// object. Coercion goes only through the alternatives that do, when one
+/// does: an integer field of a variant that lacks the other keys must not
+/// turn a float meant for another variant into an integer, which would
+/// make an untagged enum pick that variant and drop the other keys.
+fn states_every_key(alternative: &Value, root: &Value, value: &Value) -> bool {
+    let Value::Object(members) = value else {
+        return true;
+    };
+    let resolved = alternative
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| reference.strip_prefix('#'))
+        .and_then(|pointer| root.pointer(pointer))
+        .unwrap_or(alternative);
+    let Some(Value::Object(properties)) = resolved.get("properties") else {
+        return false;
+    };
+    members.keys().all(|key| properties.contains_key(key))
+}
+
 fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize, budget: &mut usize) {
     if depth > MAX_DEPTH || *budget == 0 {
         return;
@@ -293,7 +314,16 @@ fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize, budget:
     }
     for combinator in COMBINATORS {
         if let Some(Value::Array(alternatives)) = fields.get(combinator) {
-            for alternative in alternatives {
+            let fitting: Vec<&Value> = alternatives
+                .iter()
+                .filter(|alternative| states_every_key(alternative, root, value))
+                .collect();
+            let chosen = if fitting.is_empty() {
+                alternatives.iter().collect()
+            } else {
+                fitting
+            };
+            for alternative in chosen {
                 coerce(alternative, root, value, depth + 1, budget);
             }
         }

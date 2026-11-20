@@ -100,6 +100,8 @@
 - A line of CLI output or of a transcript nested more than 512 levels deep is read instead of refused: each array or object at depth 512 is kept as its JSON text, so the session goes on, and the session readers, fork, and import keep the line and the history before it.
 - `HookEffort`, `BackgroundTaskSummary`, `SessionCronSummary`, `RateLimitEvent`, and `ConversationResetMessage` keep the keys they do not model in an `extra` field, as the other wire types do.
 - The README no longer says the crate never stores or forwards credentials: a resume from a session store copies the access token of the installed CLI into its temporary configuration directory, as upstream does, and the README says so.
+- A typed tool that takes no argument can take `()` or a unit struct: the empty object the CLI sends is read as `null` for them, where every call failed with `invalid type: map, expected unit`.
+- When another field of a typed tool needs its integral floats turned into integers, the floats inside an `anyOf` or `oneOf` are turned only through the alternatives that state every key of the object, so an untagged enum no longer picks a variant that drops some of its fields.
 
 ## 0.1.0 - 2026-11-18
 

@@ -412,11 +412,21 @@ async fn an_integral_float_keeps_an_untagged_enum_on_the_variant_that_takes_a_fl
     #[derive(Deserialize, JsonSchema)]
     struct Wrapped {
         s: Shape,
+        #[serde(default)]
+        #[expect(dead_code, reason = "only its read as a float matters")]
+        count: u32,
     }
 
     let wrapped = SdkMcpTool::typed::<Wrapped>("wrapped", "Wrapped", |args| async move {
         Ok(ToolResult::text(format!("{:?}", args.s)))
     });
+    assert_eq!(
+        wrapped
+            .call(json!({"s": {"v": 2.0, "w": true}, "count": 3.0}))
+            .await,
+        ToolResult::text("Float { v: 2.0, w: true }"),
+        "a float another field needs coerced keeps the variant that states every key"
+    );
     assert_eq!(
         wrapped.call(json!({"s": {"v": 2.0, "w": true}})).await,
         ToolResult::text("Float { v: 2.0, w: true }")
@@ -433,6 +443,25 @@ async fn an_integral_float_keeps_an_untagged_enum_on_the_variant_that_takes_a_fl
         top.call(json!({"v": 2.0, "w": false})).await,
         ToolResult::text("Float { v: 2.0, w: false }")
     );
+}
+
+#[tokio::test]
+async fn a_tool_without_arguments_can_take_the_unit_type_or_a_unit_struct() {
+    #[derive(Deserialize, JsonSchema)]
+    struct Unit;
+
+    let unit = SdkMcpTool::typed::<()>(
+        "now",
+        "Now",
+        |()| async move { Ok(ToolResult::text("noon")) },
+    );
+    let unit_struct = SdkMcpTool::typed::<Unit>("today", "Today", |Unit| async move {
+        Ok(ToolResult::text("friday"))
+    });
+    for (tool, answer) in [(unit, "noon"), (unit_struct, "friday")] {
+        assert_eq!(tool.call(json!({})).await, ToolResult::text(answer));
+        assert!(tool.call(json!({"extra": 1})).await.is_error);
+    }
 }
 
 #[tokio::test]
