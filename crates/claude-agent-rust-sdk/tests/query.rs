@@ -129,6 +129,50 @@ fn assert_one_assistant_then_one_result(messages: &[Result<Message, Error>]) {
 fn requires_stream(_: &impl Stream<Item = Result<Message, Error>>) {}
 
 #[tokio::test(start_paused = true)]
+async fn a_result_that_ran_out_of_budget_keeps_its_subtype_and_cost() {
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            vec![
+                json!({
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Starting to read..."}],
+                        "model": "claude-opus-4-1-20250805",
+                    },
+                }),
+                json!({
+                    "type": "result",
+                    "subtype": "error_max_budget_usd",
+                    "duration_ms": 500,
+                    "duration_api_ms": 400,
+                    "is_error": false,
+                    "num_turns": 1,
+                    "session_id": "test-session-budget",
+                    "total_cost_usd": 0.0002,
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                }),
+            ]
+        } else {
+            Vec::new()
+        }
+    });
+    let options = ClaudeAgentOptions::builder()
+        .max_budget_usd(0.0001)
+        .build()
+        .unwrap();
+    let messages = drain(query_with_transport("Read the readme", options, transport)).await;
+
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    let Ok(Message::Result(outcome)) = &messages[1] else {
+        panic!("expected a result message, got {:?}", messages[1]);
+    };
+    assert_eq!(outcome.subtype, "error_max_budget_usd");
+    assert!(!outcome.is_error);
+    assert_eq!(outcome.total_cost_usd, Some(0.0002));
+}
+
+#[tokio::test(start_paused = true)]
 async fn text_prompt_is_written_as_one_user_message_and_messages_are_typed() {
     let transport = answering_prompts();
     let stream = query_with_transport(
@@ -489,6 +533,14 @@ async fn failing_exit_is_kept_when_the_last_result_is_not_the_cause() {
         vec![assistant("working"), result("fine")],
         vec![failed.clone(), result("fine")],
         vec![failed.clone(), assistant("a new turn")],
+        vec![
+            error_result(json!({"subtype": "error_during_execution"})),
+            json!({
+                "type": "user",
+                "message": {"role": "user", "content": "next turn"},
+                "session_id": "s",
+            }),
+        ],
         vec![
             failed.clone(),
             json!({"type": "system", "subtype": "status"}),

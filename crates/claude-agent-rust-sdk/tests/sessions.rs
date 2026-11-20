@@ -57,6 +57,43 @@ fn config_dir_comes_from_the_environment() {
 }
 
 #[test]
+fn a_single_session_is_listed_with_its_metadata() {
+    let project = Project::new();
+    let id = new_id();
+    let cwd = project.path().to_string_lossy().into_owned();
+    let mut first = user("u1", None, &id, Value::from("What is 2+2?"));
+    first["gitBranch"] = Value::from("main");
+    first["cwd"] = Value::from(cwd.as_str());
+    project.write(&id, &[first, assistant("a1", Some("u1"), &id, "4")]);
+
+    let listed = list_sessions(Some(project.path()), None, 0, false);
+    assert_eq!(ids(&listed), [id]);
+    let session = &listed[0];
+    assert_eq!(session.first_prompt.as_deref(), Some("What is 2+2?"));
+    assert_eq!(session.summary, "What is 2+2?");
+    assert_eq!(session.git_branch.as_deref(), Some("main"));
+    assert_eq!(session.cwd.as_deref(), Some(cwd.as_str()));
+    assert!(session.file_size.is_some_and(|size| size > 0));
+    assert!(session.last_modified > 0);
+    assert_eq!(session.custom_title, None);
+}
+
+#[test]
+fn a_custom_title_wins_over_the_summary_and_the_first_prompt() {
+    let project = Project::new();
+    let id = new_id();
+    let mut lines = conversation(&id, "original question", json!({}));
+    lines.push(json!({"type": "summary", "summary": "auto summary"}));
+    lines.push(json!({"type": "custom-title", "customTitle": "My Custom Title", "sessionId": id}));
+    project.write(&id, &lines);
+    let listed = list_sessions(Some(project.path()), None, 0, false);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].summary, "My Custom Title");
+    assert_eq!(listed[0].custom_title.as_deref(), Some("My Custom Title"));
+    assert_eq!(listed[0].first_prompt.as_deref(), Some("original question"));
+}
+
+#[test]
 fn metadata_follows_the_upstream_rules() {
     let project = Project::new();
     let id = new_id();
@@ -248,6 +285,18 @@ fn all_projects_are_listed_and_searched_without_a_directory() {
     assert_eq!(matching[0].summary, "newer");
     assert!(all.iter().any(|session| session.session_id == alone));
     assert_eq!(get_session_info(&alone, None).unwrap().summary, "alone");
+    let older_alone = new_id();
+    let path = first.write(
+        &older_alone,
+        &conversation(&older_alone, "from one", json!({})),
+    );
+    set_mtime(&path, 50);
+    let ours: Vec<String> = list_sessions(None, None, 0, true)
+        .into_iter()
+        .map(|session| session.session_id)
+        .filter(|id| [&alone, &older_alone].contains(&id))
+        .collect();
+    assert_eq!(ours, [alone, older_alone], "newest first across projects");
 }
 
 #[test]
@@ -422,6 +471,20 @@ fn a_parent_cycle_returns_without_looping() {
 }
 
 #[test]
+fn two_entries_that_are_each_other_s_parent_give_no_messages() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(
+        &id,
+        &[
+            user("u1", Some("a1"), &id, Value::from("hi")),
+            assistant("a1", Some("u1"), &id, "hello"),
+        ],
+    );
+    assert!(get_session_messages(&id, Some(project.path()), None, 0).is_empty());
+}
+
+#[test]
 fn missing_or_invalid_sessions_give_empty_lists() {
     let project = Project::new();
     assert!(get_session_messages(&new_id(), Some(project.path()), None, 0).is_empty());
@@ -429,6 +492,65 @@ fn missing_or_invalid_sessions_give_empty_lists() {
     let empty = new_id();
     std::fs::write(project.transcript(&empty), "").unwrap();
     assert!(get_session_messages(&empty, Some(project.path()), None, 0).is_empty());
+}
+
+#[test]
+fn a_subagent_chain_is_read_root_first_with_every_field() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "spawn", json!({})));
+    let subagents = project.dir.join(&id).join("subagents");
+    write_lines(
+        &subagents.join("agent-abc.jsonl"),
+        &[
+            user("u1", None, &id, Value::from("task")),
+            assistant("a1", Some("u1"), &id, "working"),
+            user("u2", Some("a1"), &id, Value::from("continue")),
+            assistant("a2", Some("u2"), &id, "done"),
+        ],
+    );
+    let messages = get_subagent_messages(&id, "abc", Some(project.path()), None, 0);
+    assert_eq!(uuids(&messages), ["u1", "a1", "u2", "a2"]);
+    assert_eq!(messages[0].r#type, SessionMessageType::User);
+    assert_eq!(messages[0].session_id, id);
+    assert_eq!(
+        messages[0].message,
+        json!({"role": "user", "content": "task"})
+    );
+    assert_eq!(messages[0].parent_tool_use_id, None);
+    assert_eq!(messages[3].r#type, SessionMessageType::Assistant);
+}
+
+#[test]
+fn the_sidecar_parent_ids_are_set_on_every_subagent_message() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "spawn", json!({})));
+    let subagents = project.dir.join(&id).join("subagents");
+    write_lines(
+        &subagents.join("agent-abc.jsonl"),
+        &[
+            user("u1", None, &id, Value::from("task")),
+            assistant("a1", Some("u1"), &id, "done"),
+        ],
+    );
+    std::fs::write(
+        subagents.join("agent-abc.meta.json"),
+        json!({
+            "agentType": "general-purpose",
+            "toolUseId": "toolu_01ABC",
+            "parentAgentId": "a-parent",
+            "spawnDepth": 2,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let messages = get_subagent_messages(&id, "abc", Some(project.path()), None, 0);
+    assert_eq!(messages.len(), 2);
+    assert!(messages.iter().all(|message| {
+        message.parent_tool_use_id.as_deref() == Some("toolu_01ABC")
+            && message.parent_agent_id.as_deref() == Some("a-parent")
+    }));
 }
 
 #[test]
@@ -464,6 +586,8 @@ fn subagents_are_listed_and_read_with_their_parent_ids() {
     write_lines(&subagents.join("agent-gamma.jsonl"), &agent_lines("gamma"));
     std::fs::write(subagents.join("agent-gamma.meta.json"), "[1, 2]").unwrap();
     std::fs::write(subagents.join("notes.txt"), "ignored").unwrap();
+    std::fs::write(subagents.join("other.jsonl"), "{}\n").unwrap();
+    std::fs::write(subagents.join("agent-noext"), "{}").unwrap();
 
     assert_eq!(
         list_subagents(&id, Some(project.path())),
@@ -661,6 +785,74 @@ fn parallel_tool_turn(
         }));
     }
     lines
+}
+
+/// The ids of the `kind` blocks of the messages, read from `field`.
+fn block_ids(messages: &[SessionMessage], kind: &str, field: &str) -> Vec<String> {
+    messages
+        .iter()
+        .filter_map(|message| message.message["content"].as_array())
+        .flatten()
+        .filter(|block| block["type"] == kind)
+        .map(|block| block[field].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn parallel_tool_calls_keep_every_call_and_result_whatever_the_result_order() {
+    for result_order in [[0, 1, 2], [2, 1, 0], [1, 2, 0], [0, 2, 1]] {
+        let project = Project::new();
+        let id = new_id();
+        let mut lines = vec![user("prompt", None, &id, Value::from("read them"))];
+        lines.extend(parallel_tool_turn(&id, "prompt", 3, &result_order));
+        let last_result = format!("result-{}", result_order[2]);
+        lines.push(assistant("answer", Some(&last_result), &id, "done"));
+        project.write(&id, &lines);
+
+        let messages = get_session_messages(&id, Some(project.path()), None, 0);
+        let mut result_ids = block_ids(&messages, "tool_result", "tool_use_id");
+        result_ids.sort();
+        let context = format!("result order {result_order:?}");
+        assert_eq!(
+            block_ids(&messages, "tool_use", "id"),
+            ["toolu_0", "toolu_1", "toolu_2"],
+            "{context}"
+        );
+        assert_eq!(result_ids, ["toolu_0", "toolu_1", "toolu_2"], "{context}");
+        let distinct: std::collections::HashSet<&str> = uuids(&messages).into_iter().collect();
+        assert_eq!(messages.len(), 8, "{context}");
+        assert_eq!(distinct.len(), 8, "{context}");
+        assert_eq!(messages[0].uuid, "prompt", "{context}");
+        assert_eq!(
+            messages[1..7]
+                .iter()
+                .map(|message| message.r#type)
+                .collect::<Vec<_>>(),
+            [
+                SessionMessageType::Assistant,
+                SessionMessageType::Assistant,
+                SessionMessageType::Assistant,
+                SessionMessageType::User,
+                SessionMessageType::User,
+                SessionMessageType::User,
+            ],
+            "{context}"
+        );
+        assert_eq!(messages[7].uuid, "answer", "{context}");
+    }
+}
+
+#[test]
+fn parallel_tool_calls_that_end_the_transcript_keep_every_result() {
+    let project = Project::new();
+    let id = new_id();
+    let mut lines = vec![user("prompt", None, &id, Value::from("read them"))];
+    lines.extend(parallel_tool_turn(&id, "prompt", 2, &[1, 0]));
+    project.write(&id, &lines);
+    assert_eq!(
+        uuids(&get_session_messages(&id, Some(project.path()), None, 0)),
+        ["prompt", "call-0", "call-1", "result-1", "result-0"]
+    );
 }
 
 #[test]

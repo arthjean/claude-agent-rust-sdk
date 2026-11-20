@@ -63,11 +63,11 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestQueryFunction::test_query_with_cwd" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::the_child_environment_is_built_in_the_documented_order", note = "Rust asserts the working directory on the spawned process (PWD), through the transport rather than query()." }
 "TestQueryFunction::test_query_passes_initialize_timeout_from_env" = { rust = ["crates/claude-agent-rust-sdk/tests/process_env.rs::initialize_timeout_and_run_end_ceiling_read_the_process_environment", "crates/claude-agent-rust-sdk/src/lib.rs::control::initialize::tests::initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable"] }
 "TestQueryFunction::test_query_uses_default_initialize_timeout" = { rust = ["crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_without_response_times_out_and_closes_the_transport", "crates/claude-agent-rust-sdk/src/lib.rs::control::initialize::tests::initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable"] }
-"TestQueryFunction::test_query_passes_system_prompt_snapshot" = { rust = ["crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_is_sent_before_the_prompt_with_every_configured_field", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_leaves_out_what_is_not_set"], note = "The file form carries no snapshot field in Rust, so that case is enforced by the type." }
+"TestQueryFunction::test_query_passes_system_prompt_snapshot" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::query_sends_the_snapshot_only_for_the_preset_and_custom_forms", note = "The file form carries no snapshot field in Rust, so a snapshot on it cannot be written; the case asserts it sends none." }
 "TestQueryFunction::test_string_prompt_spawns_wait_for_result_as_task" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::text_prompt_with_a_hook_delivers_more_messages_than_the_queue_holds_before_the_result" }
 "TestClaudeSDKClientTrioBackend::test_client_connect_under_trio" = { excluded = "python-runtime" }
 "TestClaudeSDKClientSystemPromptSnapshot::test_connect_sends_snapshot" = { rust = ["crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_leaves_out_what_is_not_set", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_is_sent_before_the_prompt_with_every_configured_field"] }
-"TestClaudeSDKClientSystemPromptSnapshot::test_connect_omits_snapshot_when_unset" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_leaves_out_what_is_not_set", note = "Rust asserts the omission for no system prompt and for a text prompt, not for a preset without snapshot." }
+"TestClaudeSDKClientSystemPromptSnapshot::test_connect_omits_snapshot_when_unset" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_leaves_out_what_is_not_set" }
 "TestClaudeSDKClientResourceCleanup::test_disconnect_closes_receive_stream" = { excluded = "python-runtime", note = "anyio receive-stream ResourceWarning raised at garbage collection; a Rust channel closes by ownership." }
 
 [tests."tests/test_client_app.py"]
@@ -109,7 +109,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 
 [tests."tests/test_close_cancellation.py"]
 "test_close_under_cancellation_still_reaps_child" = { rust = "crates/claude-agent-rust-sdk/tests/shutdown.rs::close_runs_to_completion_when_its_future_is_dropped" }
-"test_cancelled_client_context_leaves_no_child" = { rust = ["crates/claude-agent-rust-sdk/tests/client.rs::dropping_a_connected_client_closes_the_session", "crates/claude-agent-rust-sdk/tests/stress.rs::two_hundred_cycles_half_of_them_cancelled_leave_no_process"] }
+"test_cancelled_client_context_leaves_no_child" = { rust = ["crates/claude-agent-rust-sdk/tests/run_end_subprocess.rs::a_client_whose_disconnect_is_cancelled_leaves_no_process", "crates/claude-agent-rust-sdk/tests/stress.rs::two_hundred_cycles_half_of_them_cancelled_leave_no_process"] }
 "test_still_running_child_stays_tracked_for_atexit_reaper" = { excluded = "python-atexit-registry", note = "The exit-time guarantee itself is asserted by crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_dies_when_its_parent_dies_abruptly." }
 "test_reaped_child_is_untracked" = { excluded = "python-atexit-registry", note = "Reaping on a normal close is asserted by crates/claude-agent-rust-sdk/tests/shutdown.rs::close_ends_a_cooperative_process_without_escalating; only the registry bookkeeping has no counterpart." }
 "test_fake_cli_speaks_the_protocol" = { rust = ["crates/fake-claude/tests/cli.rs::version_flag_prints_the_version", "crates/fake-claude/tests/cli.rs::without_a_scenario_it_speaks_the_protocol_until_stdin_closes"] }
@@ -228,7 +228,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestIntegration::test_query_with_tool_use" = { rust = ["crates/claude-agent-rust-sdk/tests/query.rs::text_prompt_is_written_as_one_user_message_and_messages_are_typed", "crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_valid_assistant_message"] }
 "TestIntegration::test_cli_not_found" = { rust = ["crates/claude-agent-rust-sdk/tests/discovery.rs::the_process_environment_drives_discovery_and_the_version_check_switch", "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::unix_not_found_message_gives_the_install_instruction"] }
 "TestIntegration::test_continuation_option" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::session_continuation" }
-"TestIntegration::test_max_budget_usd_option" = { rust = ["crates/claude-agent-rust-sdk/tests/command.rs::permission_mode_fallback_model_effort_and_budgets", "crates/claude-agent-rust-sdk/tests/query.rs::text_prompt_is_written_as_one_user_message_and_messages_are_typed"] }
+"TestIntegration::test_max_budget_usd_option" = { rust = ["crates/claude-agent-rust-sdk/tests/query.rs::a_result_that_ran_out_of_budget_keeps_its_subtype_and_cost", "crates/claude-agent-rust-sdk/tests/command.rs::permission_mode_fallback_model_effort_and_budgets"] }
 
 [tests."tests/test_mcp_large_output.py"]
 "TestLayer1EnvPassthrough::test_max_mcp_output_tokens_reaches_subprocess" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::the_child_environment_is_built_in_the_documented_order" }
@@ -392,7 +392,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestStdinStaysOpenUntilIdle::test_async_iterable_prompt_waits_for_idle" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::stream_prompt_waits_for_the_run_of_its_last_message" }
 "TestStdinStaysOpenUntilIdle::test_stream_last_prompt_waits_for_its_own_run" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::stream_prompt_waits_for_the_run_of_its_last_message" }
 "TestStdinStaysOpenUntilIdle::test_stream_reopens_for_work_the_cli_takes_up_after_idle" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::stream_reopens_for_work_the_cli_takes_up_after_idle" }
-"TestRunEndCeiling::test_ceiling_ends_the_run_with_no_idle" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::ceiling_ends_the_run_when_idle_never_comes", note = "The trio parametrization has no counterpart; the late idle after the ceiling is not replayed in Rust." }
+"TestRunEndCeiling::test_ceiling_ends_the_run_with_no_idle" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::ceiling_ends_the_run_when_idle_never_comes", note = "The trio parametrization has no counterpart." }
 "TestRunEndCeiling::test_main_thread_turn_stops_the_ceiling" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::main_thread_turn_stops_the_ceiling_and_subagent_messages_do_not" }
 "TestRunEndCeiling::test_subagent_messages_do_not_stop_the_ceiling" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::main_thread_turn_stops_the_ceiling_and_subagent_messages_do_not" }
 "TestRunEndCeiling::test_requires_action_stops_the_ceiling" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::requires_action_stops_the_ceiling_until_the_cli_runs_again" }
@@ -409,7 +409,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestNoTimeoutForHooksAndMcpServers::test_no_hooks_closes_immediately" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::without_callbacks_stdin_closes_as_soon_as_the_input_is_written" }
 "TestNoTimeoutForHooksAndMcpServers::test_can_use_tool_waits_for_result" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::with_a_callback_stdin_stays_open_until_the_run_has_ended" }
 "TestCanUseToolKeepsStdinOpen::test_async_iterable_prompt_with_can_use_tool_waits_for_result" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::stream_prompt_with_only_a_permission_callback_answers_the_request_before_stdin_closes" }
-"TestCanUseToolKeepsStdinOpen::test_string_prompt_with_can_use_tool_is_supported" = { rust = ["crates/claude-agent-rust-sdk/tests/run_end.rs::with_a_callback_stdin_stays_open_until_the_run_has_ended", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_receives_the_tool_the_input_and_the_full_context"] }
+"TestCanUseToolKeepsStdinOpen::test_string_prompt_with_can_use_tool_is_supported" = { rust = ["crates/claude-agent-rust-sdk/tests/run_end.rs::a_text_prompt_works_with_a_permission_callback", "crates/claude-agent-rust-sdk/tests/run_end.rs::with_a_callback_stdin_stays_open_until_the_run_has_ended"] }
 "TestCanUseToolKeepsStdinOpen::test_prompt_iterable_that_raises_after_a_message_still_closes_stdin" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::empty_or_failing_input_stream_still_closes_stdin" }
 "TestCanUseToolKeepsStdinOpen::test_prompt_iterable_that_raises_immediately_closes_stdin" = { rust = "crates/claude-agent-rust-sdk/tests/run_end.rs::empty_or_failing_input_stream_still_closes_stdin" }
 "TestQueryCrossTaskCleanup::test_close_from_different_task_does_not_raise" = { excluded = "python-runtime", note = "anyio cancel-scope task affinity." }
@@ -437,7 +437,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestProcessExitAfterErrorResult::test_process_error_after_success_result_keeps_original_message" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::failing_exit_is_kept_when_the_last_result_is_not_the_cause" }
 "TestProcessExitAfterErrorResult::test_process_error_after_error_then_success_result_keeps_original" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::failing_exit_is_kept_when_the_last_result_is_not_the_cause" }
 "TestProcessExitAfterErrorResult::test_session_state_changed_after_error_result_preserves_replacement" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::failing_exit_is_kept_when_the_last_result_is_not_the_cause" }
-"TestProcessExitAfterErrorResult::test_new_turn_after_error_result_keeps_original_message" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::failing_exit_is_kept_when_the_last_result_is_not_the_cause", note = "Rust marks the new turn with an assistant frame; upstream uses a user frame." }
+"TestProcessExitAfterErrorResult::test_new_turn_after_error_result_keeps_original_message" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::failing_exit_is_kept_when_the_last_result_is_not_the_cause" }
 "TestProcessExitAfterErrorResult::test_pending_control_requests_fail_fast_on_replaced_error" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::pending_control_requests_fail_with_the_result_error" }
 
 [tests."tests/test_rate_limit_event_repro.py"]
@@ -559,10 +559,10 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestGetSessionMessagesFromStore::test_parallel_tool_calls_keep_every_call_and_result" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::recovers_sibling_calls_dropped_by_the_walk" }
 "TestSubagentsFromStore::test_list_and_get_subagent_messages" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_readers_match_the_disk_readers_for_the_same_content", "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids"] }
 "TestSubagentsFromStore::test_nested_workflow_subpath" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_readers_match_the_disk_readers_for_the_same_content", "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids"] }
-"TestSubagentsFromStore::test_filters_agent_metadata_entries" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::subagents_are_read_at_the_direct_path_without_list_subkeys" }
+"TestSubagentsFromStore::test_filters_agent_metadata_entries" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::agent_metadata_without_ids_is_filtered_out_and_sets_no_parent_ids", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::subagents_are_read_at_the_direct_path_without_list_subkeys"] }
 "TestSubagentsFromStore::test_parent_ids_recovered_from_agent_metadata_entry" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::subagents_are_read_at_the_direct_path_without_list_subkeys", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_readers_match_the_disk_readers_for_the_same_content"] }
 "TestSubagentsFromStore::test_parent_ids_ignore_non_string_metadata" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::agent_metadata_values_that_are_not_strings_give_no_parent_ids" }
-"TestSubagentsFromStore::test_session_messages_parent_ids_are_none" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_readers_match_the_disk_readers_for_the_same_content", "crates/claude-agent-rust-sdk/tests/sessions.rs::messages_follow_the_chain_and_skip_corrupt_and_hidden_entries"] }
+"TestSubagentsFromStore::test_session_messages_parent_ids_are_none" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_session_messages_never_carry_parent_ids" }
 "TestSubagentsFromStore::test_list_subagents_dedupes_agent_id_across_subpaths" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::an_agent_id_under_several_subpaths_is_listed_once" }
 "TestSubagentsFromStore::test_subagent_helpers_non_uuid_session_id" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::subagent_helpers_return_nothing_for_a_session_id_that_is_not_a_uuid" }
 "TestSubagentsFromStore::test_list_subagents_raises_when_store_lacks_list_subkeys" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::listing_requires_list_sessions_or_summaries" }
@@ -588,7 +588,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 
 [tests."tests/test_session_import.py"]
 "TestMainTranscript::test_imports_main_transcript" = { rust = ["crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_batches_entries_and_stores_sidecars_as_agent_metadata", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::store_readers_match_the_disk_readers_for_the_same_content"] }
-"TestMainTranscript::test_batching_calls_append_per_chunk" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_batches_entries_and_stores_sidecars_as_agent_metadata" }
+"TestMainTranscript::test_batching_calls_append_per_chunk" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_appends_the_transcript_in_one_call_per_batch" }
 "TestMainTranscript::test_skips_blank_lines" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_skips_the_blank_lines_of_a_transcript" }
 "TestMainTranscript::test_nonpositive_batch_size_uses_default" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::a_batch_size_of_zero_imports_in_batches_of_500_entries" }
 "TestSubagents::test_imports_subagent_transcripts_with_subpath" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_batches_entries_and_stores_sidecars_as_agent_metadata" }
@@ -620,8 +620,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestRenameSession::test_skips_zero_byte_stub" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::rename_without_a_directory_skips_empty_stubs" }
 "TestRenameSession::test_compact_json_format" = { rust = ["crates/claude-agent-rust-sdk/tests/session_mutations.rs::rename_appends_a_trimmed_custom_title_and_the_last_wins", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::jsonl::tests::type_comes_first_and_the_rest_is_unchanged"] }
 "TestTagSession::test_invalid_session_id_raises" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins" }
-"TestTagSession::test_empty_tag_raises" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::tags_and_titles_are_validated", "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins"] }
-"TestTagSession::test_session_not_found_raises" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::empty_transcripts_are_not_touched_and_count_as_missing" }
+"TestTagSession::test_empty_tag_raises" = { rust = ["crates/claude-agent-rust-sdk/tests/session_mutations.rs::tagging_rejects_a_blank_tag_and_a_missing_session", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::tags_and_titles_are_validated"] }
+"TestTagSession::test_session_not_found_raises" = { rust = ["crates/claude-agent-rust-sdk/tests/session_mutations.rs::tagging_rejects_a_blank_tag_and_a_missing_session", "crates/claude-agent-rust-sdk/tests/session_mutations.rs::empty_transcripts_are_not_touched_and_count_as_missing"] }
 "TestTagSession::test_appends_tag_entry" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins" }
 "TestTagSession::test_tag_trimmed" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins" }
 "TestTagSession::test_none_clears_tag" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins" }
@@ -629,13 +629,13 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestTagSession::test_compact_json_format" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::a_tag_is_appended_as_compact_json_in_the_field_order_of_the_cli" }
 "TestTagSession::test_unicode_sanitization" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins" }
 "TestTagSession::test_sanitization_rejects_pure_invisible" = { rust = ["crates/claude-agent-rust-sdk/tests/session_mutations.rs::tags_are_sanitized_cleared_with_none_and_the_last_wins", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::tags_and_titles_are_validated"] }
-"TestSanitizeUnicode::test_passthrough_clean_string" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_strips_zero_width" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_strips_bom" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_strips_directional_marks" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_strips_private_use" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_nfkc_normalization" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
-"TestSanitizeUnicode::test_iterative_converges" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_removes_invisible_and_private_characters" }
+"TestSanitizeUnicode::test_passthrough_clean_string" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::clean_strings_pass_through_unchanged" }
+"TestSanitizeUnicode::test_strips_zero_width" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::zero_width_spaces_and_joiners_are_stripped" }
+"TestSanitizeUnicode::test_strips_bom" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::a_byte_order_mark_is_stripped" }
+"TestSanitizeUnicode::test_strips_directional_marks" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::directional_embeddings_and_isolates_are_stripped" }
+"TestSanitizeUnicode::test_strips_private_use" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::private_use_characters_are_stripped" }
+"TestSanitizeUnicode::test_nfkc_normalization" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::sanitizing_applies_nfkc" }
+"TestSanitizeUnicode::test_iterative_converges" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::a_long_run_of_invisible_characters_is_removed_entirely" }
 "TestDeleteSession::test_invalid_session_id_raises" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::delete_removes_the_transcript_and_the_subagent_directory" }
 "TestDeleteSession::test_session_not_found_raises" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::delete_removes_the_transcript_and_the_subagent_directory" }
 "TestDeleteSession::test_deletes_session_file" = { rust = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::delete_removes_the_transcript_and_the_subagent_directory" }
@@ -665,10 +665,10 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestNoMaterialization::test_load_returns_empty" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::resuming_a_session_the_store_holds_nothing_for_materializes_nothing" }
 "TestNoMaterialization::test_continue_with_empty_list_sessions" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::continue_with_an_empty_store_starts_a_fresh_session" }
 "TestHappyPath::test_resume_writes_jsonl_and_cleanup_removes_dir" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it" }
-"TestHappyPath::test_credentials_redacted" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it", "crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::refresh_tokens_are_removed_and_the_rest_is_kept"], note = "The Rust test reads the credentials and .claude.json from CLAUDE_CONFIG_DIR; the home directory lookup is not exercised." }
+"TestHappyPath::test_credentials_redacted" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::credentials_come_from_the_home_directory @linux", "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it", "crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::refresh_tokens_are_removed_and_the_rest_is_kept"], note = "The home directory lookup runs on Linux only: on macOS it would read the Keychain of the machine, and Windows finds the home through other variables." }
 "TestHappyPath::test_credentials_from_caller_config_dir_env" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it" }
 "TestHappyPath::test_credentials_from_keychain_fallback" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::keychain_credentials_are_copied_without_the_refresh_token @macos", note = "The Rust test reads a real throwaway Keychain item and is ignored unless CLAUDE_AGENT_RUST_SDK_KEYCHAIN=1." }
-"TestHappyPath::test_user_settings_materialized" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it", "crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::plugin_settings_and_the_config_dir_are_stripped"], note = "File modes are asserted for the transcript and the credentials, not for the settings files or the directory." }
+"TestHappyPath::test_user_settings_materialized" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::settings_with_nothing_to_strip_are_copied_byte_for_byte_and_kept_private", "crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::plugin_settings_and_the_config_dir_are_stripped"] }
 "TestHappyPath::test_fifo_seed_file_is_skipped_not_read" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::a_fifo_in_place_of_the_settings_file_is_skipped_without_blocking @unix" }
 "TestHappyPath::test_user_settings_from_caller_config_dir_env" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::settings_are_seeded_from_the_config_dir_of_the_process_environment", "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it"], note = "The first test covers the process environment variant, the second the options.env variant. The home directory is not redirected: the assertion on the copied content rules out a read from ~/.claude." }
 "TestHappyPath::test_absent_user_settings_writes_nothing" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::settings_files_the_caller_does_not_have_are_not_written" }
@@ -682,7 +682,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestHappyPath::test_continue_tie_break_is_deterministic" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::continue_picks_the_first_listed_of_two_sessions_with_equal_mtimes_every_time" }
 "TestHappyPath::test_write_jsonl_round_trip" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::jsonl::tests::type_comes_first_and_the_rest_is_unchanged", "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it"], note = "Rust writes the type field first, so the bytes differ from the Python key order by design; strings with quotes and newlines are not exercised." }
 "TestSubkeyMaterialization::test_subagent_jsonl_and_meta_json" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it" }
-"TestSubkeyMaterialization::test_traversal_guards" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::unsafe_subpaths_are_rejected", "crates/claude-agent-rust-sdk/tests/session_resume.rs::resume_runs_the_child_on_a_materialized_config_dir_and_removes_it"] }
+"TestSubkeyMaterialization::test_traversal_guards" = { rust = ["crates/claude-agent-rust-sdk/tests/session_resume.rs::unsafe_subkeys_are_never_loaded_nor_written", "crates/claude-agent-rust-sdk/src/lib.rs::resume::tests::unsafe_subpaths_are_rejected"] }
 "TestSubkeyMaterialization::test_store_without_list_subkeys_skips_subagents" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::a_store_without_list_subkeys_gets_the_main_transcript_only" }
 "TestTimeoutsAndErrors::test_load_timeout_raises" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::a_slow_store_fails_the_resume_and_leaves_no_directory" }
 "TestTimeoutsAndErrors::test_list_sessions_timeout_on_continue_path" = { rust = "crates/claude-agent-rust-sdk/tests/session_resume.rs::a_slow_list_sessions_fails_continue_with_a_timeout_that_names_it" }
@@ -721,8 +721,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestInMemorySessionStore::test_auto_skips_unimplemented_optionals" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::a_store_with_only_the_required_methods_passes_and_reports_unsupported" }
 "TestInMemorySessionStore::test_store_implements_is_canonical_probe" = { excluded = "python-typing", note = "Protocol runtime-checkability and method-override probing; Rust calls an optional method and takes UnsupportedStoreOperation as its absence." }
 "TestInMemorySessionStore::test_get_entries_helper" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::get_entries_returns_a_copy_of_what_was_appended_in_order" }
-"TestInMemorySessionStore::test_size_helper_counts_main_transcripts_only" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_store_semantics" }
-"TestInMemorySessionStore::test_clear_helper" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_store_semantics" }
+"TestInMemorySessionStore::test_size_helper_counts_main_transcripts_only" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_size_counts_main_transcripts_and_clear_empties_everything" }
+"TestInMemorySessionStore::test_clear_helper" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::in_memory_size_counts_main_transcripts_and_clear_empties_everything" }
 "TestInMemorySessionStore::test_load_returns_copy" = { excluded = "python-aliasing" }
 "TestSessionStoreOptionsValidation::test_no_store_is_always_valid" = { rust = ["crates/claude-agent-rust-sdk/tests/options.rs::session_store_with_file_checkpointing_is_a_config_error", "crates/claude-agent-rust-sdk/tests/options.rs::builder_sets_every_option"] }
 "TestSessionStoreOptionsValidation::test_valid_store_passes" = { rust = "crates/claude-agent-rust-sdk/tests/session_store.rs::store_options_are_validated" }
@@ -793,8 +793,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestHelpers::test_extract_first_prompt_empty" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::lite::tests::first_prompt_truncates_and_falls_back_to_the_command_name" }
 "TestListSessions::test_empty_projects_dir" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_projects_dir_without_projects_lists_nothing" }
 "TestListSessions::test_no_config_dir" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_config_dir_that_does_not_exist_gives_empty_results" }
-"TestListSessions::test_single_session" = { rust = ["crates/claude-agent-rust-sdk/tests/sessions.rs::config_dir_comes_from_the_environment", "crates/claude-agent-rust-sdk/tests/sessions.rs::metadata_follows_the_upstream_rules"] }
-"TestListSessions::test_custom_title_wins_summary" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::metadata_follows_the_upstream_rules" }
+"TestListSessions::test_single_session" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_single_session_is_listed_with_its_metadata" }
+"TestListSessions::test_custom_title_wins_summary" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_custom_title_wins_over_the_summary_and_the_first_prompt" }
 "TestListSessions::test_summary_wins_first_prompt" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::metadata_follows_the_upstream_rules" }
 "TestListSessions::test_multiple_sessions_sorted_by_mtime" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::listing_sorts_newest_first_and_paginates" }
 "TestListSessions::test_limit" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::listing_sorts_newest_first_and_paginates" }
@@ -826,11 +826,11 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestGetSessionMessages::test_terminal_non_message_walked_back" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_transcript_ending_on_a_progress_entry_is_walked_back_to_its_last_message" }
 "TestGetSessionMessages::test_corrupt_lines_skipped" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::messages_follow_the_chain_and_skip_corrupt_and_hidden_entries" }
 "TestGetSessionMessages::test_search_all_projects_when_no_dir" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::messages_follow_the_chain_and_skip_corrupt_and_hidden_entries" }
-"TestGetSessionMessages::test_cycle_detection" = { rust = ["crates/claude-agent-rust-sdk/tests/sessions.rs::a_parent_cycle_returns_without_looping", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::cycles_end_the_walk"] }
+"TestGetSessionMessages::test_cycle_detection" = { rust = ["crates/claude-agent-rust-sdk/tests/sessions.rs::two_entries_that_are_each_other_s_parent_give_no_messages", "crates/claude-agent-rust-sdk/tests/sessions.rs::a_parent_cycle_returns_without_looping"] }
 "TestGetSessionMessages::test_empty_transcript_file" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::missing_or_invalid_sessions_give_empty_lists" }
 "TestGetSessionMessages::test_ignores_non_transcript_types" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::messages_follow_the_chain_and_skip_corrupt_and_hidden_entries" }
-"TestGetSessionMessages::test_parallel_tool_calls_keep_every_call_and_result" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::recovers_sibling_calls_dropped_by_the_walk", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::recovered_results_are_in_completion_order"] }
-"TestGetSessionMessages::test_parallel_tool_calls_as_last_turn" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::abandoned_branch_is_not_recovered" }
+"TestGetSessionMessages::test_parallel_tool_calls_keep_every_call_and_result" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::parallel_tool_calls_keep_every_call_and_result_whatever_the_result_order" }
+"TestGetSessionMessages::test_parallel_tool_calls_as_last_turn" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::parallel_tool_calls_that_end_the_transcript_keep_every_result" }
 "TestGetSessionMessages::test_parallel_tool_calls_limit_offset" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::pagination_counts_the_recovered_parallel_tool_calls_and_results" }
 "TestBuildConversationChain::test_empty_input" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::chain::tests::linear_chain_is_returned_root_first" }
 "TestBuildConversationChain::test_single_entry" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_single_user_entry_is_returned_alone" }
@@ -882,9 +882,9 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestGetSubagentMessages::test_empty_agent_id" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
 "TestGetSubagentMessages::test_nonexistent_session" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagent_messages_are_empty_for_an_invalid_or_unknown_session" }
 "TestGetSubagentMessages::test_nonexistent_agent" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
-"TestGetSubagentMessages::test_simple_chain" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
+"TestGetSubagentMessages::test_simple_chain" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_subagent_chain_is_read_root_first_with_every_field" }
 "TestGetSubagentMessages::test_finds_agent_in_nested_subdirectory" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
-"TestGetSubagentMessages::test_parent_ids_recovered_from_meta_sidecar" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
+"TestGetSubagentMessages::test_parent_ids_recovered_from_meta_sidecar" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::the_sidecar_parent_ids_are_set_on_every_subagent_message" }
 "TestGetSubagentMessages::test_parent_ids_from_nested_meta_sidecar" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::subagents_are_listed_and_read_with_their_parent_ids" }
 "TestGetSubagentMessages::test_parent_ids_none_when_sidecar_missing_or_unusable" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::parent_ids_are_absent_when_the_sidecar_is_missing_or_unusable" }
 "TestGetSubagentMessages::test_unreadable_sidecar_degrades_to_none" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_sidecar_that_is_a_directory_leaves_the_parent_ids_absent" }
@@ -896,7 +896,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestClaudeSDKClientStreaming::test_auto_connect_with_context_manager" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::dropping_a_connected_client_closes_the_session" }
 "TestClaudeSDKClientStreaming::test_manual_connect_disconnect" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::disconnect_is_safe_without_a_connection_and_idempotent" }
 "TestClaudeSDKClientStreaming::test_connect_with_string_prompt" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::connect_with_a_prompt_sends_it_in_the_default_session" }
-"TestClaudeSDKClientStreaming::test_forward_subagent_text_sent_in_initialize" = { rust = ["crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_is_sent_before_the_prompt_with_every_configured_field", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::initialize_leaves_out_what_is_not_set"] }
+"TestClaudeSDKClientStreaming::test_forward_subagent_text_sent_in_initialize" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::forward_subagent_text_is_sent_only_when_enabled" }
 "TestClaudeSDKClientStreaming::test_connect_with_async_iterable" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::connect_with_a_prompt_sends_it_in_the_default_session" }
 "TestClaudeSDKClientStreaming::test_query" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::query_uses_the_default_session_unless_one_is_given_and_keeps_stdin_open" }
 "TestClaudeSDKClientStreaming::test_send_message_with_session_id" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::query_uses_the_default_session_unless_one_is_given_and_keeps_stdin_open" }
@@ -916,7 +916,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestClaudeSDKClientStreaming::test_get_mcp_status_not_connected" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::every_method_but_connect_and_disconnect_needs_a_connection" }
 "TestClaudeSDKClientStreaming::test_get_context_usage" = { rust = ["crates/claude-agent-rust-sdk/tests/client.rs::control_methods_send_the_upstream_subtypes_and_field_names", "crates/claude-agent-rust-sdk/tests/types.rs::context_usage_response_reads_the_wire_names"] }
 "TestClaudeSDKClientStreaming::test_get_context_usage_not_connected" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::every_method_but_connect_and_disconnect_needs_a_connection" }
-"TestClaudeSDKClientStreaming::test_client_with_options" = { rust = "crates/claude-agent-rust-sdk/tests/run_end_subprocess.rs::client_holds_a_conversation_with_the_cli_process" }
+"TestClaudeSDKClientStreaming::test_client_with_options" = { rust = "crates/claude-agent-rust-sdk/tests/run_end_subprocess.rs::client_options_reach_the_cli_process" }
 "TestClaudeSDKClientStreaming::test_concurrent_send_receive" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::sending_and_receiving_run_concurrently_on_a_shared_client" }
 "TestQueryWithAsyncIterable::test_query_with_async_iterable" = { rust = "crates/claude-agent-rust-sdk/tests/query.rs::stream_prompt_writes_every_input_message_as_given" }
 "TestClaudeSDKClientEdgeCases::test_receive_messages_not_connected" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::every_method_but_connect_and_disconnect_needs_a_connection" }
@@ -998,7 +998,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestGetProjectsDirEnvOverride::test_env_override_takes_precedence" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::env_override_wins_for_the_projects_directory", note = "The Rust test does not set a competing CLAUDE_CONFIG_DIR in the process environment." }
 "TestGetProjectsDirEnvOverride::test_falls_back_to_os_environ_when_override_absent" = { rust = "crates/claude-agent-rust-sdk/tests/sessions.rs::config_dir_comes_from_the_environment" }
 "TestGetProjectsDirEnvOverride::test_empty_string_override_ignored" = { rust = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::an_empty_config_dir_in_the_options_falls_back_to_the_process_environment" }
-"TestTranscriptMirrorBatcher::test_enqueue_then_flush_calls_store_append" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::entries_are_grouped_per_file_in_first_seen_order" }
+"TestTranscriptMirrorBatcher::test_enqueue_then_flush_calls_store_append" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::entries_of_one_file_are_flushed_in_a_single_append", "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::entries_are_grouped_per_file_in_first_seen_order"] }
 "TestTranscriptMirrorBatcher::test_empty_entries_batch_skips_append" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::an_empty_batch_makes_no_append_call" }
 "TestTranscriptMirrorBatcher::test_coalesces_per_file_path_preserving_order" = { rust = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::a_flush_appends_once_per_file_in_first_seen_order" }
 "TestTranscriptMirrorBatcher::test_eager_flush_on_entry_count_threshold" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::thresholds_start_a_background_flush" }

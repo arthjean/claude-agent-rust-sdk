@@ -73,6 +73,7 @@ struct MockState {
     input_ended: bool,
     connect_count: usize,
     close_count: usize,
+    end_input_count: usize,
     connect_error: Option<String>,
     write_error: Option<String>,
     responder: Option<Responder>,
@@ -202,6 +203,12 @@ impl MockTransport {
         self.state().input_ended
     }
 
+    /// Number of calls to [`end_input`](Transport::end_input).
+    #[must_use]
+    pub fn end_input_count(&self) -> usize {
+        self.state().end_input_count
+    }
+
     /// Whether the transport is closed: [`close`](Transport::close) was
     /// called and [`connect`](Transport::connect) was not called since.
     #[must_use]
@@ -289,6 +296,7 @@ impl Transport for MockTransport {
     async fn end_input(&self) -> Result<()> {
         let mut state = self.state();
         state.input_ended = true;
+        state.end_input_count += 1;
         if state.finish_when_input_ends {
             state.finished = true;
             state.wake_reader();

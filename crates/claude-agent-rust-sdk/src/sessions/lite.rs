@@ -379,5 +379,9 @@ mod tests {
         let command = user_line(&Value::from("<command-name>/init</command-name>"));
         assert_eq!(extract_first_prompt_from_head(&command), "/init");
         assert_eq!(extract_first_prompt_from_head(""), "");
+        assert_eq!(
+            extract_first_prompt_from_head("{\"type\":\"assistant\"}\n"),
+            ""
+        );
     }
 }

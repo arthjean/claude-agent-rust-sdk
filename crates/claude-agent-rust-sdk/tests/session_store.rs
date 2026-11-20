@@ -238,6 +238,25 @@ async fn conformance_checks_an_optional_method_the_store_implements_without_decl
 }
 
 #[tokio::test]
+async fn in_memory_size_counts_main_transcripts_and_clear_empties_everything() {
+    let store = InMemorySessionStore::new();
+    assert_eq!(store.size(), 0);
+    let first = SessionKey::new("p", "a");
+    let second = SessionKey::new("p", "b");
+    let nested = first.clone().with_subpath("sub/x");
+    for key in [&first, &second, &nested] {
+        store.append(key, &[entry(json!({"n": 1}))]).await.unwrap();
+    }
+    assert_eq!(store.size(), 2, "the subpath is not a main transcript");
+
+    store.clear();
+    assert_eq!(store.size(), 0);
+    assert_eq!(store.load(&first).await.unwrap(), None);
+    assert_eq!(store.load(&nested).await.unwrap(), None);
+    assert!(store.list_sessions("p").await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn in_memory_store_semantics() {
     let store = InMemorySessionStore::new();
     let main = SessionKey::new("p", "s");
@@ -436,6 +455,11 @@ fn file_paths_map_to_keys_relative_to_the_projects_directory() {
     assert_eq!(
         file_path_to_session_key(&projects.join("proj"), projects),
         None
+    );
+    assert_eq!(
+        file_path_to_session_key(&projects.join("proj-only.jsonl"), projects),
+        None,
+        "a transcript right under the projects directory has no session"
     );
     assert_eq!(
         file_path_to_session_key(&projects.join("proj").join("sess.txt"), projects),

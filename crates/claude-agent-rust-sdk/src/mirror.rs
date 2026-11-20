@@ -291,6 +291,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn entries_of_one_file_are_flushed_in_a_single_append() {
+        let counting = Arc::new(FlakyStore::new(0, None));
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(Shared(Arc::clone(&counting))),
+            projects(),
+            &SessionStoreFlushMode::Batched,
+        );
+        batcher.enqueue(path("sess"), vec![json!({"type": "user", "n": 1})]);
+        batcher.enqueue(path("sess"), vec![json!({"type": "assistant", "n": 2})]);
+        assert_eq!(
+            counting.attempts.load(Ordering::SeqCst),
+            0,
+            "nothing flushed yet"
+        );
+        batcher.flush().await;
+        assert_eq!(
+            counting.attempts.load(Ordering::SeqCst),
+            1,
+            "coalesced into one append"
+        );
+        let stored: Vec<Value> = counting
+            .inner
+            .get_entries(&SessionKey::new("proj", "sess"))
+            .into_iter()
+            .map(Value::Object)
+            .collect();
+        assert_eq!(
+            stored,
+            [
+                json!({"type": "user", "n": 1}),
+                json!({"type": "assistant", "n": 2})
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn entries_are_grouped_per_file_in_first_seen_order() {
         let store = InMemorySessionStore::new();
         let batcher = TranscriptMirrorBatcher::new(
@@ -531,6 +567,10 @@ mod tests {
         assert_eq!(
             message["key"],
             json!({"project_key": "proj", "session_id": "s"})
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "the dropped batch is reported once"
         );
     }
 

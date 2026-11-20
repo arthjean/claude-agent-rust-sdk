@@ -692,6 +692,50 @@ mod tests {
     }
 
     #[test]
+    fn clean_strings_pass_through_unchanged() {
+        assert_eq!(sanitize_unicode("hello"), "hello");
+        assert_eq!(
+            sanitize_unicode("tag-with-dashes_123"),
+            "tag-with-dashes_123"
+        );
+    }
+
+    #[test]
+    fn zero_width_spaces_and_joiners_are_stripped() {
+        assert_eq!(sanitize_unicode("a\u{200b}b"), "ab");
+        assert_eq!(sanitize_unicode("a\u{200c}b"), "ab");
+        assert_eq!(sanitize_unicode("a\u{200d}b"), "ab");
+    }
+
+    #[test]
+    fn a_byte_order_mark_is_stripped() {
+        assert_eq!(sanitize_unicode("\u{feff}hello"), "hello");
+    }
+
+    #[test]
+    fn directional_embeddings_and_isolates_are_stripped() {
+        assert_eq!(sanitize_unicode("a\u{202a}b\u{202c}c"), "abc");
+        assert_eq!(sanitize_unicode("a\u{2066}b\u{2069}c"), "abc");
+    }
+
+    #[test]
+    fn private_use_characters_are_stripped() {
+        assert_eq!(sanitize_unicode("a\u{e000}b"), "ab");
+        assert_eq!(sanitize_unicode("a\u{f8ff}b"), "ab");
+    }
+
+    #[test]
+    fn sanitizing_applies_nfkc() {
+        assert_eq!(sanitize_unicode("\u{ff21}"), "A");
+    }
+
+    #[test]
+    fn a_long_run_of_invisible_characters_is_removed_entirely() {
+        let input = format!("a{}b", "\u{200b}".repeat(20));
+        assert_eq!(sanitize_unicode(&input), "ab");
+    }
+
+    #[test]
     fn tags_and_titles_are_validated() {
         assert_eq!(clean_tag(None).unwrap(), "");
         assert_eq!(clean_tag(Some("  hi\u{200b} ")).unwrap(), "hi");

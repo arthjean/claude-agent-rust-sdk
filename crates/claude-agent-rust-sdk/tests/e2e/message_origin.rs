@@ -50,6 +50,14 @@ async fn the_result_echoes_the_origin_and_the_id_stamped_by_the_host() {
         Some(&MessageOriginKind::Human),
         "{stamped:#?}"
     );
+    assert_eq!(
+        stamped
+            .origin
+            .as_ref()
+            .map(|origin| Value::Object(origin.raw.clone())),
+        Some(json!({"kind": "human"})),
+        "the whole origin object is echoed, with no other key: {stamped:#?}"
+    );
     assert_eq!(unstamped.origin, None, "{unstamped:#?}");
     assert_eq!(
         stamped.user_message_uuid.as_deref(),

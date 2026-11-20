@@ -12,8 +12,8 @@ use claude_agent_rust_sdk::{
     AgentDefinition, AsyncHookOutput, ClaudeAgentOptions, ClaudeSdkClient, Error, HookCallback,
     HookEvent, HookFailureMode, HookInput, HookMatcher, HookOutput, Message, PermissionResult,
     PermissionRuleValue, PermissionUpdate, PermissionUpdateDestination, PermissionUpdateKind,
-    Skills, SyncHookOutput, SystemPromptCustom, SystemPromptPreset, ToolPermissionContext,
-    query_with_transport,
+    Skills, SyncHookOutput, SystemPrompt, SystemPromptCustom, SystemPromptFile, SystemPromptPreset,
+    ToolPermissionContext, query_with_transport,
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
@@ -37,6 +37,70 @@ fn answering_prompts() -> claude_agent_rust_sdk::testing::MockTransport {
             Vec::new()
         }
     })
+}
+
+/// The initialize request `query` sends with `options`.
+async fn initialize_sent_by_query(options: ClaudeAgentOptions) -> Value {
+    let transport = answering_prompts();
+    let messages = drain(query_with_transport("Hello", options, transport.clone())).await;
+    assert_eq!(result_texts(&messages), ["Hello!"]);
+    let frames = transport.written_frames();
+    assert_eq!(frames[0]["request"]["subtype"], "initialize");
+    frames[0]["request"].clone()
+}
+
+#[tokio::test(start_paused = true)]
+async fn query_sends_the_snapshot_only_for_the_preset_and_custom_forms() {
+    let cases: [(SystemPrompt, Option<bool>); 5] = [
+        (
+            SystemPromptCustom::new("Be helpful").snapshot(false).into(),
+            Some(false),
+        ),
+        (SystemPromptPreset::new().snapshot(true).into(), Some(true)),
+        (SystemPromptPreset::new().into(), None),
+        (SystemPromptFile::new("/p.md").into(), None),
+        ("Be helpful".into(), None),
+    ];
+    for (system_prompt, expected) in cases {
+        let context = format!("{system_prompt:?}");
+        let options = ClaudeAgentOptions::builder()
+            .system_prompt(system_prompt)
+            .build()
+            .unwrap();
+        let request = initialize_sent_by_query(options).await;
+        assert_eq!(
+            request.get("systemPromptSnapshot").and_then(Value::as_bool),
+            expected,
+            "{context}"
+        );
+        if expected.is_none() {
+            assert!(request.get("systemPromptSnapshot").is_none(), "{context}");
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn forward_subagent_text_is_sent_only_when_enabled() {
+    for (enabled, expected) in [(true, Some(&Value::Bool(true))), (false, None)] {
+        let client_transport = cli();
+        let options = ClaudeAgentOptions::builder()
+            .forward_subagent_text(enabled)
+            .build()
+            .unwrap();
+        connected(&client_transport, options).await;
+        assert_eq!(
+            initialize_request(&client_transport).get("forwardSubagentText"),
+            expected,
+            "forward_subagent_text({enabled})"
+        );
+    }
+    let client_transport = cli();
+    connected(&client_transport, ClaudeAgentOptions::default()).await;
+    assert!(
+        initialize_request(&client_transport)
+            .get("forwardSubagentText")
+            .is_none()
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -584,6 +648,18 @@ async fn initialize_leaves_out_what_is_not_set() {
     assert_eq!(
         initialize_request(&every_skill),
         json!({"subtype": "initialize", "hooks": null})
+    );
+
+    let preset = cli();
+    let options = ClaudeAgentOptions::builder()
+        .system_prompt(SystemPromptPreset::new())
+        .build()
+        .unwrap();
+    connected(&preset, options).await;
+    assert_eq!(
+        initialize_request(&preset),
+        json!({"subtype": "initialize", "hooks": null}),
+        "a preset without a snapshot sends no systemPromptSnapshot"
     );
 
     let custom = cli();

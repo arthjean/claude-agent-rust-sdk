@@ -294,6 +294,78 @@ async fn dropping_the_stream_ends_the_cli_process() {
 }
 
 #[tokio::test]
+async fn a_client_whose_disconnect_is_cancelled_leaves_no_process() {
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user"}},
+            {"emit": result_frame("ok", false, json!({}))},
+            {"wait_for_eof": true},
+            {"sleep_ms": 30_000},
+        ],
+    }));
+    let client = ClaudeSdkClient::new(fake.build());
+    client.connect().await.unwrap();
+    client.query("hi").await.unwrap();
+    let messages = collect(client.receive_response()).await;
+    let pid = u32::try_from(init_data(&messages)["fake_pid"].as_u64().unwrap()).unwrap();
+    assert!(common::process_exists(pid));
+
+    let cancelled = tokio::time::timeout(Duration::from_millis(50), client.disconnect()).await;
+    assert!(
+        cancelled.is_err(),
+        "the disconnect finished before it was cancelled"
+    );
+    drop(client);
+    assert!(
+        wait_until_gone(pid, STEP_LIMIT).await,
+        "the CLI process {pid} outlived a cancelled disconnect"
+    );
+}
+
+#[tokio::test]
+async fn client_options_reach_the_cli_process() {
+    let fake = Fake::new(json!({
+        "report_env": ["PWD"],
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user", "message": {"content": "hi"}}},
+            {"emit": result_frame("ok", false, json!({}))},
+        ],
+    }));
+    let cwd = tempfile::tempdir().unwrap();
+    let options = fake
+        .options()
+        .cwd(cwd.path())
+        .allowed_tools(["Read", "Write"])
+        .system_prompt("Be helpful")
+        .build()
+        .unwrap();
+    let client = ClaudeSdkClient::new(options);
+    client.connect().await.unwrap();
+    client.query("hi").await.unwrap();
+    let messages = collect(client.receive_response()).await;
+    client.disconnect().await.unwrap();
+
+    let init = init_data(&messages);
+    let arguments: Vec<String> = serde_json::from_value(init["fake_args"].clone()).unwrap();
+    let value_of = |flag: &str| {
+        let position = arguments
+            .iter()
+            .position(|argument| argument == flag)
+            .unwrap_or_else(|| panic!("no {flag} in {arguments:?}"));
+        arguments[position + 1].clone()
+    };
+    assert_eq!(value_of("--allowedTools"), "Read,Write");
+    assert_eq!(value_of("--system-prompt"), "Be helpful");
+    assert_eq!(
+        init["fake_env"]["PWD"].as_str(),
+        Some(cwd.path().to_str().unwrap())
+    );
+    assert_eq!(results(&messages), ["ok"]);
+}
+
+#[tokio::test]
 async fn client_holds_a_conversation_with_the_cli_process() {
     let fake = Fake::new(json!({
         "auto_reply": true,

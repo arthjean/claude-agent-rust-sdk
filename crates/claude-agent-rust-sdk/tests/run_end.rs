@@ -113,6 +113,42 @@ async fn without_callbacks_stdin_closes_as_soon_as_the_input_is_written() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_text_prompt_works_with_a_permission_callback() {
+    let asked = common::mock::Recorder::<String>::new();
+    let options = {
+        let asked = asked.clone();
+        ClaudeAgentOptions::builder()
+            .can_use_tool(move |tool_name, _input, _context| {
+                asked.push(tool_name);
+                async { Ok(PermissionResult::allow()) }
+            })
+            .build()
+            .unwrap()
+    };
+    let run = Run::start_with("write it", options).await;
+    assert_eq!(
+        written(&run.transport, "user")[0]["message"]["content"],
+        "write it"
+    );
+    run.emit([json!({
+        "type": "control_request",
+        "request_id": "perm-1",
+        "request": {"subtype": "can_use_tool", "tool_name": "Write", "input": {"file_path": "a"}},
+    })])
+    .await;
+    run.emit([assistant("Written"), result("done")]).await;
+    let messages = run.messages().await;
+    assert_eq!(asked.all(), ["Write"]);
+    assert!(
+        matches!(
+            messages.as_slice(),
+            [Ok(Message::Assistant(_)), Ok(Message::Result(_))]
+        ),
+        "{messages:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn with_a_callback_stdin_stays_open_until_the_run_has_ended() {
     let permission = ClaudeAgentOptions::builder()
         .can_use_tool(async |_tool_name, _input, _context| Ok(PermissionResult::allow()))
@@ -414,6 +450,12 @@ async fn ceiling_ends_the_run_when_idle_never_comes() {
     assert!(run.stdin_is_open());
     tokio::time::sleep(Duration::from_millis(3)).await;
     assert!(!run.stdin_is_open());
+    run.emit([session_state("idle")]).await;
+    assert_eq!(
+        run.transport.end_input_count(),
+        1,
+        "a late idle does not end the input a second time"
+    );
     assert_eq!(result_texts(&run.messages().await), ["launched"]);
 }
 
@@ -500,6 +542,20 @@ async fn requires_action_stops_the_ceiling_until_the_cli_runs_again() {
     assert!(run.stdin_is_open());
     run.emit([session_state("idle")]).await;
     assert!(!run.stdin_is_open());
+
+    let run = Run::start(with_ceiling("300")).await;
+    run.emit([
+        session_state("running"),
+        session_state("requires_action"),
+        result("launched"),
+    ])
+    .await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(run.stdin_is_open(), "open while the request is answered");
+    run.emit([session_state("running")]).await;
+    assert!(run.stdin_is_open(), "open right after the answer");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!run.stdin_is_open());
 }
 
 #[tokio::test(start_paused = true)]
@@ -512,6 +568,26 @@ async fn ceiling_is_not_armed_while_a_turn_is_under_way() {
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert!(run.stdin_is_open());
     run.emit([result("follow-up"), session_state("idle")]).await;
+    assert!(!run.stdin_is_open());
+
+    let run = Run::start(with_ceiling("300")).await;
+    run.emit([session_state("running"), result("launched")])
+        .await;
+    run.emit([
+        assistant("a follow-up turn"),
+        session_state("requires_action"),
+        session_state("running"),
+    ])
+    .await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(
+        run.stdin_is_open(),
+        "a running state after an answered request inside a turn does not start the clock"
+    );
+    run.emit([result("follow-up")]).await;
+    tokio::time::sleep(Duration::from_millis(297)).await;
+    assert!(run.stdin_is_open());
+    tokio::time::sleep(Duration::from_millis(3)).await;
     assert!(!run.stdin_is_open());
 }
 

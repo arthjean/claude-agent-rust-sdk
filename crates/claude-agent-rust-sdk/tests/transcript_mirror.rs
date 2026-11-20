@@ -131,7 +131,10 @@ async fn pending_entries_are_flushed_on_disconnect() {
 
 #[tokio::test]
 async fn eager_mode_mirrors_without_waiting_for_the_result() {
-    let store = InMemorySessionStore::new();
+    let store = RecordingStore {
+        inner: InMemorySessionStore::new(),
+        appends: Recorder::new(),
+    };
     let transport = silent_cli();
     transport.respond_with(|frame| {
         if frame["type"] == "control_request" {
@@ -144,14 +147,23 @@ async fn eager_mode_mirrors_without_waiting_for_the_result() {
     options.session_store_flush = SessionStoreFlushMode::Eager;
     let client = ClaudeSdkClient::with_transport(options, transport.clone());
     client.connect().await.unwrap();
-    transport.push_frame(mirror_frame("s5", &["e1"]));
-    for _ in 0..100 {
-        if !uuids(&store, "s5").is_empty() {
-            break;
+    for (count, uuid) in [(1, "e1"), (2, "e2")] {
+        transport.push_frame(mirror_frame("s5", &[uuid]));
+        for _ in 0..100 {
+            if store.appends.all().len() >= count {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    assert_eq!(uuids(&store, "s5"), ["e1"]);
+    assert_eq!(
+        store.appends.all(),
+        [
+            (SessionKey::new("proj", "s5"), vec!["e1".to_owned()]),
+            (SessionKey::new("proj", "s5"), vec!["e2".to_owned()]),
+        ],
+        "one append per frame, without waiting for a result"
+    );
     client.disconnect().await.unwrap();
 }
 
@@ -188,13 +200,15 @@ async fn a_dropped_batch_is_delivered_as_a_mirror_error_message() {
             .map(Result::unwrap)
             .collect()
             .await;
-    let mirror_error = messages
+    let mirror_errors: Vec<_> = messages
         .iter()
-        .find_map(|message| match message {
+        .filter_map(|message| match message {
             Message::System(SystemMessage::MirrorError(error)) => Some(error.clone()),
             _ => None,
         })
-        .expect("a mirror_error message");
+        .collect();
+    assert_eq!(mirror_errors.len(), 1, "{messages:?}");
+    let mirror_error = &mirror_errors[0];
     assert_eq!(mirror_error.error, "the store is down");
     assert_eq!(mirror_error.key, Some(SessionKey::new("proj", "s6")));
     assert!(matches!(messages.last(), Some(Message::Result(_))));

@@ -161,6 +161,40 @@ async fn store_readers_match_the_disk_readers_for_the_same_content() {
 }
 
 #[tokio::test]
+async fn import_appends_the_transcript_in_one_call_per_batch() {
+    let project = Project::new();
+    let id = new_id();
+    let lines: Vec<Value> = (0..5)
+        .map(|index| {
+            user(
+                &format!("u{index}"),
+                None,
+                &id,
+                Value::from(format!("m{index}")),
+            )
+        })
+        .collect();
+    project.write(&id, &lines);
+    let store = CountingStore::new(SessionStoreCapabilities::all(), None);
+    import_session_to_store(&id, &store, Some(project.path()), true, 2)
+        .await
+        .unwrap();
+
+    let key = SessionKey::new(project_key_for_directory(Some(project.path())), id.as_str());
+    let entries: Vec<SessionStoreEntry> = lines.iter().cloned().map(entry).collect();
+    let appended = store.appended.lock().unwrap().clone();
+    assert_eq!(
+        appended,
+        [
+            (key.clone(), entries[0..2].to_vec()),
+            (key.clone(), entries[2..4].to_vec()),
+            (key.clone(), entries[4..5].to_vec()),
+        ]
+    );
+    assert_eq!(store.inner.get_entries(&key), entries);
+}
+
+#[tokio::test]
 async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
     let project = Project::new();
     let id = rich_session(&project);
@@ -223,6 +257,10 @@ struct CountingStore {
     appends: AtomicUsize,
     failing: std::sync::Mutex<Vec<String>>,
     summaries: std::sync::Mutex<Option<Vec<SessionSummaryEntry>>>,
+    /// When set, every load waits until the value is true.
+    gate: Option<tokio::sync::watch::Receiver<bool>>,
+    /// Every append call, in order.
+    appended: std::sync::Mutex<Vec<(SessionKey, Vec<SessionStoreEntry>)>>,
 }
 
 impl CountingStore {
@@ -237,6 +275,8 @@ impl CountingStore {
             appends: AtomicUsize::new(0),
             failing: std::sync::Mutex::new(Vec::new()),
             summaries: std::sync::Mutex::new(None),
+            gate: None,
+            appended: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
@@ -248,6 +288,10 @@ impl SessionStore for CountingStore {
         entries: &[SessionStoreEntry],
     ) -> Result<(), SessionStoreError> {
         self.appends.fetch_add(1, Ordering::SeqCst);
+        self.appended
+            .lock()
+            .unwrap()
+            .push((key.clone(), entries.to_vec()));
         self.inner.append(key, entries).await
     }
 
@@ -260,6 +304,9 @@ impl SessionStore for CountingStore {
         self.peak.fetch_max(now, Ordering::SeqCst);
         if let Some(delay) = self.load_delay {
             tokio::time::sleep(delay).await;
+        }
+        if let Some(gate) = &self.gate {
+            gate.clone().wait_for(|open| *open).await.unwrap();
         }
         self.active.fetch_sub(1, Ordering::SeqCst);
         if self.failing.lock().unwrap().contains(&key.session_id) {
@@ -446,19 +493,38 @@ async fn fill(store: &impl SessionStore, project_key: &str, count: usize) -> Vec
 async fn store_listing_loads_at_most_16_sessions_at_once() {
     let project = Project::new();
     let key = project_key_for_directory(Some(project.path()));
-    let store = CountingStore::new(
-        SessionStoreCapabilities::none().with_list_sessions(),
-        Some(Duration::from_millis(20)),
+    let (open, gate) = tokio::sync::watch::channel(false);
+    let mut store = CountingStore::new(SessionStoreCapabilities::none().with_list_sessions(), None);
+    store.gate = Some(gate);
+    let ids = fill(&store, &key, 48).await;
+    let opener = async {
+        let saturated = async {
+            while store.active.load(Ordering::SeqCst) < 16 {
+                tokio::task::yield_now().await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(10), saturated)
+            .await
+            .expect("16 loads never ran at once");
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            store.active.load(Ordering::SeqCst),
+            16,
+            "the loads beyond 16 wait for a free slot"
+        );
+        open.send(true).unwrap();
+    };
+    let (listed, ()) = tokio::join!(
+        list_sessions_from_store(&store, Some(project.path()), None, 0),
+        opener
     );
-    let ids = fill(&store, &key, 40).await;
-    let listed = list_sessions_from_store(&store, Some(project.path()), None, 0)
-        .await
-        .unwrap();
-    assert_eq!(listed.len(), 40);
-    assert_eq!(store.loads.load(Ordering::SeqCst), 40);
-    let peak = store.peak.load(Ordering::SeqCst);
-    assert!((2..=16).contains(&peak), "peak concurrency {peak}");
-    assert_eq!(listed[0].session_id, ids[39], "newest first");
+    let listed = listed.unwrap();
+    assert_eq!(listed.len(), 48);
+    assert_eq!(store.loads.load(Ordering::SeqCst), 48);
+    assert_eq!(store.peak.load(Ordering::SeqCst), 16);
+    assert_eq!(listed[0].session_id, ids[47], "newest first");
     let page = list_sessions_from_store(&store, Some(project.path()), Some(5), 2)
         .await
         .unwrap();
@@ -588,6 +654,56 @@ async fn listing_requires_list_sessions_or_summaries() {
 }
 
 #[tokio::test]
+async fn agent_metadata_without_ids_is_filtered_out_and_sets_no_parent_ids() {
+    let project = Project::new();
+    let key = project_key_for_directory(Some(project.path()));
+    let store = InMemorySessionStore::new();
+    let id = new_id();
+    let sub = SessionKey::new(key.as_str(), id.as_str()).with_subpath("subagents/agent-x");
+    store
+        .append(
+            &sub,
+            &[
+                entry(json!({"type": "agent_metadata", "name": "x"})),
+                entry(user("x1", None, &id, Value::from("hi"))),
+            ],
+        )
+        .await
+        .unwrap();
+    let messages =
+        get_subagent_messages_from_store(&store, &id, "x", Some(project.path()), None, 0)
+            .await
+            .unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].uuid, "x1");
+    assert_eq!(messages[0].parent_tool_use_id, None);
+    assert_eq!(messages[0].parent_agent_id, None);
+}
+
+#[tokio::test]
+async fn store_session_messages_never_carry_parent_ids() {
+    let project = Project::new();
+    let key = project_key_for_directory(Some(project.path()));
+    let store = InMemorySessionStore::new();
+    let id = new_id();
+    let entries: Vec<SessionStoreEntry> = conversation(&id, "hello", json!({}))
+        .into_iter()
+        .map(entry)
+        .collect();
+    store
+        .append(&SessionKey::new(key.as_str(), id.as_str()), &entries)
+        .await
+        .unwrap();
+    let messages = get_session_messages_from_store(&store, &id, Some(project.path()), None, 0)
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 2);
+    assert!(messages.iter().all(|message| {
+        message.parent_tool_use_id.is_none() && message.parent_agent_id.is_none()
+    }));
+}
+
+#[tokio::test]
 async fn subagents_are_read_at_the_direct_path_without_list_subkeys() {
     let project = Project::new();
     let key = project_key_for_directory(Some(project.path()));
@@ -644,7 +760,11 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
             .as_str()
             .is_some_and(|stamp| stamp.ends_with('Z'))
     );
+    assert_eq!(rename["sessionId"], id.as_str());
+    assert_eq!(stored[2]["type"], "tag");
     assert_eq!(stored[2]["tag"], "ab");
+    assert_eq!(stored[2]["sessionId"], id.as_str());
+    assert_eq!(stored[3]["type"], "tag");
     assert_eq!(stored[3]["tag"], "");
     assert!(stored[3]["uuid"].is_string() && stored[3]["timestamp"].is_string());
     let info = get_session_info_from_store(&store, &id, directory)
@@ -660,6 +780,23 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
             .err()
             .map(Error::kind),
         Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        rename_session_via_store(&store, "not-a-uuid", "t", directory)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        rename_session_via_store(&store, &new_id(), "  ", directory)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config),
+        "a blank title is refused before the session is looked up"
     );
     assert_eq!(
         tag_session_via_store(&store, "bad", None, directory)

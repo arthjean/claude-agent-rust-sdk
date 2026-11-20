@@ -40,7 +40,11 @@ fn rename_appends_a_trimmed_custom_title_and_the_last_wins() {
         serde_json::from_str::<Value>(last).unwrap(),
         json!({"type": "custom-title", "customTitle": "Second", "sessionId": id})
     );
-    assert!(last.starts_with(r#"{"type":"custom-title","#));
+    assert_eq!(
+        last,
+        format!(r#"{{"type":"custom-title","customTitle":"Second","sessionId":"{id}"}}"#),
+        "the line is compact JSON with the keys in the CLI order"
+    );
     assert!(text.contains(r#""customTitle":"First""#));
     assert_eq!(
         get_session_info(&id, Some(project.path())).unwrap().summary,
@@ -60,15 +64,38 @@ fn rename_rejects_bad_input_and_missing_sessions() {
             .map(Error::kind),
         Some(ErrorKind::Config)
     );
+    for title in ["", "   ", "\n\t"] {
+        let error = rename_session(&id, title, Some(project.path())).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Config, "{title:?}");
+        assert!(
+            error.to_string().contains("title must be non-empty"),
+            "{title:?}: {error}"
+        );
+    }
     assert_eq!(
-        rename_session(&id, "   ", Some(project.path()))
+        rename_session(&new_id(), "t", Some(project.path()))
             .as_ref()
             .err()
             .map(Error::kind),
-        Some(ErrorKind::Config)
+        Some(ErrorKind::SessionNotFound)
     );
+}
+
+#[test]
+fn tagging_rejects_a_blank_tag_and_a_missing_session() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "hello", json!({})));
+    for tag in ["", "   "] {
+        let error = tag_session(&id, Some(tag), Some(project.path())).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Config, "{tag:?}");
+        assert!(
+            error.to_string().contains("tag must be non-empty"),
+            "{tag:?}: {error}"
+        );
+    }
     assert_eq!(
-        rename_session(&new_id(), "t", Some(project.path()))
+        tag_session(&new_id(), Some("tag"), Some(project.path()))
             .as_ref()
             .err()
             .map(Error::kind),
@@ -357,6 +384,7 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
     let mut source = transcript(&project, &id);
     source[0]["slug"] = Value::from("leak");
     source[0]["teamName"] = Value::from("team");
+    source[0]["agentName"] = Value::from("agent");
     let mut side = user(&new_id(), None, &id, Value::from("side"));
     side["isSidechain"] = Value::Bool(true);
     source.push(side);
@@ -381,8 +409,16 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
         assert_eq!(line["sessionId"], fork.session_id.as_str());
         assert_eq!(line["isSidechain"], false);
         assert_eq!(line["forkedFrom"]["sessionId"], id.as_str());
-        assert!(line.get("slug").is_none() && line.get("teamName").is_none());
+        for stale in ["slug", "teamName", "agentName"] {
+            assert!(line.get(stale).is_none(), "{stale} is kept: {line}");
+        }
     }
+    assert!(
+        lines
+            .iter()
+            .all(|line| line["sessionId"] == fork.session_id.as_str()),
+        "every line of the fork carries its session id: {lines:#?}"
+    );
     assert_eq!(lines[1]["parentUuid"], lines[0]["uuid"]);
     assert_eq!(
         lines[2]["parentUuid"], lines[1]["uuid"],

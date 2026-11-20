@@ -417,6 +417,89 @@ async fn the_client_removes_the_directory_on_disconnect() {
     assert!(!created[0].exists());
 }
 
+/// Set on the child process that runs
+/// [`host_process_for_the_home_directory_test`].
+#[cfg(target_os = "linux")]
+const HOME_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_HOME_HOST";
+
+/// Resumes a session with no `CLAUDE_CONFIG_DIR` anywhere, so the
+/// credentials come from `~/.claude` and `.claude.json` from `~`. It only
+/// runs in the child process [`credentials_come_from_the_home_directory`]
+/// starts with `HOME` pointed at a temporary directory, and reports the
+/// materialized files on stdout.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn host_process_for_the_home_directory_test() {
+    if std::env::var_os(HOME_HOST_VARIABLE).is_none() {
+        return;
+    }
+    let setup = Setup::new();
+    let store = InMemorySessionStore::new();
+    let id = uuid::Uuid::new_v4().to_string();
+    store
+        .append(&setup.key(&id), &transcript(&id))
+        .await
+        .unwrap();
+    let options = setup
+        .fake
+        .options()
+        .cwd(setup.cwd.path())
+        .session_store(store)
+        .resume(id.as_str())
+        .build()
+        .unwrap();
+    let mut messages = query("continue", options);
+    let config = child_config_dir(&until_init(&mut messages).await);
+    let report = json!({
+        "credentials": std::fs::read_to_string(config.join(".credentials.json")).unwrap(),
+        "claude_json": std::fs::read_to_string(config.join(".claude.json")).unwrap(),
+    });
+    println!("home-report={report}");
+    let _: Vec<_> = messages.collect().await;
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn credentials_come_from_the_home_directory() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir(home.path().join(".claude")).unwrap();
+    std::fs::write(
+        home.path().join(".claude").join(".credentials.json"),
+        json!({"claudeAiOauth": {"accessToken": "at", "refreshToken": "SECRET"}}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(home.path().join(".claude.json"), r#"{"theme":"dark"}"#).unwrap();
+    let mut host = std::process::Command::new(std::env::current_exe().unwrap());
+    host.args([
+        "host_process_for_the_home_directory_test",
+        "--exact",
+        "--nocapture",
+    ])
+    .env("HOME", home.path())
+    .env(HOME_HOST_VARIABLE, "1");
+    for variable in [
+        "CLAUDE_CONFIG_DIR",
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+    ] {
+        host.env_remove(variable);
+    }
+    let output = host.output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{output:?}");
+    let report: Value = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("home-report="))
+        .map(|report| serde_json::from_str(report).unwrap())
+        .unwrap_or_else(|| panic!("the host did not report: {stdout}"));
+    let credentials: Value = serde_json::from_str(report["credentials"].as_str().unwrap()).unwrap();
+    assert_eq!(credentials, json!({"claudeAiOauth": {"accessToken": "at"}}));
+    assert_eq!(
+        report["claude_json"], r#"{"theme":"dark"}"#,
+        ".claude.json is copied from the home directory, not from ~/.claude"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn settings_with_nothing_to_strip_are_copied_byte_for_byte_and_kept_private() {
     let _serial = SERIAL.lock().await;
