@@ -45,9 +45,6 @@
 - A cancelled call to an in-process MCP server is answered with the error code `0`, as the Python `mcp` package does, instead of `-32800`.
 - An in-process MCP server answers invalid parameters with exactly `Invalid request parameters` and an empty `data`, as the Python `mcp` package does, accepts an integer `protocolVersion`, and refuses a message whose `jsonrpc` is not `"2.0"` or whose `params` is not an object with a `-32603` error.
 - `ResultErrorData` no longer dereferences to the JSON object: read other keys with `get` and the whole object with `as_map`, as the Rust API guidelines keep `Deref` for smart pointers.
-
-### Removed
-
 - **Breaking:** `cli::managed_install_dir` is private. The crate installs no CLI, so the directory is only searched, before `PATH`, as before.
 - **Breaking:** the public constructors `Error::cli_connection`, `Error::config`, `Error::control`, and `Error::session_not_found` are gone: build the same error with `Error::new` and its `ErrorKind` (`Error::new(ErrorKind::Config, "..")`), or, for a custom transport or store, with `Error::io`, `Error::process`, or `Error::session_store`.
 
