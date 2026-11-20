@@ -260,6 +260,66 @@ fn raw_schema_that_is_not_a_json_object_is_a_config_error() {
 }
 
 #[test]
+fn raw_schema_without_a_type_is_listed_as_an_object_schema() {
+    let cases = [
+        (json!({}), json!({"type": "object"})),
+        (
+            json!({"properties": {"q": {"type": "string"}}, "required": ["q"]}),
+            json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
+        ),
+        (
+            json!({"type": ["object", "null"], "properties": {}}),
+            json!({"type": "object", "properties": {}}),
+        ),
+    ];
+    for (given, listed) in cases {
+        let tool = SdkMcpTool::raw("t", "d", given.clone(), |_| async {
+            Ok(ToolResult::default())
+        })
+        .unwrap();
+        assert_eq!(tool.input_schema(), &listed, "{given}");
+        let keys: Vec<_> = tool.to_wire()["inputSchema"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(keys[0], "type", "the type comes first: {given}");
+    }
+    let written = json!({"type": "object", "additionalProperties": false});
+    let tool = SdkMcpTool::raw("t", "d", written.clone(), |_| async {
+        Ok(ToolResult::default())
+    })
+    .unwrap();
+    assert_eq!(
+        tool.input_schema(),
+        &written,
+        "an object schema is kept as written"
+    );
+}
+
+#[test]
+fn raw_schema_whose_type_is_not_object_is_a_config_error() {
+    for schema in [
+        json!({"type": "string"}),
+        json!({"type": ["string", "null"]}),
+        json!({"type": 3}),
+    ] {
+        let Err(error) = SdkMcpTool::raw("scalar", "d", schema.clone(), |_| async {
+            Ok(ToolResult::default())
+        }) else {
+            panic!("expected a configuration error for {schema}");
+        };
+        assert_eq!(error.kind(), ErrorKind::Config);
+        assert!(
+            error.to_string().contains("\"type\": \"object\""),
+            "{error}"
+        );
+        assert!(error.to_string().contains("scalar"), "{error}");
+    }
+}
+
+#[test]
 fn two_tools_with_the_same_name_are_a_config_error() {
     let outcome = create_sdk_mcp_server("calc", None, [add(), noop("other"), add()]);
     let Err(error) = outcome else {

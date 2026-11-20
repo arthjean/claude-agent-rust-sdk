@@ -413,9 +413,16 @@ impl SdkMcpTool {
     /// In a build with `default-features = false`, arguments are not
     /// validated: the handler receives them as the model sent them.
     ///
+    /// The CLI lists a tool only when its schema has `"type": "object"`, and
+    /// one tool without it makes the CLI drop every tool of the server, with
+    /// no error. A schema with no `type` key, such as `{}`, so gets
+    /// `"type": "object"` added in front of its keys; the arguments of a
+    /// call are always an object.
+    ///
     /// # Errors
     ///
-    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when the schema is not a JSON object.
+    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when the
+    /// schema is not a JSON object, or when its `type` is not `"object"`.
     pub fn raw<F, Fut>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -427,11 +434,7 @@ impl SdkMcpTool {
         Fut: Future<Output = std::result::Result<ToolResult, BoxError>> + Send + 'static,
     {
         let name = name.into();
-        if !input_schema.is_object() {
-            return Err(Error::config(format!(
-                "The input schema of tool '{name}' must be a JSON object"
-            )));
-        }
+        let input_schema = object_schema(&name, input_schema)?;
         let handler = move |arguments: Value| -> BoxFuture<'static, _> {
             let call = handler(arguments);
             Box::pin(async move {
@@ -537,6 +540,34 @@ fn schema_of<Args: JsonSchema>() -> Value {
     } else {
         json!({"type": "object", "properties": {}})
     }
+}
+
+/// The schema of a [`SdkMcpTool::raw`] tool as the CLI accepts it: its
+/// `type` is `"object"`. A schema with no `type`, or with a list of types
+/// that holds `"object"`, gets `"type": "object"` as its first key; any
+/// other `type` is refused, since the CLI would drop every tool of the
+/// server for it.
+fn object_schema(name: &str, schema: Value) -> Result<Value> {
+    let Value::Object(fields) = schema else {
+        return Err(Error::config(format!(
+            "The input schema of tool '{name}' must be a JSON object"
+        )));
+    };
+    match fields.get("type") {
+        Some(Value::String(kind)) if kind == "object" => return Ok(Value::Object(fields)),
+        None => {}
+        Some(Value::Array(kinds)) if kinds.iter().any(|kind| kind == "object") => {}
+        Some(other) => {
+            return Err(Error::config(format!(
+                "The input schema of tool '{name}' must have \"type\": \"object\", not {other}: \
+                 the CLI drops every tool of a server listing any other type"
+            )));
+        }
+    }
+    let mut typed = Map::with_capacity(fields.len() + 1);
+    typed.insert("type".to_owned(), json!("object"));
+    typed.extend(fields.into_iter().filter(|(key, _)| key != "type"));
+    Ok(Value::Object(typed))
 }
 
 /// Whether the root of a generated schema describes a JSON object: its type

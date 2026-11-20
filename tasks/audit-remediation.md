@@ -21,7 +21,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A04 | blocker | Survive a lone UTF-16 surrogate escape or deep nesting | done | `framing.rs`: lone surrogate escapes become U+FFFD, nesting read up to 512 levels; unit tests and `transport.rs::a_lone_surrogate_escape_from_the_cli_does_not_end_the_session`; `[behavior.lone-surrogate-escape]`, `[behavior.nesting-depth-limit]`. |
 | A05 | major | Differential harness measures what the SDK returns to the app | todo | |
 | A06 | major | Detect upstream tests changed in place, drifting refs | todo | |
-| A07 | major | Force `"type": "object"` on `SdkMcpTool::raw` schemas | todo | |
+| A07 | major | Force `"type": "object"` on `SdkMcpTool::raw` schemas | done | `object_schema` in `src/mcp/tool.rs` adds `"type": "object"` or refuses another type; tests `sdk_mcp.rs::raw_schema_without_a_type_is_listed_as_an_object_schema`, `raw_schema_whose_type_is_not_object_is_a_config_error`; real CLI red then green (`e2e/sdk_mcp_tools.rs::a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`); `[behavior.raw-tool-schema-type]`. |
 | A08 | major | Isolate SessionStore panics, always signal reader end | todo | |
 | A09 | major | Keep unknown data on types the user sends | todo | |
 | A10 | major | CLI version warning, private `managed_install_dir` | todo | |
@@ -67,6 +67,10 @@ Each choice the audit did not settle, with the cautious option taken.
 
 | Date | What | Cost (USD) | Result |
 |---|---|---|---|
+| 2026-11-20 | A03 probe: `initialize`, then half a `user` frame and stdin closed (CLI 2.1.329, no prompt) | 0.00 | The CLI exits with code 1 and writes `Error parsing streaming input line (type=user, 50 chars): SyntaxError`: a torn frame ends the session. |
+| 2026-11-20 | A07 probe: stdio MCP server listing one valid tool and one `"inputSchema": {}`, then `mcp_status` (no prompt) | 0.00 | The server is `connected` with `tools: []` and no error: one bad schema drops every tool. With two valid tools both are listed. Captured in `tests/fixtures/cli/`. |
+| 2026-11-20 | `get_context_usage` and `mcp_status` probes (no prompt) | 0.00 | Answers captured in `tests/fixtures/cli/`; `ContextUsageResponse` and `McpStatusResponse` read them; the write-back lost `"type": "stdio"` (fixed). |
+| 2026-11-20 | `e2e` `a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`, fixed code then the previous `tool.rs` (handshake and `mcp_status` only) | 0.00 | Passes with the fix; with the previous code the CLI lists `tools: []` for the server. |
 
 Total spent: 0.00 USD.
 

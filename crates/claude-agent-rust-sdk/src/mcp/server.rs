@@ -349,7 +349,10 @@ mod tests {
             "1.0.0".to_owned(),
             vec![
                 raw("valid", json!({"type": "object", "required": ["b"]})),
-                raw("broken", json!({"type": "bogus"})),
+                raw(
+                    "broken",
+                    json!({"type": "object", "properties": {"x": {"type": "bogus"}}}),
+                ),
             ],
         )
         .unwrap();

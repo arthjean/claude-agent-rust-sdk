@@ -106,10 +106,12 @@ impl McpServerStatusConfig {
     }
 }
 
+/// Writes the `type` key of every known kind, `"stdio"` included: CLI
+/// 2.1.329 sends it in each status, so a status written back keeps it.
 impl Serialize for McpServerStatusConfig {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let (type_name, body) = match self {
-            Self::Stdio(config) => (None, serde_json::to_value(config)),
+            Self::Stdio(config) => (Some("stdio"), serde_json::to_value(config)),
             Self::Sse(config) => (Some("sse"), serde_json::to_value(config)),
             Self::Http(config) => (Some("http"), serde_json::to_value(config)),
             Self::Sdk(config) => (Some("sdk"), serde_json::to_value(config)),
@@ -320,7 +322,8 @@ pub struct ContextUsageResponse {
     /// Breakdown of message tokens by type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_breakdown: Option<Value>,
-    /// Cumulative API usage of the session.
+    /// Cumulative API usage of the session. CLI 2.1.329 sends `null`
+    /// before the first turn, which reads as `None` and is not written back.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_usage: Option<Value>,
     /// Keys of the response this version of the crate does not model,

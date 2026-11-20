@@ -1523,3 +1523,73 @@ fn agent_definition_new_fields_omitted_when_none() {
         assert!(payload.get(key).is_none(), "{key}");
     }
 }
+
+/// Reads a control response captured from CLI 2.1.329 (see
+/// `tests/fixtures/cli/README.md`).
+fn captured(name: &str) -> Value {
+    let path = format!("{}/tests/fixtures/cli/{name}", env!("CARGO_MANIFEST_DIR"));
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[test]
+fn a_context_usage_answer_of_the_real_cli_is_read_and_written_back_whole() {
+    let raw = captured("get_context_usage.json");
+    let usage: ContextUsageResponse = serde_json::from_value(raw.clone()).unwrap();
+    assert_eq!(usage.model, "claude-opus-5-5");
+    assert_eq!(usage.max_tokens, 1_000_000);
+    assert_eq!(usage.total_tokens, 13_793);
+    assert!((usage.percentage - 1.0).abs() < f64::EPSILON);
+    assert!(!usage.is_auto_compact_enabled);
+    assert_eq!(usage.categories.len(), 7);
+    assert_eq!(usage.categories[2].is_deferred, Some(true));
+    assert_eq!(usage.categories[0].extra["id"], "system_prompt");
+    assert_eq!(usage.skills.as_ref().unwrap()["totalSkills"], 14);
+    assert!(usage.slash_commands.is_some() && usage.message_breakdown.is_some());
+    assert_eq!(usage.api_usage, None, "the CLI sent null");
+    for key in ["coldResumeQuota", "mcpInstructions", "autocompactSource"] {
+        assert!(usage.extra.contains_key(key), "{key} is kept");
+    }
+    let mut written = serde_json::to_value(&usage).unwrap();
+    assert_eq!(written["percentage"].as_f64(), Some(1.0));
+    written["percentage"] = raw["percentage"].clone();
+    written["apiUsage"] = Value::Null;
+    assert_eq!(
+        written, raw,
+        "only the integer percentage and the null apiUsage change"
+    );
+}
+
+#[test]
+fn an_mcp_status_answer_of_the_real_cli_is_read_and_written_back_whole() {
+    let raw = captured("mcp_status.json");
+    let status: McpStatusResponse = serde_json::from_value(raw.clone()).unwrap();
+    let server = &status.mcp_servers[0];
+    assert_eq!(server.status, McpServerConnectionStatus::Connected);
+    assert!(matches!(
+        server.config,
+        Some(McpServerStatusConfig::Stdio(_))
+    ));
+    let tools: Vec<_> = server
+        .tools
+        .iter()
+        .flatten()
+        .map(|tool| tool.name.as_str())
+        .collect();
+    assert_eq!(tools, ["echo", "ping"]);
+    assert_eq!(server.extra["transport"], "stdio");
+    assert_eq!(serde_json::to_value(&status).unwrap(), raw);
+}
+
+#[test]
+fn the_real_cli_reports_no_tools_for_a_server_listing_a_schema_that_is_not_an_object() {
+    let raw = captured("mcp_status_rejected_tools.json");
+    let status: McpStatusResponse = serde_json::from_value(raw).unwrap();
+    let server = &status.mcp_servers[0];
+    assert_eq!(server.status, McpServerConnectionStatus::Connected);
+    assert_eq!(server.error, None, "the CLI gives no reason");
+    assert_eq!(
+        server.tools.as_deref(),
+        Some(&[][..]),
+        "the valid tool is dropped too"
+    );
+}

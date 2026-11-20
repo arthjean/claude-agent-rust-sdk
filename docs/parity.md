@@ -45,7 +45,7 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ## Deliberately different
 
-36 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 29 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+37 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 30 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
 ### Deliberate choices (20)
 
@@ -83,7 +83,7 @@ Rust does what the CLI does where Python does not.
 | Timestamps written into a transcript | Microseconds. (upstream `src/claude_agent_sdk/_internal/session_mutations.py:402`) | Milliseconds, as `Date.toISOString` in the CLI writes them. | The transcript is the CLI's file; Rust writes what the CLI writes. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::formats_like_javascript` |
 | The project directory name of a path outside ASCII | Characters are counted as code points, so an emoji is one character. (upstream `src/claude_agent_sdk/_internal/sessions.py:81-114`) | Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 in `docs/validation/project-dir-naming.md`. | Python computes a name the CLI never creates, and finds no session there. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::sanitize_replaces_every_unit_outside_ascii_alphanumerics` |
 
-### Rust handles what stops Python (8)
+### Rust handles what stops Python (9)
 
 Rust keeps going, or keeps the data, where Python fails or drops it.
 
@@ -95,6 +95,7 @@ Rust keeps going, or keeps the data, where Python fails or drops it.
 | Control requests pending when the CLI output ends | They wait for their 60-second timeout. (upstream `src/claude_agent_sdk/_internal/query.py:765-767`) | They fail at once with `ErrorKind::ConnectionClosed`. | No answer can come once the output has ended. | `crates/claude-agent-rust-sdk/tests/control_protocol.rs::clean_end_of_output_fails_pending_requests_at_once` |
 | The error output carried by a process error | `ProcessError.stderr` is always the placeholder "Check stderr output for details". (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1114-1116`) | `Error::stderr()` holds the last 8 KiB of the error output when it was captured (a `stderr` callback was set), and is `None` otherwise. The text of the error never includes it, so logging the error never logs the CLI error output. | A typed field that promises the error output should hold it; without it a CLI that dies on an authentication error leaves no diagnostic in the error. | `crates/claude-agent-rust-sdk/tests/transport.rs::a_failed_process_keeps_the_last_lines_of_its_captured_error_output` |
 | Processes the CLI started | Only the direct child is signaled, and an atexit hook cleans up at interpreter exit. (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:72-82`) | The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux. | A tool process the CLI started must not outlive the session. | `crates/claude-agent-rust-sdk/tests/shutdown.rs::descendants_end_with_the_session` |
+| A hand-written tool schema whose type is not object | A dict with a string `type` and `properties` is listed as written, whatever the type; any other dict is read as a parameter table and becomes an object schema. (upstream `src/claude_agent_sdk/__init__.py:436-456`) | `SdkMcpTool::raw` adds `"type": "object"` to a schema with no `type`, and refuses with a `Config` error a schema whose `type` is not `object`. | CLI 2.1.329 drops every tool of a server when one tool lists a schema whose type is not object, and reports the server connected with no error (shown by `tests/e2e/sdk_mcp_tools.rs::a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`); an error at build time names the tool instead. | `crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_schema_whose_type_is_not_object_is_a_config_error` |
 | `connect` on a connected client | The new session replaces the old one, which is never closed. (upstream `src/claude_agent_sdk/client.py:208`) | The previous session is closed before the new one starts. | An unclosed session leaks a CLI process. | `crates/claude-agent-rust-sdk/tests/client.rs::connect_on_a_connected_client_closes_the_previous_session_first` |
 | An unknown message type | The parser returns `None` and the message is skipped. (upstream `src/claude_agent_sdk/_internal/message_parser.py:397-401`) | Kept as `Message::Unknown` with its raw JSON, as is an unknown content block (`ContentBlock::Unknown`). | A newer CLI must not make an older program lose data. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json` |
 

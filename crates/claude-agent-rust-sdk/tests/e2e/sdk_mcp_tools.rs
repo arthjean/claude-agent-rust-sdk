@@ -130,3 +130,49 @@ async fn a_tool_without_permission_is_not_executed() {
 
     assert_eq!(suite::entries(&executions), Vec::<String>::new());
 }
+
+#[tokio::test]
+#[ignore = "runs the real CLI; run with `cargo xtask e2e`"]
+async fn a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others() {
+    let executions = suite::log::<String>();
+    let bare = SdkMcpTool::raw(
+        "bare",
+        "Takes no argument",
+        serde_json::json!({}),
+        |_| async { Ok(ToolResult::text("done")) },
+    )
+    .unwrap();
+    let options = suite::options()
+        .mcp_server("test", server("test", [echo(&executions), bare]))
+        .setting_sources(Vec::<SettingSource>::new())
+        .build()
+        .unwrap();
+    let client = suite::connect(options).await;
+    let mut status = client.get_mcp_status().await.unwrap();
+    for _ in 0..50 {
+        if status
+            .mcp_servers
+            .iter()
+            .any(|server| server.name == "test")
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        status = client.get_mcp_status().await.unwrap();
+    }
+    client.disconnect().await.unwrap();
+
+    let server = status
+        .mcp_servers
+        .iter()
+        .find(|server| server.name == "test")
+        .unwrap_or_else(|| panic!("the server is reported: {status:?}"));
+    let mut tools: Vec<_> = server
+        .tools
+        .iter()
+        .flatten()
+        .map(|tool| tool.name.as_str())
+        .collect();
+    tools.sort_unstable();
+    assert_eq!(tools, ["bare", "echo"], "{server:?}");
+}

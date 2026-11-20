@@ -1,0 +1,25 @@
+{
+ "mcpServers": [
+  {
+   "name": "probe",
+   "status": "connected",
+   "serverInfo": {
+    "name": "probe",
+    "version": "1"
+   },
+   "config": {
+    "type": "stdio",
+    "command": "/usr/bin/python3",
+    "args": [
+     "-I",
+     "/probe/mcp_server.py",
+     "bad"
+    ]
+   },
+   "transport": "stdio",
+   "scope": "dynamic",
+   "source": "dynamic",
+   "tools": []
+  }
+ ]
+}

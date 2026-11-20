@@ -24,6 +24,8 @@
 - Dropping the future of `ClaudeSdkClient::query`, `interrupt`, `set_model` or any other call, for example under `tokio::time::timeout`, no longer cuts a frame on the standard input of the CLI. Every frame now goes through one writer task per session, which finishes each frame it starts, also with a custom transport.
 - A line of CLI output that escapes a lone UTF-16 surrogate, which JavaScript writes for a string cut inside an emoji, no longer ends the session: the surrogate becomes U+FFFD. Lines nested up to 512 levels deep are read too, instead of 128.
 - A `can_use_tool` allow decision whose permission updates cannot all be sent now sends none of them and logs a warning; the tool call is still allowed.
+- `SdkMcpTool::raw` lists every schema with `"type": "object"`: a schema with no `type`, such as `{}`, gets it, and a schema with another `type` is an `ErrorKind::Config` error. CLI 2.1.329 drops every tool of a server when one tool lists a schema without it, and reports the server connected with no error.
+- An MCP server status written back with `serde` keeps the `"type": "stdio"` key the CLI sent.
 
 ## 0.1.0 - 2026-11-18
 
