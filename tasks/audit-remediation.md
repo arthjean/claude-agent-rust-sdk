@@ -184,8 +184,49 @@ forever, and a variant cannot gain data without a semver-major release.
 
 ## Counter-audit
 
-To be run at the end.
+Five fresh agents, one per audit scope (protocol and process, types and parser, MCP, sessions and stores, public surface with docs, parity tooling, and CI), each with the brief, the code, and upstream, none with these notes. Every finding below was checked again before it was accepted: by reading both sides and, where it changes behavior, by a test that fails before the fix.
+
+| Scope | Finding | Severity | Outcome |
+|---|---|---|---|
+| protocol | `Error::is_retryable` was false for a CLI killed by a signal (the transport records `-signal`, never no code) | major | Fixed (`99d18fc`), `shutdown.rs::a_cli_killed_by_a_signal_gives_a_retryable_process_error`, red before |
+| protocol | Invalid UTF-8 on the CLI output is replaced, upstream ends the session; not in the ledger | minor | Recorded `[behavior.cli-output-invalid-utf8]` with a fake-CLI test (`emit_raw` takes bytes) |
+| protocol | A control request without `request` or `subtype` is answered, upstream sends nothing; not in the ledger | minor | Recorded `[behavior.malformed-control-request-body]` |
+| types | Two control requests sharing an id: neither was answered | minor | Fixed (`2d16385`), red before |
+| types | An optional field of the wrong type reads as absent; not in the ledger | minor | Recorded `[behavior.optional-field-wrong-type]` |
+| types | Unmodeled keys lost on `PermissionUpdate`, content blocks, and the user, assistant, result, and stream messages | minor | Fixed (`a45f9e7`, `8ae3424`): `extra` fields, and `message_extra` for the nested `message` |
+| MCP | `#[tool]` with a state argument named like the function did not compile | major | Fixed (`1cff073`), compile error before |
+| MCP | Integral-float coercion chose the wrong variant of an untagged enum and lost fields | major | Fixed (`7acc33a`): the arguments are read as sent first; red before |
+| MCP | A cancelled call answered `-32800`, the Python `mcp` package answers `0` | minor | Aligned (`79a59b2`) |
+| MCP | An `rmcp` request with a float id was never answered | minor | Fixed: acknowledged as a notification, as upstream; red before |
+| MCP | Doc comments of enum variants dropped by the schema merge | minor | Fixed: listed in the tag's description |
+| MCP | `#[tool]` named `fn r#type` tool `r#type` | minor | Fixed: `unraw` |
+| MCP | `#[doc = include_str!(..)]` gave a misleading error; envelope (`jsonrpc`, `params`), integer `protocolVersion`, `-32602` text and `data` | cosmetic | Fixed and probed against upstream; the unknown-method code stays the recorded `[wire]` difference |
+| sessions | A transcript line with a lone surrogate or nesting over 128 levels cut the history before it | major | Fixed (`5f2b6c1`), red before; `[behavior.transcript-line-json-reading]` |
+| sessions | `fork_session` looped forever on a cycle of `progress` parents (upstream too) | minor | Fixed, `[behavior.fork-progress-parent-cycle]` (`python-defect`) |
+| sessions | `trim` kept U+001C to U+001F that `str.strip()` removes | minor | Aligned |
+| sessions | The 5 s limit of `git worktree list` did not hold when a grandchild kept stdout open | minor | Fixed, test at 1 s |
+| sessions | A dropped `close` lost the batch the mirror was sending | minor | Fixed: sent from a task of its own, as upstream shields it; red before |
+| sessions | Import read the whole transcript into memory | minor | Streams 1 MiB blocks |
+| sessions | `\ud83d` left escaped in a title; no `SessionStore` for `Arc` | cosmetic | Fixed |
+| sessions | `[unclassified]` entries left | minor | All four settled: `PATH` unset and dotted store paths aligned, duplicate summaries counted once as upstream, raw UTF-8 recorded as `rust-follows-cli` after a CLI probe |
+| surface | Stale ledger note, README snippet missing `serde` and `schemars`, two ledger tests that did not show their entry, page grammar | minor | Fixed |
+| surface | Clippy warnings not denied, MSRV on Linux only, e2e checkout with persisted credentials and no check of the CLI version | minor | Fixed (`1569299`) |
+| surface | `ResultErrorData: Deref<Target = Map>` | cosmetic | Replaced by `get` and `as_map` |
+
+Listed, not changed, with the reason:
+
+- `parity-check` proves that each ledger entry names an existing item or test, not that the test asserts the upstream behavior; the 943 mappings were reviewed by hand in A33, and the 3 largest fan-in groups were spot-checked again.
+- The journal of `parity-diff` leaves out null-valued keys and maps each type by hand; the page now says so, and the frames sent to the CLI are compared whole.
+- The advisory check runs weekly and not on pull requests, by a policy the repository tests pin, so that a new advisory does not block unrelated work.
+- `parity-diff` runs on Linux only: the Python driver is not set up on the macOS and Windows runners.
+- `e2e.yml` installs the CLI with the official `install.sh`, which publishes no checksum to pin; the job now fails when the installed version is not the pinned one.
+- `the_process_runs_as_the_requested_user` checks the group switch only when run as root, which GitHub runners are not.
+- `init_data()` is all-or-nothing (documented); a direct `serde` serialization of a hook output whose `extra` repeats a modeled key duplicates it, which the wire path never does.
+- `SystemInitMcpServer` and `TaskUsage` keep no `extra`: upstream drops those keys too, and `SystemMessage::data()` keeps the whole frame.
+- A `#[tool]` function that does not return a `Result` gets the compiler's error, not a dedicated one: a syntactic check would refuse result aliases.
+- `ResultErrorData::errors()` allocates: it trims and drops blank entries.
+- Not covered by the counter-audit: the Windows branches, a `CLAUDE_CONFIG_DIR` that is not UTF-8, JSON integers above `u64` in a fork or import.
 
 ## Upstream releases during the run
 
-None seen yet (checked against the `v0.2.186` reference).
+None: `v0.2.186` (2026-11-19) is still the newest release of the Python SDK (`gh release list`, checked on 2026-11-20 at the end of the run).
