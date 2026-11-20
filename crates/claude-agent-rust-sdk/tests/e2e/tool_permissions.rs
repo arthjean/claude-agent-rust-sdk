@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 use claude_agent_rust_sdk::{
-    BoxError, CanUseTool, PermissionResult, Prompt, SettingSource, ToolPermissionContext,
+    BoxError, CanUseTool, PermissionBehavior, PermissionResult, PermissionRuleValue,
+    PermissionUpdate, PermissionUpdateDestination, PermissionUpdateKind, Prompt, SettingSource,
+    ToolPermissionContext,
 };
 use futures_util::stream;
 use serde_json::{Value, json};
@@ -117,4 +119,61 @@ async fn a_streamed_prompt_with_only_a_permission_callback_keeps_stdin_open_for_
 #[ignore = "runs the real CLI; run with `cargo xtask e2e`"]
 async fn a_text_prompt_works_with_a_permission_callback() {
     run_query_with_only_a_permission_callback(Prompt::from).await;
+}
+
+#[tokio::test]
+#[ignore = "runs the real CLI; run with `cargo xtask e2e`"]
+async fn a_whole_tool_rule_returned_by_the_callback_is_applied_by_the_cli() {
+    let invocations = suite::log::<String>();
+    let recorded = invocations.clone();
+    let callback = CanUseTool::new(
+        move |tool_name: String, _input: Value, _context: ToolPermissionContext| {
+            let recorded = recorded.clone();
+            async move {
+                recorded.lock().unwrap().push(tool_name.clone());
+                let rule = PermissionUpdate::new(PermissionUpdateKind::AddRules)
+                    .rules([PermissionRuleValue::new(tool_name, None)])
+                    .behavior(PermissionBehavior::Allow)
+                    .destination(PermissionUpdateDestination::Session);
+                Ok::<PermissionResult, BoxError>(PermissionResult::Allow {
+                    updated_input: None,
+                    updated_permissions: Some(vec![rule]),
+                })
+            }
+        },
+    );
+    let (_directory, cwd) = suite::workspace();
+    let options = suite::options()
+        .cwd(&cwd)
+        .can_use_tool(callback)
+        .setting_sources(Vec::<SettingSource>::new())
+        .disallowed_tools(SHELL_TOOLS)
+        .max_turns(4)
+        .build()
+        .unwrap();
+
+    let client = suite::connect(options).await;
+    let messages = suite::turn(
+        &client,
+        "Use the Write tool to create first.txt containing exactly the text one. Once that has \
+         succeeded, use the Write tool again, in a separate step, to create second.txt containing \
+         exactly the text two. Use no other tool.",
+    )
+    .await;
+    client.disconnect().await.unwrap();
+
+    let result = suite::result(&messages);
+    eprintln!("cost: {:?} USD", result.total_cost_usd);
+    let invocations = suite::entries(&invocations);
+    let seen = format!(
+        "callback calls {invocations:?}, result {result:#?}, text {:?}",
+        suite::assistant_text(&messages)
+    );
+    assert!(cwd.join("first.txt").exists(), "{seen}");
+    assert!(cwd.join("second.txt").exists(), "{seen}");
+    assert_eq!(
+        invocations,
+        ["Write"],
+        "the rule `Write` sent with the first allow covers the second call"
+    );
 }

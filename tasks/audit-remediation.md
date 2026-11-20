@@ -15,9 +15,9 @@ difference, recorded), `blocked` (waiting on the owner).
 
 | Id | Impact | Title | Status | Proof / note |
 |---|---|---|---|---|
-| A01 | blocker | Port upstream #1502 (permission updates), sync to v0.2.186 | done | Pin at v0.2.186 (`upstream-sync`); `to_wire` returns `Result`, 8 upstream tests ported (`tests/types.rs`, `tests/control_protocol.rs`); parity-check and parity-diff pass. Real-CLI proof: pending. |
+| A01 | blocker | Port upstream #1502 (permission updates), sync to v0.2.186 | done | Pin at v0.2.186 (`upstream-sync`); `to_wire` returns `Result`, 8 upstream tests ported (`tests/types.rs`, `tests/control_protocol.rs`); parity-check and parity-diff pass. Real CLI: `e2e/tool_permissions.rs::a_whole_tool_rule_returned_by_the_callback_is_applied_by_the_cli` fails before the fix and passes after. |
 | A02 | blocker | Keep JSON key order (`preserve_order`) | done | `preserve_order` in the library, `shift_remove` (clippy `disallowed-methods` on `Map::remove`), fork/resume lines keep entry order; harness compares key order (`compare.rs` tests), case `key-order`; tests `fork_keeps_the_key_order_of_each_entry_as_upstream_does`, `json_values_reach_the_cli_with_their_keys_in_the_order_written`. Hook output order recorded as `wire.hook-output-key-order*`. |
-| A03 | blocker | Cancellation-safe writes to the CLI | done | One writer task per session fed whole frames (`src/control/mod.rs`); fake-claude `stdin_pause`; test `transport.rs::a_dropped_write_never_cuts_a_frame_the_cli_reads` (fails on the old code). Real-CLI reaction to a torn line: pending. |
+| A03 | blocker | Cancellation-safe writes to the CLI | done | One writer task per session fed whole frames (`src/control/mod.rs`); fake-claude `stdin_pause`; test `transport.rs::a_dropped_write_never_cuts_a_frame_the_cli_reads` (fails on the old code). Real CLI 2.1.329 exits with code 1 on a torn line (probe in the runs table), so the fix prevents a session loss. |
 | A04 | blocker | Survive a lone UTF-16 surrogate escape or deep nesting | done | `framing.rs`: lone surrogate escapes become U+FFFD, nesting read up to 512 levels; unit tests and `transport.rs::a_lone_surrogate_escape_from_the_cli_does_not_end_the_session`; `[behavior.lone-surrogate-escape]`, `[behavior.nesting-depth-limit]`. |
 | A05 | major | Differential harness measures what the SDK returns to the app | todo | |
 | A06 | major | Detect upstream tests changed in place, drifting refs | todo | |
@@ -70,9 +70,11 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | A03 probe: `initialize`, then half a `user` frame and stdin closed (CLI 2.1.329, no prompt) | 0.00 | The CLI exits with code 1 and writes `Error parsing streaming input line (type=user, 50 chars): SyntaxError`: a torn frame ends the session. |
 | 2026-11-20 | A07 probe: stdio MCP server listing one valid tool and one `"inputSchema": {}`, then `mcp_status` (no prompt) | 0.00 | The server is `connected` with `tools: []` and no error: one bad schema drops every tool. With two valid tools both are listed. Captured in `tests/fixtures/cli/`. |
 | 2026-11-20 | `get_context_usage` and `mcp_status` probes (no prompt) | 0.00 | Answers captured in `tests/fixtures/cli/`; `ContextUsageResponse` and `McpStatusResponse` read them; the write-back lost `"type": "stdio"` (fixed). |
+| 2026-11-20 | A01: `e2e` `a_whole_tool_rule_returned_by_the_callback_is_applied_by_the_cli`, four runs on the fixed code | about 0.016 (0.0038 per run, two runs not measured) | Three passes, one failure where `first.txt` was missing (the model did not write it; the run printed nothing more). |
+| 2026-11-20 | A01: the same test on `cb286bc~1`, before the fix, in a separate worktree | 0.0038 | Fails: the callback runs for both writes, so the CLI did not apply the `Write` rule sent with `ruleContent: null`. |
 | 2026-11-20 | `e2e` `a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`, fixed code then the previous `tool.rs` (handshake and `mcp_status` only) | 0.00 | Passes with the fix; with the previous code the CLI lists `tools: []` for the server. |
 
-Total spent: 0.00 USD.
+Total spent: about 0.02 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
