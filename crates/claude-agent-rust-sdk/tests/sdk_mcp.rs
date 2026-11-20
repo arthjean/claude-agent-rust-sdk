@@ -229,7 +229,9 @@ fn typed_tool_whose_argument_type_is_not_one_object_lists_an_object_schema() {
     }
 
     let empty = json!({"type": "object", "properties": {}});
-    assert_eq!(schema::<Shape>(), empty);
+    let shape = schema::<Shape>();
+    assert_eq!(shape["type"], "object");
+    assert!(shape.get("oneOf").is_none(), "{shape}");
     assert_eq!(schema::<Mode>(), empty);
     assert_eq!(schema::<String>(), empty);
     assert_eq!(schema::<Vec<Point>>(), empty);
@@ -242,6 +244,160 @@ fn typed_tool_whose_argument_type_is_not_one_object_lists_an_object_schema() {
     let map = schema::<std::collections::HashMap<String, i32>>();
     assert_eq!(map["type"], "object");
     assert_eq!(map["additionalProperties"]["type"], "integer");
+}
+
+#[test]
+fn typed_tool_of_an_enum_lists_every_field_of_every_variant_in_one_object() {
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(tag = "kind")]
+    #[allow(dead_code)]
+    enum Tagged {
+        /// Variant A.
+        A {
+            a: i32,
+            shared: String,
+        },
+        B {
+            b: String,
+            shared: String,
+        },
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    #[allow(dead_code)]
+    enum External {
+        Circle { radius: f64 },
+        Square { side: f64 },
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    #[allow(dead_code)]
+    struct Flattened {
+        id: String,
+        #[serde(flatten)]
+        shape: Tagged,
+    }
+
+    let tagged =
+        SdkMcpTool::typed::<Tagged>("tagged", "", |_args| async { Ok(ToolResult::default()) });
+    let schema = tagged.input_schema();
+    assert_eq!(schema["type"], "object");
+    for combinator in ["oneOf", "anyOf", "allOf"] {
+        assert!(schema.get(combinator).is_none(), "{schema}");
+    }
+    let properties = schema["properties"].as_object().unwrap();
+    assert_eq!(
+        properties.keys().collect::<Vec<_>>(),
+        ["kind", "a", "shared", "b"]
+    );
+    assert_eq!(
+        properties["kind"],
+        json!({"type": "string", "enum": ["A", "B"]})
+    );
+    assert_eq!(properties["a"]["type"], "integer");
+    assert_eq!(schema["required"], json!(["kind", "shared"]));
+
+    let external =
+        SdkMcpTool::typed::<External>("external", "", |_args| async { Ok(ToolResult::default()) });
+    let schema = external.input_schema();
+    assert_eq!(schema["type"], "object");
+    assert!(schema.get("oneOf").is_none(), "{schema}");
+    assert_eq!(
+        schema["properties"]["Circle"]["properties"]["radius"]["type"],
+        "number"
+    );
+    assert_eq!(
+        schema["properties"]["Square"]["properties"]["side"]["type"],
+        "number"
+    );
+    assert!(schema.get("required").is_none(), "{schema}");
+
+    let flattened = SdkMcpTool::typed::<Flattened>("flattened", "", |_args| async {
+        Ok(ToolResult::default())
+    });
+    let schema = flattened.input_schema();
+    for combinator in ["oneOf", "anyOf", "allOf"] {
+        assert!(schema.get(combinator).is_none(), "{schema}");
+    }
+    let properties = schema["properties"].as_object().unwrap();
+    assert!(
+        ["id", "kind", "a", "b", "shared"]
+            .iter()
+            .all(|name| properties.contains_key(*name)),
+        "{schema}"
+    );
+    assert_eq!(schema["required"], json!(["id", "kind", "shared"]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn typed_tool_of_an_enum_reads_each_variant_and_refuses_a_mixed_shape() {
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(tag = "kind", deny_unknown_fields)]
+    enum Tagged {
+        A { a: i32 },
+        B { b: String },
+    }
+
+    let tool = SdkMcpTool::typed::<Tagged>("tagged", "Tagged", |args| async move {
+        Ok(ToolResult::text(match args {
+            Tagged::A { a } => format!("A {a}"),
+            Tagged::B { b } => format!("B {b}"),
+        }))
+    });
+    let client = SdkMcpClient::connected(server([tool])).await;
+    let a = client
+        .call_tool("srv", "tagged", json!({"kind": "A", "a": 1}))
+        .await;
+    assert_eq!(texts(&a), ["A 1"]);
+    let b = client
+        .call_tool("srv", "tagged", json!({"kind": "B", "b": "x"}))
+        .await;
+    assert_eq!(texts(&b), ["B x"]);
+    let mixed = client
+        .call_tool("srv", "tagged", json!({"kind": "A", "b": "x"}))
+        .await;
+    assert_eq!(mixed["isError"], true, "{mixed}");
+    assert!(
+        texts(&mixed)[0].starts_with("Input validation error: "),
+        "{mixed}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn typed_tool_reads_an_integral_float_as_an_integer() {
+    #[derive(Deserialize, JsonSchema)]
+    struct Count {
+        count: u32,
+        offset: Option<i64>,
+        ratio: f64,
+        page: Vec<u8>,
+    }
+
+    let tool = SdkMcpTool::typed::<Count>("count", "Counts", |args| async move {
+        Ok(ToolResult::text(format!(
+            "{} {:?} {} {:?}",
+            args.count, args.offset, args.ratio, args.page
+        )))
+    });
+    let client = SdkMcpClient::connected(server([tool])).await;
+    let outcome = client
+        .call_tool(
+            "srv",
+            "count",
+            json!({"count": 3.0, "offset": -2.0, "ratio": 4.0, "page": [1.0, 2]}),
+        )
+        .await;
+    assert_eq!(outcome["isError"], false, "{outcome}");
+    assert_eq!(texts(&outcome), ["3 Some(-2) 4 [1, 2]"]);
+
+    let fractional = client
+        .call_tool(
+            "srv",
+            "count",
+            json!({"count": 3.5, "ratio": 1, "page": []}),
+        )
+        .await;
+    assert_eq!(fractional["isError"], true, "{fractional}");
 }
 
 #[test]

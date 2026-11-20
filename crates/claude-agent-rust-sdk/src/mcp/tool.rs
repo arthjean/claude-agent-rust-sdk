@@ -6,10 +6,10 @@ use std::future::Future;
 use std::sync::Arc;
 
 use schemars::JsonSchema;
-use schemars::generate::SchemaSettings;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
+use super::schema;
 use crate::error::{BoxError, Error, Result};
 use crate::types::BoxFuture;
 use crate::types::macros::setters;
@@ -379,15 +379,23 @@ pub struct SdkMcpTool {
 impl SdkMcpTool {
     /// Creates a tool whose input schema is derived from `Args`.
     ///
-    /// The arguments of a call are deserialized into `Args` before the
-    /// handler runs. Arguments that do not deserialize are reported to the
-    /// model as an error result, and the handler does not run.
+    /// With the `jsonschema` feature, the arguments of a call are first
+    /// validated against the schema, as for [`SdkMcpTool::raw`]. They are
+    /// then deserialized into `Args`, after each float without a fractional
+    /// part (`3.0`) is turned into an integer where the schema asks for an
+    /// integer, since JSON Schema counts it as one. Arguments that do not
+    /// deserialize are reported to the model as an error result, and the
+    /// handler does not run.
     ///
     /// The arguments of a tool are always a JSON object, so the schema is
-    /// listed with the type `object`. A type whose schema does not describe
-    /// an object (`serde_json::Value`, an enum, a scalar, a sequence) is
-    /// listed with the schema of an object that states no property; use
-    /// [`SdkMcpTool::raw`] to describe the arguments of such a tool by hand.
+    /// listed with the type `object`. The alternatives of an enum are
+    /// merged into that object, because the Claude API refuses a tool
+    /// schema with `oneOf` or `anyOf` at the top level: the model sees
+    /// every field of every variant, and `serde` checks the exact shape. A
+    /// type whose schema describes no object (`serde_json::Value`, a scalar,
+    /// a sequence, an enum of unit variants) is listed with the schema of an
+    /// object that states no property; use [`SdkMcpTool::raw`] to describe
+    /// the arguments of such a tool by hand.
     pub fn typed<Args>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -396,7 +404,10 @@ impl SdkMcpTool {
     where
         Args: JsonSchema + DeserializeOwned + Send + 'static,
     {
-        let handler = move |arguments: Value| -> BoxFuture<'static, _> {
+        let input_schema = schema::input_schema_of::<Args>();
+        let read_schema = input_schema.clone();
+        let handler = move |mut arguments: Value| -> BoxFuture<'static, _> {
+            schema::integral_floats_to_integers(&read_schema, &mut arguments);
             match serde_json::from_value::<Args>(arguments) {
                 Ok(arguments) => {
                     let call = handler(arguments);
@@ -413,7 +424,7 @@ impl SdkMcpTool {
         Self {
             name: name.into(),
             description: description.into(),
-            input_schema: schema_of::<Args>(),
+            input_schema,
             annotations: None,
             handler: Arc::new(handler),
         }
@@ -542,25 +553,6 @@ impl fmt::Debug for SdkMcpTool {
     }
 }
 
-fn schema_of<Args: JsonSchema>() -> Value {
-    let settings = SchemaSettings::draft2020_12()
-        .for_deserialize()
-        .with(|settings| {
-            settings.meta_schema = None;
-            settings.inline_subschemas = true;
-        });
-    let mut schema = settings
-        .into_generator()
-        .into_root_schema_for::<Args>()
-        .to_value();
-    if describes_an_object(&schema) {
-        schema["type"] = json!("object");
-        schema
-    } else {
-        json!({"type": "object", "properties": {}})
-    }
-}
-
 /// The schema of a [`SdkMcpTool::raw`] tool as the CLI accepts it: its
 /// `type` is `"object"`. A schema with no `type`, or with a list of types
 /// that holds `"object"`, gets `"type": "object"` as its first key; any
@@ -587,17 +579,4 @@ fn object_schema(name: &str, schema: Value) -> Result<Value> {
     typed.insert("type".to_owned(), json!("object"));
     typed.extend(fields.into_iter().filter(|(key, _)| key != "type"));
     Ok(Value::Object(typed))
-}
-
-/// Whether the root of a generated schema describes a JSON object: its type
-/// is `object`, alone or among others, or it states properties. A root made
-/// only of a `$ref` or of alternatives (`anyOf`, `oneOf`) does not: a tool
-/// has to list an input schema whose own type is `object`.
-fn describes_an_object(schema: &Value) -> bool {
-    let typed_as_an_object = match schema.get("type") {
-        Some(Value::String(kind)) => kind == "object",
-        Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind == "object"),
-        _ => false,
-    };
-    typed_as_an_object || schema.get("properties").is_some_and(Value::is_object)
 }
