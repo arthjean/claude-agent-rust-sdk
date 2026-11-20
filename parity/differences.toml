@@ -307,6 +307,24 @@ category = "deliberate"
 reason = "A process running as another user with the caller's groups keeps access the user does not have."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the_requested_user @unix"
 
+[behavior.lone-surrogate-escape]
+summary = "A line of CLI output that escapes a lone UTF-16 surrogate (`\\ud83d`)"
+python = "`json.loads` keeps the lone surrogate in the string."
+rust = "The surrogate becomes U+FFFD and the line is read; the session goes on."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:232"
+category = "deliberate"
+reason = "A Rust string holds valid Unicode only, so a lone surrogate cannot be kept; replacing it is the only way to read the line instead of ending the session."
+test = "crates/claude-agent-rust-sdk/tests/transport.rs::a_lone_surrogate_escape_from_the_cli_does_not_end_the_session"
+
+[behavior.nesting-depth-limit]
+summary = "A line of CLI output nested more than 512 levels deep"
+python = "Read until the interpreter runs out of recursion (tens of thousands of levels on Python 3.15), then `RecursionError` ends the session."
+rust = "Read up to 512 levels; a deeper line ends the session with `Error::JsonDecode`."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:232"
+category = "deliberate"
+reason = "Parsing, cloning, and dropping a `serde_json::Value` recurse once per level; 512 levels fit in the 2 MiB stack of a tokio worker thread even in a debug build, where about 700 levels of parsing overflow it."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::framing::tests::nesting_up_to_the_limit_is_read_and_deeper_fails"
+
 [unclassified.conformance-duplicate-summaries]
 source = "4.1, stricter conformance check"
 summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."

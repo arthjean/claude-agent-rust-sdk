@@ -1,11 +1,29 @@
 //! Framing of the newline-delimited JSON the CLI writes to its output.
 
+//!
+//! Two lines that `serde_json` refuses by default are still read, because
+//! the CLI can write them and upstream `json.loads` reads them:
+//!
+//! - an escape of a lone UTF-16 surrogate (`"\ud83d"`), which JavaScript's
+//!   `JSON.stringify` writes for a string cut in the middle of a surrogate
+//!   pair. A Rust string cannot hold a lone surrogate, so each one becomes
+//!   U+FFFD, where Python keeps the surrogate itself;
+//! - nesting deeper than the 128 levels `serde_json` allows, up to
+//!   [`MAX_NESTING_DEPTH`]. Python reads deeper, until its interpreter
+//!   runs out of recursion; Rust stops at a depth whose parse, clone, and
+//!   drop fit in the 2 MiB stack of a tokio worker thread in a debug build.
+
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::{Error, Result};
 
 const LINE_FEED: u8 = b'\n';
 const SKIPPED_LINE_PREVIEW_CHARS: usize = 200;
+
+/// Deepest nesting of arrays and objects a line may have.
+pub(crate) const MAX_NESTING_DEPTH: usize = 512;
+const REPLACEMENT_ESCAPE: &str = "\\uFFFD";
 
 #[derive(Debug, Default)]
 pub(crate) struct LineFramer {
@@ -48,9 +66,96 @@ pub(crate) fn parse_stdout_line(line: &[u8]) -> Result<Option<Value>> {
         tracing::debug!(line = %preview, "skipping non-JSON line from CLI stdout");
         return Ok(None);
     }
-    serde_json::from_str::<Value>(text)
-        .map(Some)
-        .map_err(|source| Error::json_decode(text, source))
+    match serde_json::from_str::<Value>(text) {
+        Ok(value) => Ok(Some(value)),
+        Err(source) => recover(text)
+            .map(Some)
+            .ok_or_else(|| Error::json_decode(text, source)),
+    }
+}
+
+/// Reads a line `serde_json` refused with its defaults, when the cause is
+/// a lone surrogate escape or a nesting between 128 and
+/// [`MAX_NESTING_DEPTH`] levels.
+fn recover(text: &str) -> Option<Value> {
+    let replaced = replace_lone_surrogates(text);
+    let text = replaced.as_deref().unwrap_or(text);
+    if nesting_depth(text) > MAX_NESTING_DEPTH {
+        return None;
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    deserializer.disable_recursion_limit();
+    let value = Value::deserialize(&mut deserializer).ok()?;
+    deserializer.end().ok()?;
+    Some(value)
+}
+
+/// The deepest nesting of arrays and objects, brackets inside strings left
+/// out.
+fn nesting_depth(text: &str) -> usize {
+    let (mut depth, mut deepest) = (0_usize, 0_usize);
+    let (mut in_string, mut escaped) = (false, false);
+    for byte in text.bytes() {
+        if in_string {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    deepest
+}
+
+/// Replaces each `\uXXXX` escape of a lone surrogate with `\uFFFD`, and
+/// keeps escaped pairs and every other escape. Returns `None` when the text
+/// holds no lone surrogate.
+fn replace_lone_surrogates(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let unit_at = |index: usize| -> Option<u16> {
+        let digits = bytes.get(index..index + 6)?;
+        if digits[0] != b'\\' || digits[1] != b'u' {
+            return None;
+        }
+        u16::from_str_radix(std::str::from_utf8(&digits[2..]).ok()?, 16).ok()
+    };
+    let is_high = |unit: u16| (0xD800..=0xDBFF).contains(&unit);
+    let is_low = |unit: u16| (0xDC00..=0xDFFF).contains(&unit);
+    let mut output = String::with_capacity(text.len());
+    let (mut copied, mut index, mut replaced) = (0, 0, false);
+    while index < bytes.len() {
+        if bytes[index] != b'\\' {
+            index += 1;
+            continue;
+        }
+        match unit_at(index) {
+            Some(unit) if is_high(unit) && unit_at(index + 6).is_some_and(is_low) => index += 12,
+            Some(unit) if is_high(unit) || is_low(unit) => {
+                output.push_str(&text[copied..index]);
+                output.push_str(REPLACEMENT_ESCAPE);
+                index += 6;
+                copied = index;
+                replaced = true;
+            }
+            Some(_) => index += 6,
+            None => index += 2,
+        }
+    }
+    replaced.then(|| {
+        output.push_str(&text[copied..]);
+        output
+    })
 }
 
 pub(crate) fn oversize_error(length: usize, limit: usize) -> Error {
@@ -65,7 +170,7 @@ pub(crate) fn oversize_error(length: usize, limit: usize) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{LineFramer, parse_stdout_line};
+    use super::{LineFramer, MAX_NESTING_DEPTH, parse_stdout_line, replace_lone_surrogates};
     use crate::error::Error;
 
     fn lines(framer: &mut LineFramer, chunk: &str) -> Vec<String> {
@@ -108,6 +213,56 @@ mod tests {
         let complete = framer.push(&text[12..]);
         let value = parse_stdout_line(&complete[0]).unwrap().unwrap();
         assert_eq!(value["text"], "\u{65e5}\u{672c}");
+    }
+
+    #[test]
+    fn a_lone_surrogate_escape_becomes_a_replacement_character() {
+        let value = parse_stdout_line(br#"{"t": "cut \ud83d", "u": "\udc00!"}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(value["t"], "cut \u{fffd}");
+        assert_eq!(value["u"], "\u{fffd}!");
+        let pair = parse_stdout_line(br#"{"t": "\ud83d\ude00 \ud83d"}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(pair["t"], "\u{1f600} \u{fffd}");
+    }
+
+    #[test]
+    fn an_escaped_backslash_before_u_is_not_a_surrogate_escape() {
+        assert_eq!(replace_lone_surrogates(r#"{"t": "\\ud83d"}"#), None);
+        assert_eq!(
+            replace_lone_surrogates(r#"{"t": "\\\ud83d"}"#).as_deref(),
+            Some(r#"{"t": "\\\uFFFD"}"#)
+        );
+        assert_eq!(replace_lone_surrogates(r#"{"t": "\u00e9 \n"}"#), None);
+    }
+
+    #[test]
+    fn nesting_up_to_the_limit_is_read_and_deeper_fails() {
+        let nested = |depth: usize| {
+            format!(
+                "{{\"a\": {}{}}}",
+                "[".repeat(depth - 1),
+                "]".repeat(depth - 1)
+            )
+        };
+        let value = parse_stdout_line(nested(MAX_NESTING_DEPTH).as_bytes())
+            .unwrap()
+            .unwrap();
+        assert!(value["a"].is_array());
+        assert!(matches!(
+            parse_stdout_line(nested(MAX_NESTING_DEPTH + 1).as_bytes()),
+            Err(Error::JsonDecode { .. })
+        ));
+        let in_string = format!("{{\"a\": \"{}\"}}", "[".repeat(MAX_NESTING_DEPTH * 2));
+        assert!(parse_stdout_line(in_string.as_bytes()).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_line_that_is_still_invalid_keeps_the_original_error() {
+        let error = parse_stdout_line(br#"{"t": "\ud83d", }"#).unwrap_err();
+        assert!(matches!(error, Error::JsonDecode { ref line, .. } if line.contains("\\ud83d")));
     }
 
     #[test]

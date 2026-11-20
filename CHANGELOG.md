@@ -16,6 +16,7 @@
 
 - JSON keeps its key order end to end, as the Python SDK and the CLI do: the properties of an output schema, the order of MCP servers and subagents, the keys of settings, and every line a fork or a resume from a store writes. The crate now enables the `preserve_order` feature of `serde_json`; since Cargo features add up, a `serde_json::Map` elsewhere in a program that uses this crate also keeps insertion order.
 - Dropping the future of `ClaudeSdkClient::query`, `interrupt`, `set_model` or any other call, for example under `tokio::time::timeout`, no longer cuts a frame on the standard input of the CLI. Every frame now goes through one writer task per session, which finishes each frame it starts, also with a custom transport.
+- A line of CLI output that escapes a lone UTF-16 surrogate, which JavaScript writes for a string cut inside an emoji, no longer ends the session: the surrogate becomes U+FFFD. Lines nested up to 512 levels deep are read too, instead of 128.
 - A `can_use_tool` allow decision whose permission updates cannot all be sent now sends none of them and logs a warning; the tool call is still allowed.
 
 ## 0.1.0 - 2026-11-18

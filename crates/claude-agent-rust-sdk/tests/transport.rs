@@ -982,3 +982,37 @@ async fn a_dropped_write_never_cuts_a_frame_the_cli_reads() {
         "both prompts arrive whole and in order"
     );
 }
+
+#[tokio::test]
+async fn a_lone_surrogate_escape_from_the_cli_does_not_end_the_session() {
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user"}},
+            {"emit_raw": "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"cut \\ud83d\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}\n"},
+            {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+                      "is_error": false, "num_turns": 1, "session_id": "s", "result": "done"}},
+        ],
+    }));
+    let messages: Vec<_> = tokio::time::timeout(
+        common::STEP_LIMIT,
+        query("Hi", fake.build()).collect::<Vec<_>>(),
+    )
+    .await
+    .unwrap();
+    let texts: Vec<String> = messages
+        .iter()
+        .filter_map(|message| match message {
+            Ok(claude_agent_rust_sdk::Message::Assistant(assistant)) => {
+                Some(format!("{:?}", assistant.content))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts.len(), 1, "{messages:?}");
+    assert!(texts[0].contains("cut \u{fffd}"), "{texts:?}");
+    assert!(matches!(
+        messages.last(),
+        Some(Ok(claude_agent_rust_sdk::Message::Result(_)))
+    ));
+}
