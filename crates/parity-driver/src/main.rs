@@ -219,10 +219,10 @@ async fn play(client: &ClaudeSdkClient, action: &str, argument: &Value) -> Resul
         }
         "stop_task" => client.stop_task(text(argument)?).await?,
         "get_mcp_status" => {
-            client.get_mcp_status().await?;
+            client.mcp_status().await?;
         }
         "get_context_usage" => {
-            client.get_context_usage().await?;
+            client.context_usage().await?;
         }
         "disconnect" => client.disconnect().await?,
         other => return Err(Failure::Unsupported(format!("step {other}"))),

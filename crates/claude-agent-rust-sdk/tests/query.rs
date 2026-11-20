@@ -564,7 +564,7 @@ async fn pending_control_requests_fail_with_the_result_error() {
         transport.push_frame(failed.clone());
         transport.push_error(exit(1));
     };
-    let (status, ()) = tokio::join!(client.get_mcp_status(), fail);
+    let (status, ()) = tokio::join!(client.mcp_status(), fail);
     let error = status.unwrap_err();
     assert_eq!(error.kind(), ErrorKind::ResultError);
     assert_eq!(error.exit_code(), Some(1));

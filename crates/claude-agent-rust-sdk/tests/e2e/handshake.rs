@@ -37,7 +37,7 @@ async fn the_handshake_and_one_turn_succeed_with_the_sdk_rs_entrypoint() {
     assert!(!options.env.contains_key(ENTRYPOINT_VARIABLE));
 
     let client = suite::connect(options).await;
-    let server_info = client.get_server_info().unwrap();
+    let server_info = client.server_info().unwrap();
     assert!(server_info.is_some(), "the handshake returned no data");
 
     let messages = suite::turn(

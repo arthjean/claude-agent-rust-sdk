@@ -191,9 +191,9 @@ async fn parsed_view(name: &str, wire: Value) -> Value {
             });
             let client = connected(&transport, ClaudeAgentOptions::default()).await;
             let view = if name == "get_mcp_status" {
-                serde_json::to_value(client.get_mcp_status().await.unwrap()).unwrap()
+                serde_json::to_value(client.mcp_status().await.unwrap()).unwrap()
             } else {
-                serde_json::to_value(client.get_context_usage().await.unwrap()).unwrap()
+                serde_json::to_value(client.context_usage().await.unwrap()).unwrap()
             };
             client.disconnect().await.unwrap();
             view

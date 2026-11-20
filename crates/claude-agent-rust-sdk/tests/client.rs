@@ -67,9 +67,9 @@ async fn every_method_but_connect_and_disconnect_needs_a_connection() {
         "toggle_mcp_server",
     );
     assert_not_connected(client.stop_task("task").await, "stop_task");
-    assert_not_connected(client.get_mcp_status().await, "get_mcp_status");
-    assert_not_connected(client.get_context_usage().await, "get_context_usage");
-    assert_not_connected(client.get_server_info(), "get_server_info");
+    assert_not_connected(client.mcp_status().await, "mcp_status");
+    assert_not_connected(client.context_usage().await, "context_usage");
+    assert_not_connected(client.server_info(), "server_info");
 
     let mut messages: Vec<_> = client.receive_messages().collect().await;
     assert_eq!(messages.len(), 1);
@@ -384,8 +384,8 @@ async fn control_methods_send_the_upstream_subtypes_and_field_names() {
     client.toggle_mcp_server("files", false).await.unwrap();
     client.toggle_mcp_server("files", true).await.unwrap();
     client.stop_task("task-abc123").await.unwrap();
-    let status = client.get_mcp_status().await.unwrap();
-    let usage = client.get_context_usage().await.unwrap();
+    let status = client.mcp_status().await.unwrap();
+    let usage = client.context_usage().await.unwrap();
 
     let sent: Vec<Value> = written(&transport, "control_request")
         .into_iter()

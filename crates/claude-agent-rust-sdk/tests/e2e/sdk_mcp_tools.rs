@@ -148,7 +148,7 @@ async fn a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others() {
         .build()
         .unwrap();
     let client = suite::connect(options).await;
-    let mut status = client.get_mcp_status().await.unwrap();
+    let mut status = client.mcp_status().await.unwrap();
     for _ in 0..50 {
         if status
             .mcp_servers
@@ -158,7 +158,7 @@ async fn a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        status = client.get_mcp_status().await.unwrap();
+        status = client.mcp_status().await.unwrap();
     }
     client.disconnect().await.unwrap();
 

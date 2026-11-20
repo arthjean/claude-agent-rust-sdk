@@ -370,7 +370,7 @@ fn tool_result(field: &Field<'_>, result: Option<&Value>) -> Result<ToolResult, 
         .get("is_error")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    Ok(ToolResult::new(content).is_error(is_error))
+    Ok(ToolResult::new(content).with_error_flag(is_error))
 }
 
 fn can_use_tool(field: &Field<'_>) -> Result<CanUseTool, Failure> {

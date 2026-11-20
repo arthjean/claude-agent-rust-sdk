@@ -199,7 +199,7 @@ async fn an_injection_failure_is_logged_and_the_connection_proceeds() {
     connected.unwrap();
     assert_eq!(reported["TRACEPARENT"], inherited);
     assert_eq!(reported["TRACESTATE"], Value::Null);
-    let server_info = client.get_server_info().unwrap();
+    let server_info = client.server_info().unwrap();
     client.disconnect().await.unwrap();
     assert!(server_info.is_some());
     assert!(

@@ -292,7 +292,7 @@ impl ToolResult {
     /// Creates a failed result holding one text block.
     #[must_use]
     pub fn error(text: impl Into<String>) -> Self {
-        Self::text(text).is_error(true)
+        Self::text(text).with_error_flag(true)
     }
 
     /// Adds one content block.
@@ -302,9 +302,9 @@ impl ToolResult {
         self
     }
 
-    /// Sets the error flag.
+    /// Sets the error flag, which [`is_error`](Self::is_error) holds.
     #[must_use]
-    pub fn is_error(mut self, is_error: bool) -> Self {
+    pub fn with_error_flag(mut self, is_error: bool) -> Self {
         self.is_error = is_error;
         self
     }

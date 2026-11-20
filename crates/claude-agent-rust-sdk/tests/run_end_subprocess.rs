@@ -277,7 +277,7 @@ async fn client_holds_a_conversation_with_the_cli_process() {
     }));
     let client = ClaudeSdkClient::new(fake.build());
     client.connect().await.unwrap();
-    assert!(client.get_server_info().unwrap().is_some());
+    assert!(client.server_info().unwrap().is_some());
 
     client.query("first").await.unwrap();
     let first = collect(client.receive_response()).await;

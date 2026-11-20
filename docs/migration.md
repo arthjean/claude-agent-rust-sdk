@@ -34,6 +34,9 @@ while let Some(message) = messages.next().await {
   `client.disconnect().await?` when you are done.
 - `client.receive_response()` and `client.receive_messages()` return streams
   too.
+- The `get_` prefix is dropped, as Rust names its getters:
+  `get_server_info()`, `get_mcp_status()`, and `get_context_usage()` become
+  `server_info()`, `mcp_status()`, and `context_usage()`.
 
 ## Options
 

@@ -390,7 +390,8 @@ impl ClaudeSdkClient {
     ///
     /// See [`interrupt`](Self::interrupt). Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse)
     /// when the response does not have the expected shape.
-    pub async fn get_mcp_status(&self) -> Result<McpStatusResponse> {
+    #[doc(alias = "get_mcp_status")]
+    pub async fn mcp_status(&self) -> Result<McpStatusResponse> {
         typed(
             self.control(json!({"subtype": "mcp_status"})).await?,
             "mcp_status",
@@ -404,7 +405,8 @@ impl ClaudeSdkClient {
     ///
     /// See [`interrupt`](Self::interrupt). Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse)
     /// when the response does not have the expected shape.
-    pub async fn get_context_usage(&self) -> Result<ContextUsageResponse> {
+    #[doc(alias = "get_context_usage")]
+    pub async fn context_usage(&self) -> Result<ContextUsageResponse> {
         typed(
             self.control(json!({"subtype": "get_context_usage"}))
                 .await?,
@@ -418,7 +420,8 @@ impl ClaudeSdkClient {
     /// # Errors
     ///
     /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is not connected.
-    pub fn get_server_info(&self) -> Result<Option<Value>> {
+    #[doc(alias = "get_server_info")]
+    pub fn server_info(&self) -> Result<Option<Value>> {
         Ok(self.connection()?.session.server_info())
     }
 

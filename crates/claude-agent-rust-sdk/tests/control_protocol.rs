@@ -63,7 +63,7 @@ async fn control_responses_complete_the_request_with_the_same_id() {
     }));
     transport.push_frame(json!({"type": "control_response"}));
 
-    let (status, usage) = tokio::join!(client.get_mcp_status(), client.get_context_usage());
+    let (status, usage) = tokio::join!(client.mcp_status(), client.context_usage());
     let status = status.unwrap();
     assert_eq!(status.mcp_servers.len(), 1);
     assert_eq!(status.mcp_servers[0].name, "files");
@@ -195,7 +195,7 @@ async fn reader_error_fails_every_pending_request_with_that_error() {
         assert_eq!(written(&transport, "control_request").len(), 3);
         transport.push_error(Error::process("Command failed", Some(3), None));
     };
-    let (interrupt, status, ()) = tokio::join!(client.interrupt(), client.get_mcp_status(), fail);
+    let (interrupt, status, ()) = tokio::join!(client.interrupt(), client.mcp_status(), fail);
     for error in [interrupt.unwrap_err(), status.unwrap_err()] {
         assert_eq!(error.kind(), ErrorKind::Process);
         assert_eq!(error.exit_code(), Some(3));
@@ -752,14 +752,14 @@ async fn initialize_response_is_stored_and_returned_as_server_info() {
     let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
     assert!(
         client
-            .get_server_info()
+            .server_info()
             .as_ref()
             .err()
             .is_some_and(Error::is_cli_connection)
     );
     client.connect().await.unwrap();
     assert_eq!(
-        client.get_server_info().unwrap(),
+        client.server_info().unwrap(),
         Some(json!({"commands": [{"name": "compact"}], "output_style": "default"}))
     );
 }
@@ -799,7 +799,7 @@ async fn block_on_failure_is_refused_when_the_cli_cannot_honor_it() {
         assert!(transport.is_closed());
         assert!(
             client
-                .get_server_info()
+                .server_info()
                 .as_ref()
                 .err()
                 .is_some_and(Error::is_cli_connection)
