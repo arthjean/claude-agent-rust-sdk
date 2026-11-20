@@ -60,9 +60,17 @@ pub(crate) struct ResumeDir {
 }
 
 impl ResumeDir {
+    /// Creates the directory, readable only by its owner on Unix as
+    /// `tempfile.mkdtemp` makes it upstream: it holds the credentials.
     fn create() -> Result<Self> {
-        let directory = tempfile::Builder::new()
-            .prefix(TEMPORARY_PREFIX)
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(TEMPORARY_PREFIX);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o700));
+        }
+        let directory = builder
             .tempdir()
             .map_err(|error| Error::io("Cannot create the resume directory", error))?;
         Ok(Self {

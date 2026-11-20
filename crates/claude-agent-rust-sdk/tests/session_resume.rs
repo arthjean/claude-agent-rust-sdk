@@ -417,10 +417,167 @@ async fn the_client_removes_the_directory_on_disconnect() {
     assert!(!created[0].exists());
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_with_nothing_to_strip_are_copied_byte_for_byte_and_kept_private() {
+    let _serial = SERIAL.lock().await;
+    let settings = br#"{"apiKeyHelper": "/bin/print-key", "env": {"FOO": "bar"}}"#;
+    let setup = Setup::with_caller_files(&[
+        ("settings.json", settings),
+        ("cowork_settings.json", settings),
+        (".claude.json", br#"{"theme":"dark"}"#),
+    ]);
+    let (messages, config, _) = setup.resumed().await;
+    assert_eq!(
+        std::fs::read(config.join("settings.json")).unwrap(),
+        settings
+    );
+    assert_eq!(
+        std::fs::read(config.join("cowork_settings.json")).unwrap(),
+        settings
+    );
+    assert_eq!(
+        std::fs::read_to_string(config.join(".claude.json")).unwrap(),
+        r#"{"theme":"dark"}"#
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&config), 0o700);
+        for name in ["settings.json", "cowork_settings.json", ".claude.json"] {
+            assert_eq!(mode(&config.join(name)), 0o600, "{name}");
+        }
+    }
+    let _: Vec<_> = messages.collect().await;
+    wait_until_removed(&config).await;
+}
+
+/// Lists the subkeys upstream's traversal test lists, and records every
+/// subpath it is asked to load.
+struct TraversalStore {
+    main: Vec<SessionStoreEntry>,
+    loaded: Arc<Mutex<Vec<Option<String>>>>,
+}
+
+const TRAVERSAL_SUBKEYS: [&str; 12] = [
+    "",
+    ".",
+    "./",
+    "a/.",
+    "subagents/.",
+    "/etc/passwd",
+    "../escape",
+    "a/../b",
+    "C:escape",
+    "C:\\abs",
+    "subagents/agent\0x",
+    "subagents/agent-ok",
+];
+
+impl SessionStore for TraversalStore {
+    async fn append(
+        &self,
+        _key: &SessionKey,
+        _entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        Ok(())
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.loaded.lock().unwrap().push(key.subpath.clone());
+        Ok(match key.subpath.as_deref() {
+            None => Some(self.main.clone()),
+            Some("subagents/agent-ok") => Some(vec![entry(json!({"type": "user", "uuid": "ok"}))]),
+            Some(_) => None,
+        })
+    }
+
+    fn capabilities(&self) -> SessionStoreCapabilities {
+        SessionStoreCapabilities::none().with_list_subkeys()
+    }
+
+    async fn list_subkeys(
+        &self,
+        _key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        Ok(TRAVERSAL_SUBKEYS
+            .iter()
+            .map(|subkey| (*subkey).to_owned())
+            .collect())
+    }
+}
+
+fn files_under(directory: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for item in std::fs::read_dir(directory).unwrap().flatten() {
+        let path = item.path();
+        if path.is_dir() {
+            files.extend(files_under(&path));
+        } else {
+            files.push(path);
+        }
+    }
+    files
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unsafe_subkeys_are_never_loaded_nor_written() {
+    let _serial = SERIAL.lock().await;
+    let setup = Setup::new();
+    let id = uuid::Uuid::new_v4().to_string();
+    let main = vec![entry(json!({"type": "user", "uuid": "main"}))];
+    let loaded = Arc::new(Mutex::new(Vec::new()));
+    let store = TraversalStore {
+        main: main.clone(),
+        loaded: Arc::clone(&loaded),
+    };
+    let options = setup.options(store).resume(id.as_str()).build().unwrap();
+    let mut messages = query("continue", options);
+    let config = child_config_dir(&until_init(&mut messages).await);
+
+    assert_eq!(
+        loaded.lock().unwrap().clone(),
+        [None, Some("subagents/agent-ok".to_owned())],
+        "only the main transcript and the safe subpath are loaded"
+    );
+    let project = config.join("projects").join(&setup.project_key);
+    let main_text = std::fs::read_to_string(project.join(format!("{id}.jsonl"))).unwrap();
+    let main_lines: Vec<Value> = main_text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(main_lines, [json!({"type": "user", "uuid": "main"})]);
+    let session_dir = project.join(&id);
+    assert!(
+        session_dir
+            .join("subagents")
+            .join("agent-ok.jsonl")
+            .is_file()
+    );
+    let written: Vec<PathBuf> = files_under(&session_dir);
+    assert_eq!(
+        written,
+        [session_dir.join("subagents").join("agent-ok.jsonl")],
+        "nothing else is written under the session"
+    );
+    assert!(
+        files_under(&config)
+            .iter()
+            .all(|file| file.starts_with(&config))
+    );
+    let _: Vec<_> = messages.collect().await;
+    wait_until_removed(&config).await;
+}
+
 struct SlowStore {
     inner: InMemorySessionStore,
     slow_load: bool,
     slow_subkeys: bool,
+    /// The materialized directories that existed when `list_subkeys` ran.
+    seen: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl SessionStore for SlowStore {
@@ -450,6 +607,10 @@ impl SessionStore for SlowStore {
         &self,
         key: &SessionListSubkeysKey,
     ) -> Result<Vec<String>, SessionStoreError> {
+        self.seen
+            .lock()
+            .unwrap()
+            .extend(resume_dirs(&key.project_key));
         if self.slow_subkeys {
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
@@ -476,10 +637,12 @@ async fn a_slow_store_fails_the_resume_and_leaves_no_directory() {
             .append(&setup.key(&id), &transcript(&id))
             .await
             .unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
         let store = SlowStore {
             inner,
             slow_load,
             slow_subkeys,
+            seen: Arc::clone(&seen),
         };
         let options = setup
             .options(store)
@@ -493,6 +656,17 @@ async fn a_slow_store_fails_the_resume_and_leaves_no_directory() {
             error.to_string().contains("timed out after 100 ms"),
             "{error}"
         );
+        let hung = if slow_load { "load" } else { "list_subkeys" };
+        assert!(error.to_string().contains(hung), "{error}");
+        let seen = seen.lock().unwrap().clone();
+        if slow_subkeys {
+            assert_eq!(
+                seen.len(),
+                1,
+                "the load succeeded, so the directory was created"
+            );
+            assert!(!seen[0].exists(), "{} was left behind", seen[0].display());
+        }
         assert!(
             setup.resume_dirs().is_empty(),
             "slow load {slow_load}, slow subkeys {slow_subkeys}"
