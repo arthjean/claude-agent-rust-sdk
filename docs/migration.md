@@ -167,7 +167,8 @@ to the CLI, as the Python `otel` extra does.
 
 - anyio and trio: tokio is the only runtime.
 - The bundled CLI: the crate runs the `claude` executable installed on the
-  machine, or the one `cli_path` names.
+  machine, or the one `cli_path` names, and logs a warning when its version
+  is not the tested one (`CLI_VERSION`).
 - The TypeScript-only features (`startup`, `prewarm`, `setMcpServers`, and
   similar) are out of scope, as they are for the Python SDK.
 

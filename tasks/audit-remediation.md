@@ -24,7 +24,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A07 | major | Force `"type": "object"` on `SdkMcpTool::raw` schemas | done | `object_schema` in `src/mcp/tool.rs` adds `"type": "object"` or refuses another type; tests `sdk_mcp.rs::raw_schema_without_a_type_is_listed_as_an_object_schema`, `raw_schema_whose_type_is_not_object_is_a_config_error`; real CLI red then green (`e2e/sdk_mcp_tools.rs::a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`); `[behavior.raw-tool-schema-type]`. |
 | A08 | major | Isolate SessionStore panics, always signal reader end | done | `append_with_retry` catches a panic of the store (`src/mirror.rs`); `ReaderFinish` records the end, fails pending requests and sends an error when the reader stops without one (`src/control/mod.rs`). Tests `transcript_mirror.rs::a_store_that_panics_is_reported_and_the_result_is_still_delivered`, `control_protocol.rs::a_panic_in_the_reader_fails_pending_requests_at_once_and_ends_the_stream_with_an_error`, both red on the old code; exclusion `python-exception-guard` removed, the upstream test now maps to them. |
 | A09 | major | Keep unknown data on types the user sends | todo | |
-| A10 | major | CLI version warning, private `managed_install_dir` | todo | |
+| A10 | major | CLI version warning, private `managed_install_dir` | done | No installer (owner). `warn_if_untested` in `src/transport/subprocess.rs` warns when the init frame reports a version other than `CLI_VERSION` (tests `transport.rs::the_tested_cli_version_does_not_warn`, `a_cli_older_or_newer_than_the_tested_version_warns_once`; `[behavior.untested-cli-version]`); `managed_install_dir` private, still searched before `PATH` (see Product choices); messages say "Claude Code"; `packaging` exclusion reason updated. |
 | A11 | major | Evolvable public surface before 1.0 (error design: owner approval) | doing | Error part done: opaque `Error` + `ErrorKind` (17 kinds), accessors, `is_retryable()`, owner chose this design on 2026-11-20; tests in `src/error.rs` and `tests/errors.rs`. Remaining: `#[non_exhaustive]` variants, `wire_enum` equality, sealed `McpSdkServerInstance`. |
 | A12 | major | Let the CLI stop cleanly when the program ends | todo | |
 | A13 | major | Align public claims with what is measured | todo | |
@@ -62,6 +62,8 @@ difference, recorded), `blocked` (waiting on the owner).
 ## Product choices taken without the owner
 
 Each choice the audit did not settle, with the cautious option taken.
+
+- A10: `managed_install_dir` is private as asked, and its directory is still searched before `PATH`, so a CLI placed there by hand keeps working. Removing the lookup would be the other option; it changes behavior for no measured gain.
 
 ## Real-CLI runs (budget: 10 USD)
 

@@ -78,6 +78,7 @@ impl Warnings {
             .filter(|message| {
                 message.contains("too old to report its version")
                     || message.contains("verbatim_prompts is enabled")
+                    || message.contains("the version this release of the SDK is tested against")
             })
             .cloned()
             .collect()

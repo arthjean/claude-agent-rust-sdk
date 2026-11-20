@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use claude_agent_rust_sdk::ErrorKind;
-use claude_agent_rust_sdk::cli::{find_cli, managed_install_dir};
+use claude_agent_rust_sdk::cli::find_cli;
 use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, SubprocessTransport};
 use serde_json::json;
 
@@ -35,6 +35,23 @@ fn install(directory: &Path) -> std::path::PathBuf {
     let installed = directory.join(CLI_NAME);
     std::fs::copy(fake_claude(), &installed).unwrap();
     installed
+}
+
+/// The install directory reserved for the crate under the base directories
+/// the test points at: `LOCALAPPDATA` on Windows, the home on macOS, and
+/// `XDG_DATA_HOME` elsewhere.
+fn managed_dir(root: &Path) -> std::path::PathBuf {
+    let base = if cfg!(windows) {
+        root.join("local-app-data")
+    } else if cfg!(target_os = "macos") {
+        std::env::home_dir()
+            .unwrap()
+            .join("Library")
+            .join("Application Support")
+    } else {
+        root.join("xdg-data")
+    };
+    base.join("claude-agent-rust-sdk").join("cli")
 }
 
 fn not_found_message(error: Error) -> String {
@@ -84,10 +101,7 @@ fn the_process_environment_drives_discovery_and_the_version_check_switch() {
         transport.close().await.unwrap();
     });
 
-    let managed_dir = managed_install_dir().unwrap();
-    assert!(managed_dir.starts_with(root.path()), "{managed_dir:?}");
-    assert!(managed_dir.ends_with(Path::new("claude-agent-rust-sdk").join("cli")));
-    let managed = install(&managed_dir);
+    let managed = install(&managed_dir(root.path()));
     assert_eq!(find_cli().unwrap(), managed);
     std::fs::remove_file(&managed).unwrap();
 
@@ -110,7 +124,7 @@ fn the_process_environment_drives_discovery_and_the_version_check_switch() {
 
         let message = not_found_message(find_cli().unwrap_err());
         assert!(
-            message.starts_with("Claude CLI not found. Install"),
+            message.starts_with("Claude Code not found. Install"),
             "{message}"
         );
         let connect_message = runtime.block_on(async {
@@ -208,5 +222,5 @@ fn the_working_directory_and_relative_path_entries_are_never_searched_on_windows
         std::env::join_paths([Path::new(""), Path::new(".")]).unwrap(),
     );
     let message = not_found_message(find_cli().unwrap_err());
-    assert!(message.starts_with("Claude CLI not found."), "{message}");
+    assert!(message.starts_with("Claude Code not found."), "{message}");
 }

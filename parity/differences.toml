@@ -325,6 +325,15 @@ category = "rust-more-robust"
 reason = "CLI 2.1.329 drops every tool of a server when one tool lists a schema whose type is not object, and reports the server connected with no error (shown by `tests/e2e/sdk_mcp_tools.rs::a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`); an error at build time names the tool instead."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_schema_whose_type_is_not_object_is_a_config_error"
 
+[behavior.untested-cli-version]
+summary = "A CLI whose version is not the tested one"
+python = "Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version."
+rust = "Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1153-1175"
+category = "rust-more-robust"
+reason = "Without a bundled CLI, the installed one can be any release; an older one exits with an error on an option it does not know, and the warning names the cause."
+test = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once"
+
 [behavior.lone-surrogate-escape]
 summary = "A line of CLI output that escapes a lone UTF-16 surrogate (`\\ud83d`)"
 python = "`json.loads` keeps the lone surrogate in the string."

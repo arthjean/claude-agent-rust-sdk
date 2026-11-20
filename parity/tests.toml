@@ -20,7 +20,7 @@ python-pickle = "Checks pickling and copying of exception objects."
 python-warnings = "Checks the filter and deduplication mechanics of the Python `warnings` module."
 python-atexit-registry = "Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry."
 no-sdk-code = "Asserts only on literals defined in the test file and calls no SDK code."
-packaging = "Tests the wheel build, the bundled CLI, the CLI download, or the release scripts; distribution is a non-goal of this PRD."
+packaging = "Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine."
 example-store-adapters = "Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal)."
 derived-client-app = "Tests the derived client-application label, which is not ported (non-goal); only the explicit `client_app` option is."
 upstream-repository = "Checks files of the upstream repository itself."
@@ -1135,7 +1135,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestSubprocessCLITransport::test_build_command_always_uses_streaming" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::basic_command_starts_and_ends_with_the_stream_json_flags" }
 "TestSubprocessCLITransport::test_build_command_large_agents_work" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::agents_and_the_prompt_never_appear_in_the_arguments" }
 "TestSubprocessCLITransport::test_cli_too_old_to_report_its_version_warns_once" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_too_old_to_report_its_version_warns_once" }
-"TestSubprocessCLITransport::test_supported_cli_version_does_not_warn" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_supported_cli_version_does_not_warn" }
+"TestSubprocessCLITransport::test_supported_cli_version_does_not_warn" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::the_tested_cli_version_does_not_warn", note = "Rust warns for any version other than CLI_VERSION (see behavior.untested-cli-version), so only the tested version is silent." }
 "TestSubprocessCLITransport::test_version_warning_can_be_skipped" = { rust = "crates/claude-agent-rust-sdk/tests/discovery.rs::the_process_environment_drives_discovery_and_the_version_check_switch" }
 "TestSubprocessCLITransport::test_stderr_callback_raise_does_not_terminate_loop" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::stderr_callback_panic_does_not_stop_the_loop" }
 "TestSubprocessCLITransport::test_stderr_line_split_across_chunks_is_reassembled" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::stderr_line_split_across_chunks_is_reassembled" }
@@ -1275,4 +1275,4 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestClaudeSDKClient::test_option_is_captured_at_connect" = { excluded = "python-typing", note = "The client owns its options and gives no mutable access to them, so they cannot be toggled during a session." }
 "TestOlderCliWarning::test_warns_when_cli_predates_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
 "TestOlderCliWarning::test_no_warning_when_cli_supports_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
-"TestOlderCliWarning::test_no_warning_when_option_is_off" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_supported_cli_version_does_not_warn" }
+"TestOlderCliWarning::test_no_warning_when_option_is_off" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once" }

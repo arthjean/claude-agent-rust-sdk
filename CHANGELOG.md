@@ -8,6 +8,7 @@
 - A scheduled check of `Cargo.lock` against the RustSec advisory database.
 - `Error::is_retryable()` says whether trying again can succeed: a control timeout, a closed connection, an API error result with status 429, 529, or 5xx, a process killed by a signal, an interrupted or timed-out I/O call, or a store that took too long.
 - `Error::stderr()` holds the last 8 KiB of the CLI's error output when a `stderr` callback captured it, where it used to hold a placeholder. The text of the error leaves it out, so logging an error never logs what the CLI wrote to stderr.
+- A warning is logged when the CLI reports a version older or newer than `CLI_VERSION`, the one release the crate is tested against: an older CLI exits with an error on an option it does not know.
 
 ### Changed
 
@@ -16,6 +17,10 @@
 - **Breaking:** the text of an `Io` or `SessionStore` error no longer repeats its source, which `std::error::Error::source` returns with its type (an `io::Error` stays an `io::Error`).
 - Messages name the product "Claude Code", as upstream does: "Claude Code not found", "Failed to start Claude Code".
 - **Breaking:** `PermissionUpdate::to_wire` returns a `Result`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `ErrorKind::Config` error. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
+
+### Removed
+
+- **Breaking:** `cli::managed_install_dir` is private. The crate installs no CLI, so the directory is only searched, before `PATH`, as before.
 
 ### Fixed
 

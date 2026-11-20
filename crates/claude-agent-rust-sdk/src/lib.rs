@@ -48,7 +48,8 @@
 //! The crate does not bundle the CLI: it runs the `claude` executable
 //! already installed on the machine (see [`cli::find_cli`]), with the
 //! credentials of the person running the program. It is tested against CLI
-//! 2.1.329 ([`CLI_VERSION`]), and warns when the installed CLI is older than
+//! 2.1.329 ([`CLI_VERSION`]), warns when the installed CLI reports another
+//! version, and warns that it may not work when it is older than
 //! 2.0.0 ([`MINIMUM_CLI_VERSION`]).
 //!
 //! # Example

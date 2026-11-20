@@ -25,7 +25,7 @@ measured counts, and every known difference with its reason and its test.
 - Rust 1.88 or newer, with tokio as the async runtime.
 - The Claude Code CLI installed on the machine that runs your program. The
   crate does not bundle it. Version 2.0.0 is the minimum; the crate is tested
-  against 2.1.329.
+  against 2.1.329 and logs a warning when the CLI reports another version.
 - Linux, macOS, or Windows.
 
 ## Authentication

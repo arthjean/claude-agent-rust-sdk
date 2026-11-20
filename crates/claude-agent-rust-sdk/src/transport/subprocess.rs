@@ -595,13 +595,14 @@ impl VersionCheck {
         let reported = message.get("claude_code_version");
         let version = reported.and_then(Value::as_str).and_then(parse_version);
         let cli_path = self.cli_path.display();
-        if version.is_none() {
-            tracing::warn!(
-                "Claude CLI at {cli_path} is too old to report its version, and may be \
+        match version {
+            None => tracing::warn!(
+                "Claude Code at {cli_path} is too old to report its version, and may be \
                  unsupported in the Agent SDK. Minimum required version is {}. Some features \
                  may not work correctly.",
                 crate::MINIMUM_CLI_VERSION,
-            );
+            ),
+            Some(version) => warn_if_untested(version, &cli_path.to_string()),
         }
         if self.verbatim_prompts
             && version.is_none_or(|version| version < VERBATIM_PROMPTS_MINIMUM_CLI_VERSION)
@@ -609,11 +610,37 @@ impl VersionCheck {
             let (major, minor, patch) = VERBATIM_PROMPTS_MINIMUM_CLI_VERSION;
             let reported = reported.and_then(Value::as_str).unwrap_or("unknown");
             tracing::warn!(
-                "verbatim_prompts is enabled, but Claude CLI version {reported} at {cli_path} \
+                "verbatim_prompts is enabled, but Claude Code version {reported} at {cli_path} \
                  ignores it: prompts will still have @path mentions expanded and slash commands \
-                 dispatched. Version {major}.{minor}.{patch} or later is required.",
+                 dispatched. Claude Code {major}.{minor}.{patch} or later is required.",
             );
         }
+    }
+}
+
+/// Warns when the CLI is not [`CLI_VERSION`](crate::CLI_VERSION), the one
+/// release this crate is tested against. Python runs the CLI bundled in its
+/// wheel, so the two always match there; this crate runs the CLI installed
+/// on the machine, which can be any release.
+fn warn_if_untested(version: (u64, u64, u64), cli_path: &str) {
+    let Some(tested) = parse_version(crate::CLI_VERSION) else {
+        return;
+    };
+    let (major, minor, patch) = version;
+    let tested_text = crate::CLI_VERSION;
+    match version.cmp(&tested) {
+        std::cmp::Ordering::Equal => {}
+        std::cmp::Ordering::Less => tracing::warn!(
+            "Claude Code {major}.{minor}.{patch} at {cli_path} is older than {tested_text}, the \
+             version this release of the SDK is tested against: an option it does not know \
+             makes it exit with an error. Update Claude Code, or point cli_path at a \
+             {tested_text} install."
+        ),
+        std::cmp::Ordering::Greater => tracing::warn!(
+            "Claude Code {major}.{minor}.{patch} at {cli_path} is newer than {tested_text}, the \
+             version this release of the SDK is tested against: what it added since may not \
+             be handled."
+        ),
     }
 }
 

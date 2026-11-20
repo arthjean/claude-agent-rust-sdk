@@ -1,8 +1,9 @@
 //! Locating the CLI executable.
 //!
-//! [`find_cli`] searches, in order: the managed install directory of this
-//! crate ([`managed_install_dir`]), the directories of `PATH`, then the
-//! locations the official installers use. The `cli_path` option, when set,
+//! [`find_cli`] searches, in order: the install directory reserved for this
+//! crate, the directories of `PATH`, then the locations the official
+//! installers use. The crate installs nothing there itself; a CLI placed
+//! there wins over `PATH`. The `cli_path` option, when set,
 //! bypasses the search.
 //!
 //! On Windows only a native `claude.exe` is accepted, and only absolute
@@ -21,14 +22,14 @@ const MANAGED_CLI_SUBDIR: &str = "cli";
 const UNIX_CLI_NAME: &str = "claude";
 const WINDOWS_CLI_NAME: &str = "claude.exe";
 
-const NOT_FOUND_UNIX: &str = "Claude CLI not found. Install with:\n  \
+const NOT_FOUND_UNIX: &str = "Claude Code not found. Install with:\n  \
     npm install -g @anthropic-ai/claude-code\n\
     \nIf already installed locally, try:\n  \
     export PATH=\"$HOME/node_modules/.bin:$PATH\"\n\
     \nOr provide the path via ClaudeAgentOptions:\n  \
     ClaudeAgentOptions::builder().cli_path(\"/path/to/claude\")";
 
-const NOT_FOUND_WINDOWS: &str = "Claude CLI not found. Install the native claude.exe with \
+const NOT_FOUND_WINDOWS: &str = "Claude Code not found. Install the native claude.exe with \
     (PowerShell):\n  \
     irm https://claude.ai/install.ps1 | iex\n\
     \nOr provide the path to a claude.exe via ClaudeAgentOptions:\n  \
@@ -59,16 +60,14 @@ impl Platform {
     }
 }
 
-/// Directory where this crate keeps a CLI it installed itself.
-///
-/// The CLI found there takes precedence over `PATH`. The directory is
+/// Directory reserved for a CLI installed for this crate, searched before
+/// `PATH`. The crate installs nothing there itself. The directory is
 /// `%LOCALAPPDATA%\claude-agent-rust-sdk\cli` on Windows,
 /// `~/Library/Application Support/claude-agent-rust-sdk/cli` on macOS, and
 /// `$XDG_DATA_HOME/claude-agent-rust-sdk/cli` (default
 /// `~/.local/share/claude-agent-rust-sdk/cli`) elsewhere. Returns `None` when
 /// the base directory cannot be determined.
-#[must_use]
-pub fn managed_install_dir() -> Option<PathBuf> {
+fn managed_install_dir() -> Option<PathBuf> {
     let base = if cfg!(windows) {
         absolute_from_env("LOCALAPPDATA")?
     } else if cfg!(target_os = "macos") {
@@ -122,7 +121,7 @@ impl CliLocator {
         if let Some(managed) = &self.managed_dir {
             let candidate = managed.join(name);
             if candidate.is_file() {
-                tracing::info!(path = %candidate.display(), "using the managed Claude CLI");
+                tracing::info!(path = %candidate.display(), "using the Claude Code CLI of the reserved install directory");
                 return Ok(candidate);
             }
         }
@@ -394,7 +393,7 @@ mod tests {
         }
         let message = not_found_message(locator.find());
         assert!(message.starts_with(
-            "Claude CLI not found. Install with:\n  npm install -g @anthropic-ai/claude-code\n"
+            "Claude Code not found. Install with:\n  npm install -g @anthropic-ai/claude-code\n"
         ));
         assert!(!message.contains("install.ps1"));
     }

@@ -450,17 +450,45 @@ async fn a_cli_too_old_to_report_its_version_warns_once() {
     assert!(messages[0].contains(&fake_claude().display().to_string()));
 }
 
-#[tokio::test]
-async fn a_supported_cli_version_does_not_warn() {
+async fn version_warnings(version: &str) -> Vec<String> {
     let (warnings, _guard) = Warnings::install();
-    for version in ["2.0.20", "99.99.99"] {
-        let fake = Fake::new(json!({"claude_code_version": version, "steps": [{"exit": 0}]}));
-        let transport = SubprocessTransport::new(fake.build());
-        transport.connect().await.unwrap();
-        collect(transport.read_messages()).await;
-        transport.close().await.unwrap();
-    }
-    assert_eq!(warnings.about_the_cli_version(), Vec::<String>::new());
+    let fake = Fake::new(json!({"claude_code_version": version, "steps": [{"exit": 0}]}));
+    let transport = SubprocessTransport::new(fake.build());
+    transport.connect().await.unwrap();
+    collect(transport.read_messages()).await;
+    transport.close().await.unwrap();
+    warnings.about_the_cli_version()
+}
+
+#[tokio::test]
+async fn the_tested_cli_version_does_not_warn() {
+    assert_eq!(
+        version_warnings(claude_agent_rust_sdk::CLI_VERSION).await,
+        Vec::<String>::new()
+    );
+}
+
+#[tokio::test]
+async fn a_cli_older_or_newer_than_the_tested_version_warns_once() {
+    let older = version_warnings("2.0.20").await;
+    assert_eq!(older.len(), 1, "{older:?}");
+    assert!(
+        older[0].starts_with("Claude Code 2.0.20 at ")
+            && older[0].contains("is older than 2.1.329"),
+        "{}",
+        older[0]
+    );
+    assert!(older[0].contains("Update Claude Code"), "{}", older[0]);
+    assert!(
+        !older
+            .iter()
+            .any(|message| message.contains("verbatim_prompts")),
+        "verbatim_prompts is off, so its warning is not logged"
+    );
+
+    let newer = version_warnings("99.99.99").await;
+    assert_eq!(newer.len(), 1, "{newer:?}");
+    assert!(newer[0].contains("is newer than 2.1.329"), "{}", newer[0]);
 }
 
 #[tokio::test]
@@ -474,9 +502,12 @@ async fn verbatim_prompts_warns_on_a_cli_that_ignores_it() {
         collect(transport.read_messages()).await;
         transport.close().await.unwrap();
     }
-    let messages = warnings.about_the_cli_version();
+    let messages: Vec<String> = warnings
+        .about_the_cli_version()
+        .into_iter()
+        .filter(|message| message.contains("verbatim_prompts is enabled"))
+        .collect();
     assert_eq!(messages.len(), 1, "{messages:?}");
-    assert!(messages[0].contains("verbatim_prompts is enabled"));
     assert!(messages[0].contains("version 2.1.247"));
     assert!(messages[0].contains("2.1.248 or later is required"));
 }

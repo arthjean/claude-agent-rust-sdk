@@ -45,7 +45,7 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ## Deliberately different
 
-37 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 30 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+38 differences are reviewed and accepted: 7 on the wire, found by `cargo xtask parity-diff`, and 31 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
 ### Deliberate choices (20)
 
@@ -83,7 +83,7 @@ Rust does what the CLI does where Python does not.
 | Timestamps written into a transcript | Microseconds. (upstream `src/claude_agent_sdk/_internal/session_mutations.py:402`) | Milliseconds, as `Date.toISOString` in the CLI writes them. | The transcript is the CLI's file; Rust writes what the CLI writes. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::formats_like_javascript` |
 | The project directory name of a path outside ASCII | Characters are counted as code points, so an emoji is one character. (upstream `src/claude_agent_sdk/_internal/sessions.py:81-114`) | Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 in `docs/validation/project-dir-naming.md`. | Python computes a name the CLI never creates, and finds no session there. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::sanitize_replaces_every_unit_outside_ascii_alphanumerics` |
 
-### Rust handles what stops Python (9)
+### Rust handles what stops Python (10)
 
 Rust keeps going, or keeps the data, where Python fails or drops it.
 
@@ -98,6 +98,7 @@ Rust keeps going, or keeps the data, where Python fails or drops it.
 | A hand-written tool schema whose type is not object | A dict with a string `type` and `properties` is listed as written, whatever the type; any other dict is read as a parameter table and becomes an object schema. (upstream `src/claude_agent_sdk/__init__.py:436-456`) | `SdkMcpTool::raw` adds `"type": "object"` to a schema with no `type`, and refuses with a `Config` error a schema whose `type` is not `object`. | CLI 2.1.329 drops every tool of a server when one tool lists a schema whose type is not object, and reports the server connected with no error (shown by `tests/e2e/sdk_mcp_tools.rs::a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`); an error at build time names the tool instead. | `crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_schema_whose_type_is_not_object_is_a_config_error` |
 | `connect` on a connected client | The new session replaces the old one, which is never closed. (upstream `src/claude_agent_sdk/client.py:208`) | The previous session is closed before the new one starts. | An unclosed session leaks a CLI process. | `crates/claude-agent-rust-sdk/tests/client.rs::connect_on_a_connected_client_closes_the_previous_session_first` |
 | An unknown message type | The parser returns `None` and the message is skipped. (upstream `src/claude_agent_sdk/_internal/message_parser.py:397-401`) | Kept as `Message::Unknown` with its raw JSON, as is an unknown content block (`ContentBlock::Unknown`). | A newer CLI must not make an older program lose data. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json` |
+| A CLI whose version is not the tested one | Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version. (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1153-1175`) | Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`. | Without a bundled CLI, the installed one can be any release; an older one exits with an error on an option it does not know, and the warning names the cause. | `crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once` |
 
 ### Rust refuses what Python accepts (5)
 
@@ -132,7 +133,7 @@ Every upstream export has a Rust counterpart.
 | `derived-client-app` | 27 | Tests the derived client-application label, which is not ported (non-goal); only the explicit `client_app` option is. |
 | `example-store-adapters` | 48 | Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal). |
 | `no-sdk-code` | 2 | Asserts only on literals defined in the test file and calls no SDK code. |
-| `packaging` | 78 | Tests the wheel build, the bundled CLI, the CLI download, or the release scripts; distribution is a non-goal of this PRD. |
+| `packaging` | 78 | Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine. |
 | `python-aliasing` | 3 | Checks defensive copies of shared mutable objects, which Rust ownership rules out. |
 | `python-atexit-registry` | 2 | Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry. |
 | `python-mcp-library` | 5 | Tests the bridge to the Python `mcp` package; the native dispatcher and the `rmcp` bridge have their own tests. |
