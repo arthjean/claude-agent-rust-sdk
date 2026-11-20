@@ -102,8 +102,12 @@ mod imp {
 
     /// Process group led by the child.
     ///
-    /// Dropping it before [`ProcessTree::sweep`] kills the whole group, so a
-    /// supervisor that is torn down early leaves nothing behind.
+    /// Dropping it before [`ProcessTree::sweep`] sends `SIGTERM` to the whole
+    /// group. That happens when the supervisor is torn down early, such as
+    /// when the program returns from `main` with a session still open: the
+    /// CLI then writes the end of its transcript and exits, as on the
+    /// `SIGTERM` the Python SDK sends at interpreter exit, instead of being
+    /// killed in the middle of the write.
     #[derive(Debug)]
     pub(crate) struct ProcessTree {
         group: Option<libc::pid_t>,
@@ -143,7 +147,7 @@ mod imp {
 
     impl Drop for ProcessTree {
         fn drop(&mut self) {
-            self.signal(libc::SIGKILL);
+            self.signal(libc::SIGTERM);
         }
     }
 }

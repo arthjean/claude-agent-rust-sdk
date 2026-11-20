@@ -41,7 +41,11 @@
 //! Linux, macOS, and Windows are supported and tested on every change.
 //! tokio is the only async runtime supported. The CLI runs as the root of
 //! its own process tree, which the crate ends as a whole: through a process
-//! group on Unix and a Job Object on Windows.
+//! group on Unix and a Job Object on Windows. A server the agent starts in
+//! the background (`nohup server &`) is part of that tree and ends with the
+//! session, unless it leaves the group (`setsid` on Unix). When the program
+//! returns from `main` with a session still open, the CLI gets `SIGTERM` on
+//! Unix, so it writes the end of its transcript before it exits.
 //!
 //! # Claude Code CLI
 //!

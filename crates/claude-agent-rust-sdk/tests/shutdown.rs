@@ -314,3 +314,47 @@ fn the_process_dies_when_its_parent_dies_abruptly() {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn dropping_the_runtime_lets_the_process_handle_termination() {
+    let fake = Fake::new(json!({"read_stdin": false, "steps": [{"sleep_ms": 120_000}]}));
+    let marker = fake.directory.path().join("terminated");
+    let wrapper = fake.directory.path().join("claude-handling-sigterm");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\ntrap 'echo flushed > \"{}\"; exit 0' TERM\n\"{}\" \"$@\" &\nwait $!\n",
+            marker.display(),
+            fake_claude().display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let options = fake.options().cli_path(&wrapper).build().unwrap();
+    let (transport, pid) = runtime.block_on(connected(options));
+    drop(runtime);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while process_exists(pid) {
+        assert!(
+            Instant::now() < deadline,
+            "the process outlived its runtime"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        std::fs::read_to_string(&marker).ok().as_deref(),
+        Some("flushed\n"),
+        "the process got SIGTERM and ran its handler, instead of being killed"
+    );
+    drop(transport);
+}

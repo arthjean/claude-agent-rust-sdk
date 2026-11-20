@@ -5,6 +5,12 @@
 //! is dropped: wait, then terminate, then kill, each step limited to
 //! [`SHUTDOWN_STEP`]. Because the task is detached, the shutdown finishes
 //! even when the caller that requested it is cancelled.
+//!
+//! When the task itself is dropped, as when the runtime shuts down because
+//! the program returns from `main`, nothing can wait any more: on Unix the
+//! process group gets `SIGTERM`, so the CLI ends its transcript and exits,
+//! and the child is not killed on drop; on Windows the Job Object, closed
+//! with its handle, ends every process at once.
 
 pub(crate) mod sys;
 
@@ -75,7 +81,7 @@ pub(crate) struct Streams {
 }
 
 pub(crate) async fn spawn(mut command: Command) -> io::Result<Spawned> {
-    command.kill_on_drop(true);
+    command.kill_on_drop(cfg!(windows));
     sys::prepare(&mut command);
     let mut child = spawn_child(command).await?;
     let tree = ProcessTree::attach(&child);
