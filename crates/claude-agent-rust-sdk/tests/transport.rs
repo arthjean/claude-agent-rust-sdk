@@ -1257,3 +1257,47 @@ async fn a_failed_process_keeps_the_last_lines_of_its_captured_error_output() {
     );
     transport.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn invalid_utf8_from_the_cli_is_replaced_and_does_not_end_the_session() {
+    let bad_line: Vec<u8> = vec![
+        123, 34, 116, 121, 112, 101, 34, 58, 34, 97, 115, 115, 105, 115, 116, 97, 110, 116, 34, 44,
+        34, 109, 101, 115, 115, 97, 103, 101, 34, 58, 123, 34, 114, 111, 108, 101, 34, 58, 34, 97,
+        115, 115, 105, 115, 116, 97, 110, 116, 34, 44, 34, 109, 111, 100, 101, 108, 34, 58, 34,
+        109, 34, 44, 34, 99, 111, 110, 116, 101, 110, 116, 34, 58, 91, 123, 34, 116, 121, 112, 101,
+        34, 58, 34, 116, 101, 120, 116, 34, 44, 34, 116, 101, 120, 116, 34, 58, 34, 98, 97, 100,
+        32, 255, 32, 98, 121, 116, 101, 34, 125, 93, 125, 44, 34, 112, 97, 114, 101, 110, 116, 95,
+        116, 111, 111, 108, 95, 117, 115, 101, 95, 105, 100, 34, 58, 110, 117, 108, 108, 44, 34,
+        115, 101, 115, 115, 105, 111, 110, 95, 105, 100, 34, 58, 34, 115, 34, 125, 10,
+    ];
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user"}},
+            {"emit_raw": bad_line},
+            {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+                      "is_error": false, "num_turns": 1, "session_id": "s", "result": "done"}},
+        ],
+    }));
+    let messages: Vec<_> = tokio::time::timeout(
+        common::STEP_LIMIT,
+        query("Hi", fake.build()).collect::<Vec<_>>(),
+    )
+    .await
+    .unwrap();
+    let texts: Vec<String> = messages
+        .iter()
+        .filter_map(|message| match message {
+            Ok(claude_agent_rust_sdk::Message::Assistant(assistant)) => {
+                Some(format!("{:?}", assistant.content))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts.len(), 1, "{messages:?}");
+    assert!(texts[0].contains("bad \u{fffd} byte"), "{texts:?}");
+    assert!(matches!(
+        messages.last(),
+        Some(Ok(claude_agent_rust_sdk::Message::Result(_)))
+    ));
+}

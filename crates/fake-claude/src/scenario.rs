@@ -38,7 +38,7 @@
 //! | Action | Effect |
 //! |---|---|
 //! | `{"emit": frame}` | Writes the frame and a line feed to stdout. A string equal to `$hook_callback_id` is replaced by the first hook callback id of the `initialize` request. |
-//! | `{"emit_raw": text}` | Writes the text to stdout as is, without a line feed. |
+//! | `{"emit_raw": text}` | Writes the text to stdout as is, without a line feed. An array of byte values instead of a string writes those bytes, which need not be UTF-8. |
 //! | `{"stderr": text}` | Writes the text to stderr as is. |
 //! | `{"expect": pattern, "timeout_ms": n}` | Waits for a stdin frame containing the pattern: every key of a pattern object must be present with a matching value. Frames that do not match are skipped. The limit defaults to 10,000 ms. |
 //! | `{"control_response": payload}` | Answers the control request matched by the last `expect` with a success response carrying the payload. |
@@ -77,7 +77,7 @@ pub(crate) struct StdinPause {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Step {
     Emit(Value),
-    EmitRaw(String),
+    EmitRaw(Vec<u8>),
     Stderr(String),
     Expect { pattern: Value, timeout: Duration },
     ControlResponse(Value),
@@ -178,6 +178,24 @@ fn milliseconds(value: &Value, name: &str) -> Result<Duration, String> {
         .ok_or_else(|| format!("`{name}` must be a number of milliseconds"))
 }
 
+/// The bytes of an `emit_raw` step: a string, or an array of byte values.
+fn raw_bytes(value: &Value) -> Result<Vec<u8>, String> {
+    if let Some(text) = value.as_str() {
+        return Ok(text.as_bytes().to_vec());
+    }
+    let refused = || "`emit_raw` must be a string or an array of bytes".to_owned();
+    value
+        .as_array()
+        .ok_or_else(refused)?
+        .iter()
+        .map(|byte| {
+            byte.as_u64()
+                .and_then(|byte| u8::try_from(byte).ok())
+                .ok_or_else(refused)
+        })
+        .collect()
+}
+
 fn text(value: &Value, name: &str) -> Result<String, String> {
     value
         .as_str()
@@ -206,7 +224,7 @@ impl Step {
         };
         match action.as_str() {
             "emit" => Ok(Self::Emit(argument.clone())),
-            "emit_raw" => Ok(Self::EmitRaw(text(argument, action)?)),
+            "emit_raw" => Ok(Self::EmitRaw(raw_bytes(argument)?)),
             "stderr" => Ok(Self::Stderr(text(argument, action)?)),
             "control_response" => Ok(Self::ControlResponse(argument.clone())),
             "control_error" => Ok(Self::ControlError(text(argument, action)?)),
@@ -308,7 +326,7 @@ mod tests {
             scenario.steps,
             [
                 Step::Emit(json!({"type": "result"})),
-                Step::EmitRaw("partial".to_owned()),
+                Step::EmitRaw(b"partial".to_vec()),
                 Step::Stderr("warning\n".to_owned()),
                 Step::Expect {
                     pattern: json!({"type": "user"}),

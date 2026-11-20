@@ -184,6 +184,16 @@ category = "rust-more-robust"
 reason = "One malformed frame from the CLI must not end the session."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::each_control_request_runs_one_handler_tracked_until_it_answers"
 
+[behavior.malformed-control-request-body]
+summary = "A control request without `request`, or whose `request` has no `subtype`"
+python = "`KeyError` ends the handler task before its `try`: the CLI gets no answer and waits for it."
+rust = "The CLI is answered with an error response, `Unsupported control request subtype: null`, and the session goes on."
+ref = "src/claude_agent_sdk/_internal/query.py:634"
+anchor = "request_data = request[\"request\"]"
+category = "rust-more-robust"
+reason = "A request the SDK cannot read is still a request: an error answer lets the CLI fail it at once instead of waiting on it."
+test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::unsupported_control_request_gets_an_error_and_the_session_continues"
+
 [behavior.malformed-mirror-frames]
 summary = "A transcript mirror frame without a valid `filePath`"
 python = "A `KeyError` ends the reader task, and the session with it."
@@ -473,6 +483,16 @@ anchor = "data: dict[str, Any] = json.loads(line)"
 category = "deliberate"
 reason = "A Rust string holds valid Unicode only, so a lone surrogate cannot be kept; replacing it is the only way to read the line instead of ending the session."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::a_lone_surrogate_escape_from_the_cli_does_not_end_the_session"
+
+[behavior.cli-output-invalid-utf8]
+summary = "Bytes on the CLI output (or its error output) that are not valid UTF-8"
+python = "The stream decodes strictly: `UnicodeDecodeError` ends the message reader and the session; on stderr, forwarding stops without a word."
+rust = "Each invalid sequence becomes U+FFFD and the line is read; the session goes on. Lines of stderr are decoded the same way."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:840"
+anchor = "self._stdout_stream = TextReceiveStream(self._process.stdout)"
+category = "rust-more-robust"
+reason = "One corrupt byte, such as a tool output cut in the middle of a character, must not end a session whose frames are otherwise readable; it is the reading the transcripts already get."
+test = "crates/claude-agent-rust-sdk/tests/transport.rs::invalid_utf8_from_the_cli_is_replaced_and_does_not_end_the_session"
 
 [behavior.nesting-depth-limit]
 summary = "A line of CLI output nested more than 512 levels deep"

@@ -3,6 +3,10 @@
 //! transcript line the live session read is read again the same way.
 
 //!
+//! A line is decoded with each invalid UTF-8 sequence replaced by U+FFFD,
+//! where upstream decodes strictly and a `UnicodeDecodeError` ends the
+//! session.
+//!
 //! Two lines that `serde_json` refuses by default are still read, because
 //! the CLI can write them and upstream `json.loads` reads them:
 //!

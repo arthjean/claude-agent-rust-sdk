@@ -165,10 +165,10 @@ impl Player {
                     &substitute(frame, hook_callback_id.as_deref()),
                 );
             }
-            Step::EmitRaw(text) => {
+            Step::EmitRaw(bytes) => {
                 let _guard = self.output.lock().unwrap_or_else(PoisonError::into_inner);
                 let mut stdout = std::io::stdout().lock();
-                let _ = stdout.write_all(text.as_bytes());
+                let _ = stdout.write_all(bytes);
                 let _ = stdout.flush();
             }
             Step::Stderr(text) => {
