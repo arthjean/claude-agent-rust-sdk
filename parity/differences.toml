@@ -104,6 +104,16 @@ ref = "src/claude_agent_sdk/_internal/message_parser.py:168-209"
 anchor = 'match block["type"]:'
 reason = "A content block of a type this version does not know is kept as `ContentBlock::Unknown`, where the Python parser drops it from the list: a newer CLI must not make an older program lose data."
 
+[behavior.control-error-null-text]
+summary = "A control error response whose `error` is `null` or not a string"
+python = "`Exception(response.get(\"error\", \"Unknown error\"))`: a `null` reads as the text `None`, and an object as its Python `repr`."
+rust = "A `null` reads as `Unknown error`, the text upstream gives a response with no `error`, and any other value as its JSON text."
+ref = "src/claude_agent_sdk/_internal/query.py:457-460"
+anchor = 'response.get("error", "Unknown error")'
+category = "deliberate"
+reason = "`None` and a Python `repr` are artifacts of the interpreter, not text the CLI sent; the JSON text keeps what it sent readable."
+test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::error_responses_fail_the_request_with_the_text_of_the_cli"
+
 [behavior.flat-error-enum]
 summary = "An error caught by its parent class"
 python = "`ResultError` subclasses `ProcessError` and `CLINotFoundError` subclasses `CLIConnectionError`, so `except ProcessError` also catches a result error."
@@ -153,6 +163,16 @@ anchor = "if options.permission_prompt_tool_name:"
 category = "deliberate"
 reason = "`stdio` is the value the SDK itself sets for the callback, so refusing it would reject options the SDK produced."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::a_callback_next_to_the_stdio_prompt_tool_is_accepted_only_when_the_fields_are_set_directly"
+
+[behavior.status-response-numbers-and-nulls]
+summary = "A fraction, a negative number, or `null` in a number or string field of `get_mcp_status` or `get_context_usage`"
+python = "The response dictionary is returned as sent."
+rust = "A count is truncated toward zero, a negative count is 0, and `null` is 0 or the empty string, as for the integer fields of messages; a value of another JSON type, such as an object for a number, fails the call with the raw response in `Error::data()`."
+ref = "src/claude_agent_sdk/types.py:1075-1090"
+anchor = "    totalTokens: int"
+category = "deliberate"
+reason = "The responses are typed; reading the values a JavaScript number or a missing value can take keeps the call working, and a value no field can hold is reported with the whole response instead of being guessed."
+test = "crates/claude-agent-rust-sdk/tests/types.rs::a_status_response_with_a_fractional_or_null_number_or_string_is_still_read"
 
 [behavior.user-message-blocks-kept]
 summary = "A block other than text, tool use, and tool result in a user message"

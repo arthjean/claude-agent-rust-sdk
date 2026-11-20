@@ -99,6 +99,11 @@
 - The README no longer says the crate never stores or forwards credentials: a resume from a session store copies the access token of the installed CLI into its temporary configuration directory, as upstream does, and the README says so.
 - A typed tool that takes no argument can take `()` or a unit struct: the empty object the CLI sends is read as `null` for them, where every call failed with `invalid type: map, expected unit`.
 - When another field of a typed tool needs its integral floats turned into integers, the floats inside an `anyOf` or `oneOf` are turned only through the alternatives that state every key of the object, so an untagged enum no longer picks a variant that drops some of its fields.
+- `hook_on_failure_supported` in the answer to `initialize` is read as Python reads it in an `if`: a non-zero number or a non-empty string counts as true, as upstream accepts it.
+- A read error on the output of the CLI ends the session with an `ErrorKind::Io` error, as upstream raises it, instead of ending the stream as if the CLI had closed it.
+- A typed tool of no arguments receives the call whatever keys the model sends, as upstream hands a tool of schema `{}` any keys, instead of a validation error.
+- The `get_mcp_status` and `get_context_usage` responses read a fractional, negative, or `null` count and a `null` string, as the integer fields of messages do, instead of failing the call.
+- A subagent `.meta.json` sidecar with a lone surrogate escape is read, as `json.loads` reads it, instead of being treated as absent; a `task_notification` whose `usage` is not an object reads `usage` as absent.
 
 ## 0.1.0 - 2026-11-18
 
