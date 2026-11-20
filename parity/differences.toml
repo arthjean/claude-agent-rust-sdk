@@ -538,6 +538,7 @@ summary = "The input schema of a tool whose arguments are a Rust type"
 python = "A `TypedDict` becomes `{\"type\": \"object\", \"properties\": ..., \"required\": ...}` with bare types: an optional `int` is `{\"type\": \"integer\"}`, with no `format`, bound, or title; any other class is listed as an object with no property."
 rust = "`SdkMcpTool::typed` lists the schema `schemars` derives: an `Option` field is `[\"integer\", \"null\"]`, and `format`, bounds, and the title of the type stay. The variants of an enum are merged into one object listing every field, with the tags as one `enum`, instead of a `oneOf` at the top level."
 ref = "src/claude_agent_sdk/__init__.py:364-456"
+anchor = 'def _python_type_to_json_schema(py_type: Any) -> dict[str, Any]:'
 category = "deliberate"
 reason = "The bounds and nullability tell the model what a Rust integer and an `Option` accept. The Claude API refuses a tool schema with `oneOf`, `anyOf`, or `allOf` at the top level and fails the request, so an enum cannot be listed as its alternatives; `serde` checks the exact variant when the arguments are read."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_of_an_enum_lists_every_field_of_every_variant_in_one_object"

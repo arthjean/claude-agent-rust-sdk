@@ -408,7 +408,7 @@ async fn a_tool_is_called_directly_with_the_checks_the_server_applies() {
     );
     let missing = add().call(json!({"a": 1})).await;
     assert!(missing.is_error);
-    let [ToolContent::Text { text }] = &missing.content[..] else {
+    let [ToolContent::Text { text, .. }] = &missing.content[..] else {
         panic!("expected one text block, got {missing:?}");
     };
     assert!(text.starts_with("Input validation error: "), "{text}");

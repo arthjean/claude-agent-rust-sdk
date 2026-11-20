@@ -32,10 +32,10 @@ difference, recorded), `blocked` (waiting on the owner).
 | A15 | minor | Connection error after the CLI died | done | A request after the CLI died is `ErrorKind::ConnectionClosed` with the process error as source; test `control_protocol.rs::a_control_request_after_the_cli_died_is_a_connection_error`. |
 | A16 | minor | Typed hook input does not silently fall back to Unknown | done | `tool_response` defaults to null, `duration_ms` accepts any number, `effort` accepts a bare string; a mismatch is logged at debug level. `[behavior.hook-input-shape]`; tests `types.rs::a_hook_input_the_cli_schema_allows_stays_typed` (Unknown on the old code) and `a_hook_input_that_does_not_match_its_event_is_unknown_and_logged`. |
 | A17 | minor | `receive_messages` after an unparseable message | done | Aligned with upstream: the client streams end after an error; a new call resumes. Test `client.rs::receive_messages_ends_at_a_message_that_does_not_parse_and_a_new_call_resumes` (ledger entries updated). |
-| A18 | minor | Native tool cancellation | todo | |
-| A19 | minor | No `format` validation for draft-04/06/07 | todo | |
-| A20 | minor | Typed tool schemas: enums, integral floats, shape | todo | |
-| A21 | minor | Tool ergonomics: direct call, stateful `#[tool]` | todo | |
+| A18 | minor | Native tool cancellation | done | Aligned: a native tool keeps running after `control_cancel_request`, its id reserved until it answers; `notifications/cancelled` and session close still stop it (shared `SHUTDOWN_GRACE`). Test `sdk_mcp.rs::control_cancel_request_lets_the_tool_finish_and_keeps_its_id_reserved_until_then` (red before). |
+| A19 | minor | No `format` validation for draft-04/06/07 | done | `should_validate_formats(false)` for every draft. Test `format_is_an_annotation_only_whatever_the_draft_of_the_schema` (red before on draft-04). |
+| A20 | minor | Typed tool schemas: enums, integral floats, shape | done | Enum and flatten variants merged into one root object (no top-level `oneOf`, which the API refuses); integral floats read as integers; combinator visits bounded (100k). `[behavior.typed-tool-schema-shape]`. Tests red before. |
+| A21 | minor | Tool ergonomics: direct call, stateful `#[tool]` | done | `SdkMcpTool::call` and `#[tool]` with state (`&S` via `Arc<S>`, or a `Clone` value); UI tests for refused forms. |
 | A22 | minor | Optional store methods are not silently skipped | done | Every optional store method is called; `UnsupportedStoreOperation` means absent; `capabilities()` is only read by the build-time `continue_conversation` check (`[behavior.store-declaration-for-continue]`). Four tests red on the old code (`delete_via_store_deletes_from_a_store_that_implements_delete_without_declaring_it`, ...). |
 | A23 | minor | Empty project paths or paths with `..` | done | `canonicalize_path` treats `""` as `.` and resolves `.`/`..` segment by segment like `realpath`; probed against Python on five cases. Tests `an_empty_path_is_the_current_directory`, `dot_segments_in_a_missing_tail_are_resolved` (red before). |
 | A24 | minor | Import fails on an unreadable sidecar | done | Strict sidecar read on import (`ErrorKind::Io` on a read error, absent on missing/invalid); reader stays tolerant as upstream. Test `an_unreadable_sidecar_fails_the_import` (red before). |
@@ -51,12 +51,12 @@ difference, recorded), `blocked` (waiting on the owner).
 | A34 | minor | Harden parity-check | done | `rust::Tests { listed, ignored }` (`--list --ignored`); an ignored test, a wrong platform suffix, and a non-test function in the textual fallback fail (`xtask/tests/parity.rs::a_ledger_naming_an_ignored_test_fails_the_check`, `a_test_of_another_platform_is_checked_against_the_sources`, `rust::tests::a_declaration_counts_only_under_a_test_attribute`). Parity job is a 3-OS matrix (CI only; not run here). New tests for `can-use-tool-with-stdio` and `timestamp-without-zone`; `user-option-group` handed to the A32 agent with the uid test. |
 | A35 | cosmetic | Parse `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` like `int()` | todo | |
 | A36 | cosmetic | Error texts and product name | todo | |
-| A37 | cosmetic | MCP wire and macro details | todo | |
-| A38 | cosmetic | Extra blocks parsed in user messages | todo | |
+| A37 | cosmetic | MCP wire and macro details | done | Wire matches upstream (description always, `annotations: {}`), `-32602` for non-object args and incomplete `initialize` (probed against Python), macro keeps relative doc indentation and takes `crate = "..."`. |
+| A38 | cosmetic | Extra blocks parsed in user messages | done | User messages read only text, tool_use, tool_result; the rest is `ContentBlock::Unknown`. Test red before. |
 | A39 | cosmetic | Empty `cwd` | todo | |
 | A40 | cosmetic | Size measures, Unicode version, subpaths | done | Trailing-separator subkey fixed (red before); sizes in UTF-8 bytes, lite serialization, and Unicode version recorded as four `[behavior]` entries with tests. |
 | A41 | cosmetic | Ledger inconsistencies | todo | |
-| A42 | cosmetic | Idiomatic naming | todo | |
+| A42 | cosmetic | Idiomatic naming | doing | `get_` prefix dropped (`server_info`, `mcp_status`, `context_usage`, with `doc(alias)`), `ToolResult::with_error_flag`. Left: option structs for the session functions with positional arguments. |
 | A43 | cosmetic | Cargo warning on every build (`homepage`) | done | `homepage` removed from the manifests; `published_manifests_carry_the_registry_metadata` now forbids it. |
 
 ## Product choices taken without the owner

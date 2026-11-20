@@ -12,6 +12,7 @@
 - The types an application sends keep keys the crate does not model, as upstream passes its dictionaries through: every hook-specific output, `AsyncHookOutput`, `SandboxSettings`, `SandboxNetworkConfig`, and the stdio and remote MCP server configurations have a flattened `extra` map and an `extra_field(key, value)` builder, so a key a newer CLI reads, such as `classifierContext` or `timeout`, can be sent today.
 - `HookSpecificOutput::Unknown` holds the output of an event the crate does not model, such as `Setup`, and sends it as written; reading one no longer fails.
 - `cargo xtask upstream-diff` lists the upstream tests rewritten in place, which keep their names, with the Rust tests to review, and every `ref` of `parity/differences.toml` carries an `anchor` the cited lines must hold, so a ref that drifts when the pin moves fails `parity-check`. Five refs that had drifted since the sync to 0.2.186 now point at the code they describe.
+- `SdkMcpTool::call` runs a tool as the in-process server does and returns the result the model would see, so a tool can be tested without a session; `#[tool]` functions take an optional state before their arguments (a `&S` shared through an `Arc`, or a `Clone` value).
 
 ### Changed
 
@@ -29,6 +30,7 @@
 - The README, the migration guide, and the parity page state what is measured: a port of 0.2.186, the reviewed differences and the ones not yet classified, and the unit tests the ledger lists (the upstream end-to-end tests are not). `parity-check` now fails on a hand-written claim of parity (`at parity with`, `every known difference`, `full parity`, `100%`) in any of the three.
 - **Breaking:** `ClaudeSdkClient::receive_messages` and `receive_response` end after yielding an error, such as a message that cannot be parsed, as upstream's iterator does; call `receive_messages` again to read the messages after it.
 - `cargo xtask parity-check` fails when a ledger names an `#[ignore]`d test, a test compiled on this platform under another platform's suffix, or, for a test of another platform, a function that is not a test; CI runs it on Linux, macOS, and Windows.
+- **Breaking:** `ClaudeSdkClient::get_server_info`, `get_mcp_status`, and `get_context_usage` are renamed `server_info`, `mcp_status`, and `context_usage`, and `ToolResult::is_error(bool)` is renamed `with_error_flag(bool)`.
 
 ### Removed
 
@@ -51,6 +53,11 @@
 - `import_session_to_store` fails with `ErrorKind::Io` when a subagent's `.meta.json` sidecar exists but cannot be read, instead of importing the transcript without its metadata.
 - On macOS, resuming from a session store finds the Keychain credentials of a process started without `USER` or `LOGNAME`, such as a launchd daemon, by reading the user database as upstream does.
 - Resuming from a store writes a subagent subkey that ends with a separator to the same transcript file as the subkey without it, as upstream.
+- When the CLI cancels the control request of an in-process tool call, the tool now runs to its end and its JSON-RPC id stays reserved until it answers, as in the Python SDK; `notifications/cancelled` and closing the session still stop it.
+- Tool arguments are no longer checked against `format` for JSON Schema drafts 4, 6, and 7, matching the Python SDK, which validates without a format checker.
+- A typed tool whose arguments are an enum lists every field of every variant in one object schema instead of an object with no property, and a float without a fractional part is read as an integer where the schema asks for one.
+- In-process tools are listed with their description even when empty and with `annotations: {}` when annotations hold no hint; `tools/call` arguments that are not an object and an incomplete `initialize` are JSON-RPC `-32602` errors; `#[tool]` keeps the relative indentation of its doc comment and takes `crate = "..."`.
+- A user message no longer fails to parse on a `thinking`, `server_tool_use`, or `advisor_tool_result` block; any block other than text, tool use, and tool result is kept as `ContentBlock::Unknown`.
 
 ## 0.1.0 - 2026-11-18
 
