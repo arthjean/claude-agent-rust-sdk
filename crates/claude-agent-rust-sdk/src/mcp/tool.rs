@@ -49,7 +49,12 @@ pub struct ToolAnnotations {
     pub open_world_hint: Option<bool>,
     /// Size, in characters, up to which the CLI keeps the result inline.
     pub max_result_size_chars: Option<u64>,
+    /// Annotation keys this version of the crate does not model, listed
+    /// next to the modeled ones; a modeled key that is set wins.
+    pub extra: Map<String, Value>,
 }
+
+crate::types::macros::extra_field!(ToolAnnotations);
 
 impl ToolAnnotations {
     /// Creates annotations with nothing set.
@@ -80,6 +85,11 @@ impl ToolAnnotations {
         ] {
             if let Some(hint) = hint {
                 wire.insert(name.to_owned(), json!(hint));
+            }
+        }
+        for (key, value) in &self.extra {
+            if !wire.contains_key(key) {
+                wire.insert(key.clone(), value.clone());
             }
         }
         Value::Object(wire)

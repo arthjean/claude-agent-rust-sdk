@@ -742,6 +742,22 @@ async fn control_request_without_server_name_or_message_is_refused() {
     }
 }
 
+#[tokio::test]
+async fn an_annotation_key_the_crate_does_not_model_is_listed_and_a_modeled_one_wins() {
+    let annotated = noop("annotated").annotations(
+        ToolAnnotations::new()
+            .read_only_hint(true)
+            .extra_field("futureHint", true)
+            .extra_field("readOnlyHint", false),
+    );
+    let client = SdkMcpClient::connected(server([annotated])).await;
+    let tools = client.list_tools("srv").await;
+    assert_eq!(
+        tools[0]["annotations"],
+        json!({"readOnlyHint": true, "futureHint": true})
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn tools_list_wire_format_lists_what_upstream_lists() {
     let read_data = noop("read_data").annotations(

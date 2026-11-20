@@ -1114,3 +1114,33 @@ fn keys_the_crate_does_not_model_reach_the_cli_in_sandbox_and_mcp_settings() {
         json!({"mcpServers": {"slow": {"command": "/path/to/server", "timeout": 5000}}})
     );
 }
+
+#[test]
+fn a_server_config_of_a_kind_the_crate_does_not_model_sits_next_to_an_in_process_server() {
+    let serde_json::Value::Object(raw) =
+        json!({"type": "ws", "url": "wss://example.test/mcp", "timeout": 5000})
+    else {
+        unreachable!()
+    };
+    let raw = claude_agent_rust_sdk::McpServerConfig::Raw(raw);
+    assert_eq!(raw.type_name(), "ws");
+    let command = build(
+        options().mcp_server("future", raw).mcp_server(
+            "in-process",
+            claude_agent_rust_sdk::create_sdk_mcp_server(
+                "calculator",
+                None,
+                Vec::<claude_agent_rust_sdk::SdkMcpTool>::new(),
+            )
+            .unwrap(),
+        ),
+    );
+    let config: Value = serde_json::from_str(value_of(&command, "--mcp-config")).unwrap();
+    assert_eq!(
+        config,
+        json!({"mcpServers": {
+            "future": {"type": "ws", "url": "wss://example.test/mcp", "timeout": 5000},
+            "in-process": {"type": "sdk", "name": "calculator"},
+        }})
+    );
+}

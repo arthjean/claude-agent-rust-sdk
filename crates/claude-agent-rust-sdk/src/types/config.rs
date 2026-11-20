@@ -599,17 +599,26 @@ pub enum McpServerConfig {
     Http(McpHttpServerConfig),
     /// A server inside this process.
     Sdk(McpSdkServerConfig),
+    /// A configuration of a kind this version of the crate does not model,
+    /// such as a newer transport, passed to the CLI as written. It can sit
+    /// next to in-process servers in one [`McpServers::Map`].
+    Raw(Map<String, Value>),
 }
 
 impl McpServerConfig {
-    /// Wire value of the `type` key.
+    /// Wire value of the `type` key; a raw configuration without one is a
+    /// stdio server, as the CLI reads it.
     #[must_use]
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> &str {
         match self {
             Self::Stdio(_) => "stdio",
             Self::Sse(_) => "sse",
             Self::Http(_) => "http",
             Self::Sdk(_) => "sdk",
+            Self::Raw(config) => config
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("stdio"),
         }
     }
 
@@ -672,6 +681,7 @@ impl Serialize for McpServerConfig {
                 map.serialize_entry("type", self.type_name())?;
                 map.serialize_entry("name", &config.name)?;
             }
+            Self::Raw(config) => serialize_extra(&mut map, config, &[])?,
         }
         map.end()
     }

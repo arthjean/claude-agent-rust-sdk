@@ -13,6 +13,7 @@
 - `HookSpecificOutput::Unknown` holds the output of an event the crate does not model, such as `Setup`, and sends it as written; reading one no longer fails.
 - `cargo xtask upstream-diff` lists the upstream tests rewritten in place, which keep their names, with the Rust tests to review, and every `ref` of `parity/differences.toml` carries an `anchor` the cited lines must hold, so a ref that drifts when the pin moves fails `parity-check`. Five refs that had drifted since the sync to 0.2.186 now point at the code they describe.
 - `SdkMcpTool::call` runs a tool as the in-process server does and returns the result the model would see, so a tool can be tested without a session; `#[tool]` functions take an optional state before their arguments (a `&S` shared through an `Arc`, or a `Clone` value).
+- `ToolAnnotations::extra_field` lists an annotation key the crate does not model, and `McpServerConfig::Raw` passes a server configuration of a kind the crate does not model to the CLI as written, next to in-process servers in the same map. **Breaking:** `McpServerConfig::type_name` returns `&str`.
 
 ### Changed
 
