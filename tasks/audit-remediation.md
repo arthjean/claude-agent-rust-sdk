@@ -254,6 +254,8 @@ Then, so that no divergence stays neither aligned nor recorded, the minors of th
 - Recorded (`c921140`): `[behavior.control-error-null-text]` (a `null` error reads `Unknown error`, not Python's `None`) and `[behavior.status-response-numbers-and-nulls]` (a value of another JSON type fails the call with the raw response).
 - Rejected after checking upstream: "a duplicate `agent-<id>.jsonl` reads the first, upstream the last": `get_subagent_messages` breaks on the first match too (`sessions.py:1612-1615`).
 
+A last fresh agent reviewed these nine commits (`113891c..c6d3d2e`) against upstream: 0 blockers, 0 majors. Of its minors, a status configuration with a `null` name, URL, or id became a typed value with an empty string, against the module docs; it is again kept whole in `McpServerStatusConfig::Unknown`, with a test that fails before. The others: without the `jsonschema` feature, an `Option` argument type called with `{}` now gets the serde error instead of `None` (with the default features the validator refused `{}` already, as the listed schema requires the field); `null` in a boolean or list field of a status response still fails the call, as the ledger entry says; a non-object task `usage` reads as absent under `behavior.optional-field-wrong-type`.
+
 Listed, not changed, with the reason:
 
 - protocol: the result is noted before the mirror flush ends, a `connect()` dropped during spawn leaves the child to exit on its closed pipes, and the process group gets SIGKILL after the reap: internal ordering with no observable effect, not a behavior upstream defines.

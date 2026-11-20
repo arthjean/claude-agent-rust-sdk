@@ -1448,6 +1448,19 @@ fn mcp_server_status_config_variants() {
     let status = parse(json!({"type": "sdk", "name": "calc"}));
     assert!(matches!(status.config, Some(McpServerStatusConfig::Sdk(_))));
 
+    for config in [
+        json!({"type": "sdk", "name": null}),
+        json!({"type": "claudeai-proxy", "url": null, "id": "proxy-abc"}),
+    ] {
+        let status = parse(config.clone());
+        assert_eq!(
+            status.config,
+            Some(McpServerStatusConfig::Unknown(config.clone())),
+            "a configuration that does not read as its type is kept whole"
+        );
+        assert_eq!(serde_json::to_value(&status).unwrap()["config"], config);
+    }
+
     let future = json!({"type": "quantum", "qubits": 8});
     let status = parse(future.clone());
     assert_eq!(

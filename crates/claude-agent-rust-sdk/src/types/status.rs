@@ -30,7 +30,6 @@ use super::macros::wire_enum;
 #[non_exhaustive]
 pub struct McpSdkServerConfigStatus {
     /// Name of the server.
-    #[serde(deserialize_with = "text")]
     pub name: String,
     /// Keys of the response this version of the crate does not model,
     /// kept as the CLI sent them and written back on serialization.
@@ -44,10 +43,8 @@ pub struct McpSdkServerConfigStatus {
 #[non_exhaustive]
 pub struct McpClaudeAiProxyServerConfig {
     /// URL of the proxy.
-    #[serde(deserialize_with = "text")]
     pub url: String,
     /// Id of the proxied server.
-    #[serde(deserialize_with = "text")]
     pub id: String,
     /// Keys of the response this version of the crate does not model,
     /// kept as the CLI sent them and written back on serialization.

@@ -167,7 +167,7 @@ test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::a_callba
 [behavior.status-response-numbers-and-nulls]
 summary = "A fraction, a negative number, or `null` in a number or string field of `get_mcp_status` or `get_context_usage`"
 python = "The response dictionary is returned as sent."
-rust = "A count is truncated toward zero, a negative count is 0, and `null` is 0 or the empty string, as for the integer fields of messages; a value of another JSON type, such as an object for a number, fails the call with the raw response in `Error::data()`."
+rust = "A count is truncated toward zero, a negative count is 0, and `null` is 0 or the empty string, as for the integer fields of messages; a value of another JSON type, such as an object for a number, fails the call with the raw response in `Error::data()`. A server configuration that does not read as its type, `null` fields included, stays whole in `McpServerStatusConfig::Unknown`."
 ref = "src/claude_agent_sdk/types.py:1075-1090"
 anchor = "    totalTokens: int"
 category = "deliberate"
