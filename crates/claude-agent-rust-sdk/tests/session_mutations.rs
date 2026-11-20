@@ -464,6 +464,22 @@ fn fork_keeps_the_key_order_of_each_entry_as_upstream_does() {
 }
 
 #[test]
+fn a_tag_keeps_a_character_assigned_after_unicode_15() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "hello", json!({})));
+    tag_session(&id, Some("a\u{10d40}b\u{e000}"), Some(project.path())).unwrap();
+    assert_eq!(
+        get_session_info(&id, Some(project.path()))
+            .unwrap()
+            .tag
+            .as_deref(),
+        Some("a\u{10d40}b"),
+        "Garay (Unicode 16) is assigned, the private-use character is removed"
+    );
+}
+
+#[test]
 fn fork_splits_lines_on_newlines_only_and_keeps_an_entry_holding_a_line_separator() {
     let project = Project::new();
     let id = new_id();

@@ -1257,6 +1257,55 @@ async fn transcripts_that_are_not_utf8_are_read_and_imported_with_replacement_ch
 }
 
 #[tokio::test]
+async fn the_import_byte_limit_counts_utf8_bytes() {
+    let project = Project::new();
+    let id = new_id();
+    let lines: Vec<Value> = (0..3)
+        .map(|index| {
+            let mut line = plain(index);
+            line["data"] = Value::from("\u{4f60}".repeat(200_000));
+            line
+        })
+        .collect();
+    project.write(&id, &lines);
+    let store = CountingStore::new(SessionStoreCapabilities::all(), None);
+    import_session_to_store(&id, &store, Some(project.path()), false, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.appends.load(Ordering::SeqCst),
+        2,
+        "two lines of 600 KB reach 1 MiB, then the last one"
+    );
+}
+
+#[tokio::test]
+async fn a_store_session_has_the_size_of_the_transcript_the_cli_writes() {
+    let project = Project::new();
+    let id = new_id();
+    let path = project.write(
+        &id,
+        &conversation(&id, "caf\u{e9} \u{4f60}\u{597d} \u{1f600}", json!({})),
+    );
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), false, 500)
+        .await
+        .unwrap();
+    let on_disk = std::fs::metadata(&path).unwrap().len();
+    let stored = get_session_info_from_store(&store, &id, Some(project.path()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.file_size, Some(on_disk));
+    assert_eq!(
+        get_session_info(&id, Some(project.path()))
+            .unwrap()
+            .file_size,
+        Some(on_disk)
+    );
+}
+
+#[tokio::test]
 async fn a_batch_size_of_zero_imports_in_batches_of_500_entries() {
     let project = Project::new();
     let small = new_id();

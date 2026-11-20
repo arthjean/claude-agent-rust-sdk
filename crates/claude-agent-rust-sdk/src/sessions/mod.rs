@@ -27,6 +27,15 @@
 //!   nothing for an agent id that is not one path segment (`.`, `..`, or
 //!   one holding `/`, `\`, or NUL); Python refuses only the empty id and
 //!   lets the id reach the subpath the store loads.
+//! - The 1 MiB batch limit of an import counts the UTF-8 bytes of each
+//!   line, where Python counts its characters.
+//! - A session read from a store is serialized compact with raw UTF-8, as
+//!   the CLI writes it, so its `file_size` and the 64 KiB windows its
+//!   metadata is read from are those of the local file; Python escapes
+//!   every character outside ASCII.
+//! - Tag sanitization uses the Unicode tables of the dependencies
+//!   (Unicode 18), where Python uses those of its interpreter (15.1 on
+//!   Python 3.13): a character assigned since Unicode 15 is kept.
 
 mod chain;
 mod disk;

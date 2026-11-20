@@ -19,6 +19,9 @@
 //! - The `mirror_error` of an append that timed out says so, with the
 //!   limit in milliseconds; Python reports the empty text of its
 //!   `TimeoutError`.
+//! - The 1 MiB threshold counts the UTF-8 bytes of the compact frame, the
+//!   size an append sends. Python counts the characters of the frame as
+//!   `json.dumps` escapes it, about twice as many for Chinese text.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -353,6 +356,44 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert_eq!(store.get_entries(&SessionKey::new("proj", "big")).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_byte_threshold_counts_the_utf8_bytes_of_the_compact_frame() {
+        let store = InMemorySessionStore::new();
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(store.clone()),
+            projects(),
+            &SessionStoreFlushMode::Batched,
+        );
+        let text = "\u{4f60}".repeat(200_000);
+        let escaped = serde_json::to_string(&text).unwrap().len();
+        assert!(escaped < MAX_PENDING_BYTES, "{escaped} UTF-8 bytes");
+        assert!(
+            text.chars().count() * 6 > MAX_PENDING_BYTES,
+            "ASCII-escaped"
+        );
+        batcher.enqueue(
+            path("cjk"),
+            vec![json!({"type": "user", "uuid": "c", "data": text})],
+        );
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            store
+                .get_entries(&SessionKey::new("proj", "cjk"))
+                .is_empty(),
+            "600 KB of UTF-8 is under the threshold"
+        );
+        batcher.enqueue(
+            path("cjk"),
+            vec![json!({"type": "user", "uuid": "d", "data": "\u{4f60}".repeat(200_000)})],
+        );
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(store.get_entries(&SessionKey::new("proj", "cjk")).len(), 2);
     }
 
     #[tokio::test]

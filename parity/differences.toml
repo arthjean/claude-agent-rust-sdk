@@ -465,6 +465,42 @@ category = "deliberate"
 reason = "An empty error tells the application nothing about why the batch was dropped."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::a_timed_out_append_is_not_retried"
 
+[behavior.mirror-size-in-utf8-bytes]
+summary = "How the 1 MiB threshold of the mirror measures a frame"
+python = "`len(json.dumps(entries))`: characters of ASCII-escaped JSON with spaced separators, so a character outside ASCII counts 6 (12 outside the Basic Multilingual Plane), and a frame of Chinese text measures about twice its UTF-8 size."
+rust = "The UTF-8 bytes of the compact JSON, as a store receives it: a background flush starts later than in Python for text outside ASCII."
+ref = "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py:81"
+category = "deliberate"
+reason = "The threshold bounds what an append sends; the compact UTF-8 bytes are that size, where the escaped form is a Python artifact."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::the_byte_threshold_counts_the_utf8_bytes_of_the_compact_frame"
+
+[behavior.import-size-in-utf8-bytes]
+summary = "How the 1 MiB batch limit of an import measures a line"
+python = "`len(line)`: the characters of the line, so text outside ASCII counts once per character."
+rust = "The UTF-8 bytes of the line, as read from the file: a batch of text outside ASCII is cut up to 4 times sooner."
+ref = "src/claude_agent_sdk/_internal/session_import.py:139"
+category = "deliberate"
+reason = "The limit bounds the size of one append; bytes are that size, characters are not."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::the_import_byte_limit_counts_utf8_bytes"
+
+[behavior.store-lite-serialization]
+summary = "The size and the 64 KiB head and tail of a session read from a store"
+python = "Entries are serialized with `json.dumps(..., separators=(\",\", \":\"))`, which escapes every character outside ASCII, so `file_size` and the windows the metadata is read from differ from the file the CLI writes for the same entries."
+rust = "Entries are serialized compact with raw UTF-8, as the CLI writes the transcript: a session read from a store has the `file_size` and the windows of the local file."
+ref = "src/claude_agent_sdk/_internal/sessions.py:1765-1786"
+category = "rust-follows-cli"
+reason = "The store path is meant to read what the disk path reads for the same transcript, and the CLI writes JSON with raw UTF-8."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::a_store_session_has_the_size_of_the_transcript_the_cli_writes"
+
+[behavior.tag-unicode-version]
+summary = "The Unicode version of tag sanitization"
+python = "`unicodedata` of the interpreter: Unicode 15.0 on Python 3.12, 15.1 on 3.13, so a character assigned since (Garay, U+10D40, in Unicode 16) is category `Cn` and removed from the tag."
+rust = "The tables of `unicode-normalization` and `unicode-properties`, Unicode 18 in the versions in use: that character is assigned and kept."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:737-757"
+category = "deliberate"
+reason = "The result of Python depends on the interpreter version; the crate follows the Unicode version of its dependencies, which only moves forward."
+test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::a_tag_keeps_a_character_assigned_after_unicode_15"
+
 [unclassified.conformance-duplicate-summaries]
 source = "4.1, stricter conformance check"
 summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."
