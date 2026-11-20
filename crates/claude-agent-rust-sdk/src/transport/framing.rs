@@ -108,12 +108,12 @@ fn recover(text: &str) -> Option<Value> {
 /// Reads `text`, whose nesting exceeds [`MAX_NESTING_DEPTH`], in one
 /// pass: each array or object that opens at that depth is replaced by the
 /// JSON string of its text, which leaves a value no deeper than the limit
-/// for a single parse. A text whose brackets or strings do not close is
-/// refused before that parse, which would otherwise recurse through every
+/// for a single parse. A text whose brackets do not pair or whose strings
+/// do not close is refused before that parse, which would otherwise recurse through every
 /// level left open.
 fn bounded(text: &str) -> Option<Value> {
     let mut flattened = String::with_capacity(text.len());
-    let (mut depth, mut copied, mut opened_at) = (0_usize, 0_usize, None);
+    let (mut open, mut copied, mut opened_at) = (Vec::new(), 0_usize, None);
     let (mut in_string, mut escaped) = (false, false);
     for (index, byte) in text.bytes().enumerate() {
         if in_string {
@@ -128,25 +128,27 @@ fn bounded(text: &str) -> Option<Value> {
         match byte {
             b'"' => in_string = true,
             b'[' | b'{' => {
-                depth += 1;
-                if depth == MAX_NESTING_DEPTH {
+                open.push(if byte == b'[' { b']' } else { b'}' });
+                if open.len() == MAX_NESTING_DEPTH {
                     opened_at = Some(index);
                 }
             }
             b']' | b'}' => {
-                if depth == MAX_NESTING_DEPTH
+                if open.len() == MAX_NESTING_DEPTH
                     && let Some(start) = opened_at.take()
                 {
                     flattened.push_str(&text[copied..start]);
                     flattened.push_str(&serde_json::to_string(&text[start..=index]).ok()?);
                     copied = index + 1;
                 }
-                depth = depth.checked_sub(1)?;
+                if open.pop() != Some(byte) {
+                    return None;
+                }
             }
             _ => {}
         }
     }
-    if depth != 0 || in_string || opened_at.is_some() {
+    if !open.is_empty() || in_string || opened_at.is_some() {
         return None;
     }
     flattened.push_str(&text[copied..]);
@@ -338,14 +340,15 @@ mod tests {
     }
 
     #[test]
-    fn a_deep_line_whose_brackets_do_not_close_is_refused_on_a_small_stack() {
+    fn a_deep_line_whose_brackets_do_not_pair_or_close_is_refused_on_a_small_stack() {
         let unclosed = format!("{{\"a\": {}", "[".repeat(200_000));
         let unclosed_string = format!("{{\"a\": {}\"x", "[".repeat(600));
         let overclosed = format!("{{\"a\": {}{}}}", "[".repeat(600), "]".repeat(601));
+        let mismatched = format!("{{\"a\": {}}}{}}}", "[".repeat(600), "]".repeat(599));
         let refused = std::thread::Builder::new()
             .stack_size(2 * 1024 * 1024)
             .spawn(move || {
-                [unclosed, unclosed_string, overclosed]
+                [unclosed, unclosed_string, overclosed, mismatched]
                     .iter()
                     .map(|line| {
                         parse_stdout_line(line.as_bytes())
@@ -357,7 +360,7 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
-        assert_eq!(refused, [Some(ErrorKind::JsonDecode); 3]);
+        assert_eq!(refused, [Some(ErrorKind::JsonDecode); 4]);
     }
 
     #[test]
