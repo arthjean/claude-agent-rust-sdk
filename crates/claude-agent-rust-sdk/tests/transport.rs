@@ -761,27 +761,89 @@ fn command_output(program: &str, arguments: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
+/// Starts the CLI as `nobody`.
+///
+/// As root, the child runs with the user id and the primary group of
+/// `nobody`, and on Linux with no supplementary group. Without privilege
+/// the change of identity cannot succeed, so the test checks the spawn is
+/// refused with a permission error: a child that starts anyway was never
+/// asked to change user or group.
 #[cfg(unix)]
 #[tokio::test]
 async fn the_process_runs_as_the_requested_user() {
-    use std::os::unix::fs::PermissionsExt;
-
     let started_as_root = command_output("id", &["-u"]) == "0";
-    let user = if started_as_root {
-        "nobody".to_owned()
-    } else {
-        command_output("id", &["-un"])
-    };
-    let expected_uid = command_output("id", &["-u", &user]);
-    let expected_gid = command_output("id", &["-g", &user]);
+    let user = "nobody";
+    assert_ne!(
+        command_output("id", &["-un"]),
+        user,
+        "run this test as a user other than {user}"
+    );
+    let cli_path = shared_fake_claude();
+    let options = claude_agent_rust_sdk::ClaudeAgentOptions::builder()
+        .cli_path(cli_path.path().join("claude"))
+        .user(user)
+        .build()
+        .unwrap();
+    let transport = SubprocessTransport::new(options);
+
+    if !started_as_root {
+        let Err(error) = transport.connect().await else {
+            panic!("an unprivileged process started the CLI although {user} was requested");
+        };
+        assert_eq!(error.kind(), ErrorKind::Spawn, "{error:?}");
+        let source = std::error::Error::source(&error)
+            .and_then(|source| source.downcast_ref::<std::io::Error>())
+            .unwrap_or_else(|| panic!("no I/O source in {error:?}"));
+        assert_eq!(
+            source.kind(),
+            std::io::ErrorKind::PermissionDenied,
+            "an unprivileged process can only start as {user} if the identity change was \
+             never asked: {error:?}"
+        );
+        assert_eq!(transport.process_id(), None);
+        return;
+    }
+
+    transport.connect().await.unwrap();
+    let pid = transport.process_id().unwrap().to_string();
+    assert_eq!(
+        command_output("ps", &["-o", "uid=", "-p", &pid]),
+        command_output("id", &["-u", user])
+    );
+    assert_eq!(
+        command_output("ps", &["-o", "gid=", "-p", &pid]),
+        command_output("id", &["-g", user])
+    );
+    if cfg!(target_os = "linux") {
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+        let groups = status
+            .lines()
+            .find_map(|line| line.strip_prefix("Groups:"))
+            .unwrap();
+        assert_eq!(groups.trim(), "", "supplementary groups were kept");
+    }
+    transport.close().await.unwrap();
+}
+
+/// A copy of the fake CLI in a directory every user can read and search,
+/// so a child that runs as another user can still start it.
+#[cfg(unix)]
+fn shared_fake_claude() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
 
     let directory = tempfile::tempdir().unwrap();
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-    let cli_path = directory.path().join("claude");
-    std::fs::copy(fake_claude(), &cli_path).unwrap();
+    std::fs::copy(fake_claude(), directory.path().join("claude")).unwrap();
+    directory
+}
 
+#[cfg(unix)]
+#[tokio::test]
+async fn the_process_runs_as_the_current_user_when_it_is_named() {
+    let user = command_output("id", &["-un"]);
+    let cli_path = shared_fake_claude();
     let options = claude_agent_rust_sdk::ClaudeAgentOptions::builder()
-        .cli_path(&cli_path)
+        .cli_path(cli_path.path().join("claude"))
         .user(user)
         .build()
         .unwrap();
@@ -790,20 +852,12 @@ async fn the_process_runs_as_the_requested_user() {
     let pid = transport.process_id().unwrap().to_string();
     assert_eq!(
         command_output("ps", &["-o", "uid=", "-p", &pid]),
-        expected_uid
+        command_output("id", &["-u"])
     );
     assert_eq!(
         command_output("ps", &["-o", "gid=", "-p", &pid]),
-        expected_gid
+        command_output("id", &["-g"])
     );
-    if cfg!(target_os = "linux") && started_as_root {
-        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
-        let groups = status
-            .lines()
-            .find_map(|line| line.strip_prefix("Groups:"))
-            .unwrap();
-        assert_eq!(groups.trim(), "", "supplementary groups were kept");
-    }
     transport.close().await.unwrap();
 }
 

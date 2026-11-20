@@ -1,22 +1,90 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use claude_agent_rust_sdk::project_key_for_directory;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-/// A config directory shared by the tests of one binary, set as
-/// `CLAUDE_CONFIG_DIR` before any test reads it. Tests stay independent by
-/// working in their own project directory.
-static CONFIG_DIR: LazyLock<TempDir> = LazyLock::new(|| {
-    let directory = tempfile::tempdir().unwrap();
-    unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", directory.path()) };
+/// Set on a child process of a test binary to keep the `CLAUDE_CONFIG_DIR`
+/// the parent gave it, instead of the shared one.
+pub const KEEP_CONFIG_DIR_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_KEEP_CONFIG_DIR";
+
+const SHARED_CONFIG_DIR_PREFIX: &str = "claude-agent-rust-sdk-test-config-";
+
+/// Points `CLAUDE_CONFIG_DIR` at a new directory name of its own, unless
+/// [`KEEP_CONFIG_DIR_VARIABLE`] is set.
+///
+/// [`shared_config_dir_before_main`] runs it before `main`, while the
+/// process has a single thread: changing the environment once test threads
+/// run could race with a thread reading it.
+pub extern "C" fn point_config_dir_at_a_new_directory() {
+    if std::env::var_os(KEEP_CONFIG_DIR_VARIABLE).is_some() {
+        return;
+    }
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let directory = std::env::temp_dir().join(format!(
+        "{SHARED_CONFIG_DIR_PREFIX}{}-{nanos}",
+        std::process::id()
+    ));
+    unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", directory) };
+}
+
+/// Registers [`point_config_dir_at_a_new_directory`] to run before `main`
+/// in the test binary that invokes it, the way C++ static constructors run.
+/// Invoke it at the top level of each test file that calls [`config_dir`].
+#[allow(unused_macros)]
+macro_rules! shared_config_dir_before_main {
+    () => {
+        #[used]
+        #[cfg_attr(
+            any(
+                target_os = "linux",
+                target_os = "android",
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd",
+                target_os = "dragonfly",
+                target_os = "illumos"
+            ),
+            unsafe(link_section = ".init_array")
+        )]
+        #[cfg_attr(
+            target_vendor = "apple",
+            unsafe(link_section = "__DATA,__mod_init_func")
+        )]
+        #[cfg_attr(windows, unsafe(link_section = ".CRT$XCU"))]
+        static SHARED_CONFIG_DIR_BEFORE_MAIN: extern "C" fn() =
+            common::transcripts::point_config_dir_at_a_new_directory;
+    };
+}
+#[allow(unused_imports)]
+pub(crate) use shared_config_dir_before_main;
+
+/// The config directory shared by the tests of one binary: tests stay
+/// independent by working in their own project directory. Created on first
+/// use; the environment itself is never changed here.
+static CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    let directory = PathBuf::from(
+        std::env::var_os("CLAUDE_CONFIG_DIR")
+            .expect("CLAUDE_CONFIG_DIR is set before main by shared_config_dir_before_main"),
+    );
+    assert!(
+        directory
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(SHARED_CONFIG_DIR_PREFIX)),
+        "CLAUDE_CONFIG_DIR is {}, not a shared test directory: invoke \
+         common::transcripts::shared_config_dir_before_main!() in this test file",
+        directory.display()
+    );
+    std::fs::create_dir_all(&directory).unwrap();
     directory
 });
 
 pub fn config_dir() -> &'static Path {
-    CONFIG_DIR.path()
+    &CONFIG_DIR
 }
 
 pub fn projects_dir() -> PathBuf {

@@ -19,10 +19,40 @@ const EMIT_VARIABLE: &str = "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS";
 const READS_VARIABLE: &str = "CLAUDE_CODE_SDK_READS_SESSION_STATE";
 const CEILING_VARIABLE: &str = "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS";
 
-fn ambient_variables_are_unset() -> bool {
-    [EMIT_VARIABLE, READS_VARIABLE, CEILING_VARIABLE]
+const AMBIENT_VARIABLES: [&str; 3] = [EMIT_VARIABLE, READS_VARIABLE, CEILING_VARIABLE];
+
+/// Whether the test `name` can run in this process: true when none of
+/// [`AMBIENT_VARIABLES`] is set here.
+///
+/// Otherwise the SDK and the fake CLI would read the caller's values, so
+/// the test reruns itself in a child of this test binary with the variables
+/// removed, fails when the child fails or ran nothing, and returns false.
+/// The variables are removed on the child only, never on this process,
+/// where other tests run on other threads.
+fn runs_in_a_clean_environment(name: &str) -> bool {
+    if AMBIENT_VARIABLES
         .iter()
-        .all(|name| std::env::var_os(name).is_none())
+        .all(|variable| std::env::var_os(variable).is_none())
+    {
+        return true;
+    }
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command.args([name, "--exact", "--nocapture"]);
+    for variable in AMBIENT_VARIABLES {
+        command.env_remove(variable);
+    }
+    let output = command.output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "{name} failed once {AMBIENT_VARIABLES:?} were removed:\n{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("1 passed"),
+        "the rerun of {name} without {AMBIENT_VARIABLES:?} ran no test:\n{stdout}"
+    );
+    false
 }
 
 type Asked = Arc<Mutex<Vec<String>>>;
@@ -116,7 +146,7 @@ fn result_frame(text: &str, is_error: bool, extra: Value) -> Value {
 
 #[tokio::test]
 async fn follow_up_turn_is_served_and_sdk_frames_stay_hidden() {
-    if !ambient_variables_are_unset() {
+    if !runs_in_a_clean_environment("follow_up_turn_is_served_and_sdk_frames_stay_hidden") {
         return;
     }
     let (messages, asked) = run(options_for(&scenarios_dir().join("run_end_wake.json"))).await;
@@ -132,7 +162,7 @@ async fn follow_up_turn_is_served_and_sdk_frames_stay_hidden() {
 
 #[tokio::test]
 async fn caller_who_opted_in_sees_the_frames() {
-    if !ambient_variables_are_unset() {
+    if !runs_in_a_clean_environment("caller_who_opted_in_sees_the_frames") {
         return;
     }
     let options =
@@ -146,7 +176,7 @@ async fn caller_who_opted_in_sees_the_frames() {
 
 #[tokio::test]
 async fn ceiling_closes_stdin_when_idle_never_comes() {
-    if !ambient_variables_are_unset() {
+    if !runs_in_a_clean_environment("ceiling_closes_stdin_when_idle_never_comes") {
         return;
     }
     let started = Instant::now();

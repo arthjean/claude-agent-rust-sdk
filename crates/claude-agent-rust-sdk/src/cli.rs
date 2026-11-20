@@ -98,12 +98,18 @@ pub fn find_cli() -> Result<PathBuf> {
     CliLocator::from_environment().find()
 }
 
+const SYSTEM_CLI: &str = "/usr/local/bin/claude";
+
 #[derive(Debug, Clone)]
 pub(crate) struct CliLocator {
     pub(crate) platform: Platform,
     pub(crate) search_path: Option<OsString>,
     pub(crate) home: Option<PathBuf>,
     pub(crate) managed_dir: Option<PathBuf>,
+    /// The system-wide location searched on Unix, `/usr/local/bin/claude`.
+    /// Tests point it into a temporary directory so the result does not
+    /// depend on what the machine has installed.
+    pub(crate) system_cli: PathBuf,
 }
 
 impl CliLocator {
@@ -113,6 +119,7 @@ impl CliLocator {
             search_path: std::env::var_os("PATH"),
             home: std::env::home_dir(),
             managed_dir: managed_install_dir(),
+            system_cli: PathBuf::from(SYSTEM_CLI),
         }
     }
 
@@ -165,7 +172,7 @@ impl CliLocator {
             Platform::Windows => vec![under_home(&[".local", "bin", WINDOWS_CLI_NAME])],
             Platform::Unix => vec![
                 under_home(&[".npm-global", "bin", UNIX_CLI_NAME]),
-                Some(PathBuf::from("/usr/local/bin/claude")),
+                Some(self.system_cli.clone()),
                 under_home(&[".local", "bin", UNIX_CLI_NAME]),
                 under_home(&["node_modules", ".bin", UNIX_CLI_NAME]),
                 under_home(&[".yarn", "bin", UNIX_CLI_NAME]),
@@ -248,6 +255,7 @@ mod tests {
             search_path: Some(std::env::join_paths(entries).unwrap()),
             home: Some(root.join("home")),
             managed_dir: None,
+            system_cli: root.join("usr").join("local").join("bin").join("claude"),
         }
     }
 
@@ -374,10 +382,13 @@ mod tests {
         let yarn = add(&home.join(".yarn").join("bin"), "claude");
         add(&home.join(".claude").join("local"), "claude");
         let locator = locator(Platform::Unix, root.path(), &[root.path().join("missing")]);
-        if Path::new("/usr/local/bin/claude").is_file() {
-            return;
-        }
         assert_eq!(locator.find().unwrap(), yarn);
+
+        let local = add(&home.join(".local").join("bin"), "claude");
+        assert_eq!(locator.find().unwrap(), local);
+
+        let system = add(&root.path().join("usr").join("local").join("bin"), "claude");
+        assert_eq!(locator.find().unwrap(), system);
 
         let npm_global = add(&home.join(".npm-global").join("bin"), "claude");
         assert_eq!(locator.find().unwrap(), npm_global);
@@ -388,9 +399,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut locator = locator(Platform::Unix, root.path(), &[]);
         locator.search_path = Some(OsString::new());
-        if Path::new("/usr/local/bin/claude").is_file() {
-            return;
-        }
         let message = not_found_message(locator.find());
         assert!(message.starts_with(
             "Claude Code not found. Install with:\n  npm install -g @anthropic-ai/claude-code\n"

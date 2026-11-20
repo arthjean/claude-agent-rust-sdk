@@ -3,6 +3,8 @@
 
 mod common;
 
+common::transcripts::shared_config_dir_before_main!();
+
 use std::path::PathBuf;
 use std::time::Duration;
 

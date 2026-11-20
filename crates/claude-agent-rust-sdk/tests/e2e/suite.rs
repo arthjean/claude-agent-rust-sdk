@@ -295,9 +295,16 @@ pub fn transcript(session_id: &str, cwd: &Path) -> Vec<Value> {
     let file = project_directory(cwd).join(format!("{session_id}.jsonl"));
     let text = std::fs::read_to_string(&file)
         .unwrap_or_else(|error| panic!("no transcript at {}: {error}", file.display()));
-    text.lines()
+    let entries: Vec<Value> = text
+        .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
+        .collect();
+    assert!(
+        !entries.is_empty(),
+        "the transcript at {} holds no entry",
+        file.display()
+    );
+    entries
 }
 
 /// Removes the transcripts the CLI wrote for `cwd`.

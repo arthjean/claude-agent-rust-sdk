@@ -2,7 +2,6 @@
 
 mod common;
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -116,10 +115,7 @@ impl Setup {
     }
 
     fn resume_dirs(&self) -> Vec<PathBuf> {
-        resume_dirs()
-            .into_iter()
-            .filter(|directory| directory.join("projects").join(&self.project_key).is_dir())
-            .collect()
+        resume_dirs(&self.project_key)
     }
 
     async fn resumed(&self) -> (QueryStream, PathBuf, String) {
@@ -189,7 +185,12 @@ async fn wait_until_removed(path: &Path) {
     panic!("{} was not removed", path.display());
 }
 
-fn resume_dirs() -> BTreeSet<PathBuf> {
+/// The materialized config directories of the project `project_key`.
+///
+/// Every test works in a fresh temporary working directory, so its project
+/// key is unique: filtering on it keeps out the directories other tests and
+/// other processes create in the same temporary directory at the same time.
+fn resume_dirs(project_key: &str) -> Vec<PathBuf> {
     std::fs::read_dir(std::env::temp_dir())
         .unwrap()
         .flatten()
@@ -197,6 +198,7 @@ fn resume_dirs() -> BTreeSet<PathBuf> {
         .filter(|path| {
             path.file_name()
                 .is_some_and(|name| name.to_string_lossy().starts_with("claude-resume-"))
+                && path.join("projects").join(project_key).is_dir()
         })
         .collect()
 }
@@ -359,7 +361,6 @@ async fn continue_picks_the_newest_session_that_is_not_a_sidechain() {
 async fn continue_with_an_empty_store_starts_a_fresh_session() {
     let _serial = SERIAL.lock().await;
     let setup = Setup::new();
-    let before = resume_dirs();
     let options = setup
         .options(InMemorySessionStore::new())
         .continue_conversation(true)
@@ -370,7 +371,7 @@ async fn continue_with_an_empty_store_starts_a_fresh_session() {
     assert_eq!(child_config_dir(&init), setup.caller.path());
     assert!(arguments(&init).contains(&"--continue".to_owned()));
     let _: Vec<_> = messages.collect().await;
-    assert_eq!(resume_dirs(), before);
+    assert!(setup.resume_dirs().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -401,10 +402,9 @@ async fn the_client_removes_the_directory_on_disconnect() {
         .append(&setup.key(&id), &transcript(&id))
         .await
         .unwrap();
-    let before = resume_dirs();
     let client = ClaudeSdkClient::new(setup.options(store).resume(id.as_str()).build().unwrap());
     client.connect().await.unwrap();
-    let created: Vec<PathBuf> = resume_dirs().difference(&before).cloned().collect();
+    let created = setup.resume_dirs();
     assert_eq!(created.len(), 1);
     assert!(
         created[0]
@@ -470,7 +470,6 @@ async fn a_slow_store_fails_the_resume_and_leaves_no_directory() {
     let _serial = SERIAL.lock().await;
     let setup = Setup::new();
     let id = uuid::Uuid::new_v4().to_string();
-    let before = resume_dirs();
     for (slow_load, slow_subkeys) in [(true, false), (false, true)] {
         let inner = InMemorySessionStore::new();
         inner
@@ -494,9 +493,8 @@ async fn a_slow_store_fails_the_resume_and_leaves_no_directory() {
             error.to_string().contains("timed out after 100 ms"),
             "{error}"
         );
-        assert_eq!(
-            resume_dirs(),
-            before,
+        assert!(
+            setup.resume_dirs().is_empty(),
             "slow load {slow_load}, slow subkeys {slow_subkeys}"
         );
     }
@@ -564,7 +562,6 @@ async fn continue_needs_a_store_that_lists_sessions() {
 async fn a_resume_that_is_not_a_uuid_reaches_the_cli_unchanged() {
     let _serial = SERIAL.lock().await;
     let setup = Setup::new();
-    let before = resume_dirs();
     let options = setup
         .options(InMemorySessionStore::new())
         .resume("not-a-uuid")
@@ -575,7 +572,7 @@ async fn a_resume_that_is_not_a_uuid_reaches_the_cli_unchanged() {
     assert_eq!(resume_argument(&init).as_deref(), Some("not-a-uuid"));
     assert_eq!(child_config_dir(&init), setup.caller.path());
     let _: Vec<_> = messages.collect().await;
-    assert_eq!(resume_dirs(), before);
+    assert!(setup.resume_dirs().is_empty());
 }
 
 #[derive(Clone, Copy)]
@@ -686,10 +683,7 @@ impl SessionStore for ProbeStore {
         &self,
         key: &SessionListSubkeysKey,
     ) -> Result<Vec<String>, SessionStoreError> {
-        let existing: Vec<PathBuf> = resume_dirs()
-            .into_iter()
-            .filter(|directory| directory.join("projects").join(&self.project_key).is_dir())
-            .collect();
+        let existing = resume_dirs(&self.project_key);
         self.directories.lock().unwrap().extend(existing);
         self.enter(self.list_subkeys);
         apply(self.list_subkeys).await?;
@@ -1617,10 +1611,12 @@ async fn a_dropped_query_stops_the_child_before_the_directory_is_removed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "reads the macOS Keychain; set CLAUDE_AGENT_RUST_SDK_KEYCHAIN=1 and pass --ignored"]
 async fn keychain_credentials_are_copied_without_the_refresh_token() {
-    if std::env::var("CLAUDE_AGENT_RUST_SDK_KEYCHAIN").as_deref() != Ok("1") {
-        eprintln!("CLAUDE_AGENT_RUST_SDK_KEYCHAIN is not 1: skipping");
-        return;
-    }
+    assert_eq!(
+        std::env::var("CLAUDE_AGENT_RUST_SDK_KEYCHAIN").as_deref(),
+        Ok("1"),
+        "this test reads the macOS Keychain: create the item described above, set \
+         CLAUDE_AGENT_RUST_SDK_KEYCHAIN=1 to confirm it, and pass --ignored"
+    );
     let _serial = SERIAL.lock().await;
     for variable in [
         "CLAUDE_CONFIG_DIR",

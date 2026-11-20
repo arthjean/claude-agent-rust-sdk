@@ -2,6 +2,8 @@
 
 mod common;
 
+common::transcripts::shared_config_dir_before_main!();
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, UNIX_EPOCH};
@@ -511,6 +513,7 @@ fn read_in_a_process_with_config_dir(config: &Path, session_id: &str) -> Value {
         "--test-threads=1",
     ]);
     host.env("CLAUDE_CONFIG_DIR", config);
+    host.env(common::transcripts::KEEP_CONFIG_DIR_VARIABLE, "1");
     host.env(CONFIG_DIR_HOST_VARIABLE, session_id);
     let output = host.output().unwrap();
     assert!(output.status.success(), "{output:?}");

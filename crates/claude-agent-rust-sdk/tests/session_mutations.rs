@@ -2,6 +2,8 @@
 
 mod common;
 
+common::transcripts::shared_config_dir_before_main!();
+
 use std::collections::HashSet;
 
 use claude_agent_rust_sdk::ErrorKind;
@@ -180,6 +182,7 @@ fn rename_without_a_projects_directory_reports_the_session_as_not_found() {
             "--test-threads=1",
         ])
         .env(NO_PROJECTS_HOST_VARIABLE, "1")
+        .env(common::transcripts::KEEP_CONFIG_DIR_VARIABLE, "1")
         .env("CLAUDE_CONFIG_DIR", &config_dir)
         .output()
         .unwrap();

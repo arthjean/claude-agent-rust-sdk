@@ -2,6 +2,8 @@
 
 mod common;
 
+common::transcripts::shared_config_dir_before_main!();
+
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
