@@ -25,6 +25,14 @@ const COMBINATORS: [&str; 3] = ["allOf", "anyOf", "oneOf"];
 /// integers. Deeper values are read as they came.
 const MAX_DEPTH: usize = 64;
 
+/// How many pairs of a schema and a value one call visits at most to turn
+/// integral floats into integers. Each alternative of a combinator is
+/// visited for the same value, so nested combinators would otherwise cost
+/// a number of visits exponential in their depth; past the budget the rest
+/// of the arguments is read as it came, and `serde` reports any float left
+/// where an integer belongs.
+const MAX_VISITS: usize = 100_000;
+
 /// The input schema of a tool whose arguments are read into `Args`.
 ///
 /// The root has the type `object`, with the alternatives of an enum merged
@@ -218,13 +226,15 @@ fn union_of(mut schemas: Vec<Value>) -> Value {
 /// the tool, while `serde` refuses a float for an integer field. The schema
 /// is the generated one, so its `$ref`s point into its own `$defs`.
 pub(super) fn integral_floats_to_integers(schema: &Value, value: &mut Value) {
-    coerce(schema, schema, value, 0);
+    let mut budget = MAX_VISITS;
+    coerce(schema, schema, value, 0, &mut budget);
 }
 
-fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize) {
-    if depth > MAX_DEPTH {
+fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize, budget: &mut usize) {
+    if depth > MAX_DEPTH || *budget == 0 {
         return;
     }
+    *budget -= 1;
     let Value::Object(fields) = schema else {
         return;
     };
@@ -234,12 +244,12 @@ fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize) {
         .and_then(|reference| reference.strip_prefix('#'))
         .and_then(|pointer| root.pointer(pointer))
     {
-        coerce(target, root, value, depth + 1);
+        coerce(target, root, value, depth + 1, budget);
     }
     for combinator in COMBINATORS {
         if let Some(Value::Array(alternatives)) = fields.get(combinator) {
             for alternative in alternatives {
-                coerce(alternative, root, value, depth + 1);
+                coerce(alternative, root, value, depth + 1, budget);
             }
         }
     }
@@ -256,7 +266,7 @@ fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize) {
             let others = fields.get("additionalProperties");
             for (name, member) in members.iter_mut() {
                 if let Some(subschema) = properties.and_then(|stated| stated.get(name)).or(others) {
-                    coerce(subschema, root, member, depth + 1);
+                    coerce(subschema, root, member, depth + 1, budget);
                 }
             }
         }
@@ -265,7 +275,7 @@ fn coerce(schema: &Value, root: &Value, value: &mut Value, depth: usize) {
             let rest = fields.get("items");
             for (index, item) in items.iter_mut().enumerate() {
                 if let Some(subschema) = prefix.and_then(|prefix| prefix.get(index)).or(rest) {
-                    coerce(subschema, root, item, depth + 1);
+                    coerce(subschema, root, item, depth + 1, budget);
                 }
             }
         }
@@ -307,7 +317,9 @@ fn integral(number: &Number) -> Option<Number> {
 mod tests {
     use serde_json::json;
 
-    use super::integral_floats_to_integers;
+    use std::time::{Duration, Instant};
+
+    use super::{MAX_VISITS, integral_floats_to_integers};
 
     #[test]
     fn integral_floats_become_integers_only_where_the_schema_wants_an_integer() {
@@ -341,6 +353,23 @@ mod tests {
             arguments.to_string(),
             r#"{"count":3,"maybe":4,"ratio":5.0,"either":6.0,"list":[1,2.5],"pair":[7,8.0],"nested":{"n":9},"map":{"a":10},"unknown":11.0}"#
         );
+    }
+
+    #[test]
+    fn nested_combinators_cost_a_bounded_number_of_visits() {
+        let wide = json!({"$defs": {"Node": {"anyOf": [
+            {"$ref": "#/$defs/Node"}, {"$ref": "#/$defs/Node"}, {"$ref": "#/$defs/Node"},
+            {"$ref": "#/$defs/Node"}, {"type": "integer"},
+        ]}}, "$ref": "#/$defs/Node"});
+        let mut value = json!(3.0);
+        let started = Instant::now();
+        integral_floats_to_integers(&wide, &mut value);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?} for at most {MAX_VISITS} visits",
+            started.elapsed()
+        );
+        assert_eq!(value, json!(3));
     }
 
     #[test]
