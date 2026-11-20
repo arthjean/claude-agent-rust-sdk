@@ -650,6 +650,47 @@ fn the_sidecar_parent_ids_are_set_on_every_subagent_message() {
 }
 
 #[test]
+fn a_subagent_sidecar_with_a_lone_surrogate_is_read_as_upstream_reads_it() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "spawn an agent", json!({})));
+    let subagents = project.dir.join(&id).join("subagents");
+    write_lines(
+        &subagents.join("agent-solo.jsonl"),
+        &[
+            user("solo-u", None, &id, Value::from("task")),
+            assistant("solo-a", Some("solo-u"), &id, "done"),
+        ],
+    );
+    std::fs::write(
+        subagents.join("agent-solo.meta.json"),
+        r#"{"toolUseId": "toolu_9", "description": "cut \ud83d"}"#,
+    )
+    .unwrap();
+    let messages = get_subagent_messages(
+        &id,
+        "solo",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
+    assert_eq!(messages[0].parent_tool_use_id.as_deref(), Some("toolu_9"));
+
+    std::fs::write(
+        subagents.join("agent-solo.meta.json"),
+        b"{\"toolUseId\": \"\xff\"}",
+    )
+    .unwrap();
+    let messages = get_subagent_messages(
+        &id,
+        "solo",
+        SessionMessagesOptions::new().directory(project.path()),
+    );
+    assert_eq!(
+        messages[0].parent_tool_use_id, None,
+        "invalid UTF-8 is absent, as upstream"
+    );
+}
+
+#[test]
 fn subagents_are_listed_and_read_with_their_parent_ids() {
     let project = Project::new();
     let id = new_id();

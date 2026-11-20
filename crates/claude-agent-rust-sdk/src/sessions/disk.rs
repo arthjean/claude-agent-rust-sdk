@@ -361,7 +361,10 @@ pub(crate) fn read_agent_metadata_sidecar_strictly(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     };
-    Ok(match serde_json::from_slice(&text) {
+    let Ok(text) = std::str::from_utf8(&text) else {
+        return Ok(None);
+    };
+    Ok(match crate::transport::framing::parse_json(text) {
         Ok(Value::Object(metadata)) => Some(metadata),
         _ => None,
     })
