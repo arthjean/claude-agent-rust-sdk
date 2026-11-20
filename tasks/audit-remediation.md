@@ -17,19 +17,19 @@ difference, recorded), `blocked` (waiting on the owner).
 |---|---|---|---|---|
 | A01 | blocker | Port upstream #1502 (permission updates), sync to v0.2.186 | done | Pin at v0.2.186 (`upstream-sync`); `to_wire` returns `Result`, 8 upstream tests ported (`tests/types.rs`, `tests/control_protocol.rs`); parity-check and parity-diff pass. Real-CLI proof: pending. |
 | A02 | blocker | Keep JSON key order (`preserve_order`) | done | `preserve_order` in the library, `shift_remove` (clippy `disallowed-methods` on `Map::remove`), fork/resume lines keep entry order; harness compares key order (`compare.rs` tests), case `key-order`; tests `fork_keeps_the_key_order_of_each_entry_as_upstream_does`, `json_values_reach_the_cli_with_their_keys_in_the_order_written`. Hook output order recorded as `wire.hook-output-key-order*`. |
-| A03 | blocker | Cancellation-safe writes to the CLI | todo | |
-| A04 | blocker | Survive a lone UTF-16 surrogate escape or deep nesting | todo | |
+| A03 | blocker | Cancellation-safe writes to the CLI | done | One writer task per session fed whole frames (`src/control/mod.rs`); fake-claude `stdin_pause`; test `transport.rs::a_dropped_write_never_cuts_a_frame_the_cli_reads` (fails on the old code). Real-CLI reaction to a torn line: pending. |
+| A04 | blocker | Survive a lone UTF-16 surrogate escape or deep nesting | done | `framing.rs`: lone surrogate escapes become U+FFFD, nesting read up to 512 levels; unit tests and `transport.rs::a_lone_surrogate_escape_from_the_cli_does_not_end_the_session`; `[behavior.lone-surrogate-escape]`, `[behavior.nesting-depth-limit]`. |
 | A05 | major | Differential harness measures what the SDK returns to the app | todo | |
 | A06 | major | Detect upstream tests changed in place, drifting refs | todo | |
 | A07 | major | Force `"type": "object"` on `SdkMcpTool::raw` schemas | todo | |
 | A08 | major | Isolate SessionStore panics, always signal reader end | todo | |
 | A09 | major | Keep unknown data on types the user sends | todo | |
 | A10 | major | CLI version warning, private `managed_install_dir` | todo | |
-| A11 | major | Evolvable public surface before 1.0 (error design: owner approval) | blocked | Error design proposed below, waiting for the owner; the non-error items go ahead. |
+| A11 | major | Evolvable public surface before 1.0 (error design: owner approval) | doing | Error part done: opaque `Error` + `ErrorKind` (17 kinds), accessors, `is_retryable()`, owner chose this design on 2026-11-20; tests in `src/error.rs` and `tests/errors.rs`. Remaining: `#[non_exhaustive]` variants, `wire_enum` equality, sealed `McpSdkServerInstance`. |
 | A12 | major | Let the CLI stop cleanly when the program ends | todo | |
 | A13 | major | Align public claims with what is measured | todo | |
 | A14 | minor | Propagate the tracing span and OTel context | todo | |
-| A15 | minor | Connection error after the CLI died | todo | |
+| A15 | minor | Connection error after the CLI died | done | A request after the CLI died is `ErrorKind::ConnectionClosed` with the process error as source; test `control_protocol.rs::a_control_request_after_the_cli_died_is_a_connection_error`. |
 | A16 | minor | Typed hook input does not silently fall back to Unknown | todo | |
 | A17 | minor | `receive_messages` after an unparseable message | todo | |
 | A18 | minor | Native tool cancellation | todo | |
@@ -43,7 +43,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A26 | minor | Record Rust-only session behaviors | todo | |
 | A27 | minor | Reconnect with a supplied SubprocessTransport | todo | |
 | A28 | minor | Control responses stuck behind unread messages | todo | |
-| A29 | minor | Errors: repeated source, placeholder stderr | todo | |
+| A29 | minor | Errors: repeated source, placeholder stderr | done | Display no longer repeats the source (`error.rs` test `the_text_does_not_repeat_the_source...`); sources shared by `Arc`, no `duplicate()`; `Error::stderr()` holds an 8 KiB tail when captured (`transport.rs::a_failed_process_keeps_the_last_lines_of_its_captured_error_output`, `[behavior.process-error-stderr]`). |
 | A30 | minor | Blocking calls on the async runtime | todo | |
 | A31 | minor | Dependency weight, third-party types in the API | todo | |
 | A32 | minor | Tests that pass silently or cannot fail | todo | |
@@ -70,7 +70,7 @@ Each choice the audit did not settle, with the cautious option taken.
 
 Total spent: 0.00 USD.
 
-## A11 proposal (error design, waiting for the owner)
+## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
 Problem (audit A11, A29): `Error::CliConnection { message }` covers about 18
 causes, `io::Error` is flattened to text by `duplicate()`, nothing says what

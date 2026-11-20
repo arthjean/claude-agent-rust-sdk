@@ -37,7 +37,7 @@ use std::task::{Poll, Waker};
 use futures_util::stream;
 use serde_json::Value;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::transport::{MessageStream, Transport};
 
 type Responder = Arc<dyn Fn(&Value) -> Vec<Value> + Send + Sync>;
@@ -149,13 +149,13 @@ impl MockTransport {
     }
 
     /// Makes [`connect`](Transport::connect) fail with
-    /// [`Error::CliConnection`] carrying this message.
+    /// [`ErrorKind::Spawn`] carrying this message.
     pub fn fail_connect(&self, message: impl Into<String>) {
         self.state().connect_error = Some(message.into());
     }
 
     /// Makes every later [`write`](Transport::write) fail with
-    /// [`Error::CliConnection`] carrying this message.
+    /// [`ErrorKind::ConnectionClosed`] carrying this message.
     pub fn fail_writes(&self, message: impl Into<String>) {
         self.state().write_error = Some(message.into());
     }
@@ -215,7 +215,7 @@ impl Transport for MockTransport {
         let mut state = self.state();
         state.connect_count += 1;
         if let Some(message) = &state.connect_error {
-            return Err(Error::cli_connection(message.clone()));
+            return Err(Error::new(ErrorKind::Spawn, message.clone()));
         }
         state.connected = true;
         state.closed = false;
@@ -226,12 +226,13 @@ impl Transport for MockTransport {
         let responder = {
             let mut state = self.state();
             if !state.connected || state.closed {
-                return Err(Error::cli_connection(
+                return Err(Error::new(
+                    ErrorKind::NotConnected,
                     "ProcessTransport is not ready for writing",
                 ));
             }
             if let Some(message) = &state.write_error {
-                return Err(Error::cli_connection(message.clone()));
+                return Err(Error::new(ErrorKind::ConnectionClosed, message.clone()));
             }
             state.written.push(data.to_owned());
             state.responder.clone()

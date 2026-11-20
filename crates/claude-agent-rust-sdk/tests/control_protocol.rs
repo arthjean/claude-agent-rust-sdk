@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     AgentDefinition, AsyncHookOutput, ClaudeAgentOptions, ClaudeSdkClient, Error, HookCallback,
     HookEvent, HookFailureMode, HookInput, HookMatcher, HookOutput, Message, PermissionResult,
@@ -71,7 +72,12 @@ async fn control_responses_complete_the_request_with_the_same_id() {
     client.disconnect().await.unwrap();
     let leaked: Vec<_> = client.receive_messages().collect().await;
     assert_eq!(leaked.len(), 1);
-    assert!(matches!(leaked[0], Err(Error::CliConnection { .. })));
+    assert!(
+        leaked[0]
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -122,7 +128,7 @@ async fn control_request_without_response_times_out_after_sixty_seconds() {
     let started = tokio::time::Instant::now();
     let error = client.interrupt().await.unwrap_err();
     assert_eq!(started.elapsed(), Duration::from_secs(60));
-    assert!(matches!(&error, Error::ControlTimeout { subtype } if subtype == "interrupt"));
+    assert!(error.control_subtype() == Some("interrupt"));
     assert_eq!(error.to_string(), "Control request timeout: interrupt");
 
     let late = success(&requests(&transport, "interrupt")[0], json!({}));
@@ -140,12 +146,16 @@ async fn initialize_without_response_times_out_and_closes_the_transport() {
     let started = tokio::time::Instant::now();
     let error = client.connect().await.unwrap_err();
     assert_eq!(started.elapsed(), Duration::from_secs(60));
-    assert!(matches!(&error, Error::ControlTimeout { subtype } if subtype == "initialize"));
+    assert!(error.control_subtype() == Some("initialize"));
     assert!(transport.is_closed());
-    assert!(matches!(
-        client.interrupt().await,
-        Err(Error::CliConnection { .. })
-    ));
+    assert!(
+        client
+            .interrupt()
+            .await
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -165,11 +175,12 @@ async fn error_responses_fail_the_request_with_the_text_of_the_cli() {
     let client = connected(&transport, default_options()).await;
 
     let error = client.reconnect_mcp_server("files").await.unwrap_err();
-    assert!(matches!(&error, Error::Control { message } if message == "Server not found: files"));
+    assert_eq!(error.kind(), ErrorKind::Control);
     assert_eq!(error.to_string(), "Server not found: files");
 
     let error = client.stop_task("task-1").await.unwrap_err();
-    assert!(matches!(&error, Error::Control { message } if message == "Unknown error"));
+    assert_eq!(error.kind(), ErrorKind::Control);
+    assert_eq!(error.to_string(), "Unknown error");
 
     client.interrupt().await.unwrap();
 }
@@ -186,10 +197,9 @@ async fn reader_error_fails_every_pending_request_with_that_error() {
     };
     let (interrupt, status, ()) = tokio::join!(client.interrupt(), client.get_mcp_status(), fail);
     for error in [interrupt.unwrap_err(), status.unwrap_err()] {
-        assert!(matches!(
-            &error,
-            Error::Process { message, exit_code: Some(3), .. } if message == "Command failed"
-        ));
+        assert_eq!(error.kind(), ErrorKind::Process);
+        assert_eq!(error.exit_code(), Some(3));
+        assert!(error.to_string().starts_with("Command failed"), "{error}");
     }
 
     let mut messages = client.receive_messages();
@@ -197,8 +207,30 @@ async fn reader_error_fails_every_pending_request_with_that_error() {
     assert_eq!(streamed.exit_code(), Some(3));
     assert!(messages.next().await.is_none());
 
+    assert_eq!(requests(&transport, "set_model").len(), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_control_request_after_the_cli_died_is_a_connection_error() {
+    let transport = cli_answering_only_initialize();
+    let client = connected(&transport, default_options()).await;
+    transport.push_error(Error::process("Command failed", Some(3), None));
+    settle().await;
+
     let later = client.set_model(None).await.unwrap_err();
-    assert_eq!(later.exit_code(), Some(3));
+    assert_eq!(later.kind(), ErrorKind::ConnectionClosed);
+    assert!(later.is_cli_connection());
+    assert!(later.is_retryable());
+    assert!(
+        later
+            .to_string()
+            .starts_with("Cannot write to process that exited with error: Command failed"),
+        "{later}"
+    );
+    let cause = std::error::Error::source(&later)
+        .and_then(|source| source.downcast_ref::<Error>())
+        .unwrap();
+    assert_eq!(cause.exit_code(), Some(3));
     assert_eq!(requests(&transport, "set_model").len(), 0);
 }
 
@@ -213,7 +245,12 @@ async fn clean_end_of_output_fails_pending_requests_at_once() {
     };
     let started = tokio::time::Instant::now();
     let (interrupt, ()) = tokio::join!(client.interrupt(), finish);
-    assert!(matches!(interrupt, Err(Error::CliConnection { .. })));
+    assert!(
+        interrupt
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     assert!(started.elapsed() < Duration::from_secs(1));
 }
 
@@ -648,10 +685,13 @@ async fn initialize_response_is_stored_and_returned_as_server_info() {
         }
     });
     let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
-    assert!(matches!(
-        client.get_server_info(),
-        Err(Error::CliConnection { .. })
-    ));
+    assert!(
+        client
+            .get_server_info()
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     client.connect().await.unwrap();
     assert_eq!(
         client.get_server_info().unwrap(),
@@ -688,13 +728,20 @@ async fn block_on_failure_is_refused_when_the_cli_cannot_honor_it() {
         let transport = initialize_answering(json!({}));
         let client = ClaudeSdkClient::with_transport(blocking_options(mode), transport.clone());
         let error = client.connect().await.unwrap_err();
-        assert!(matches!(&error, Error::CliConnection { message }
-            if message.contains("does not honor on_failure on hook matchers")));
+        assert!(
+            error.is_cli_connection()
+                && error
+                    .to_string()
+                    .contains("does not honor on_failure on hook matchers")
+        );
         assert!(transport.is_closed());
-        assert!(matches!(
-            client.get_server_info(),
-            Err(Error::CliConnection { .. })
-        ));
+        assert!(
+            client
+                .get_server_info()
+                .as_ref()
+                .err()
+                .is_some_and(Error::is_cli_connection)
+        );
     }
 
     let transport =
@@ -704,8 +751,7 @@ async fn block_on_failure_is_refused_when_the_cli_cannot_honor_it() {
         transport.clone(),
     );
     let error = client.connect().await.unwrap_err();
-    assert!(matches!(&error, Error::CliConnection { message }
-        if message.contains("did not register your hooks")));
+    assert!(error.is_cli_connection() && error.to_string().contains("did not register your hooks"));
     assert!(transport.is_closed());
 
     let stream = query_with_transport(
@@ -715,7 +761,12 @@ async fn block_on_failure_is_refused_when_the_cli_cannot_honor_it() {
     );
     let items = drain(stream).await;
     assert_eq!(items.len(), 1);
-    assert!(matches!(items[0], Err(Error::CliConnection { .. })));
+    assert!(
+        items[0]
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
 }
 
 #[tokio::test(start_paused = true)]

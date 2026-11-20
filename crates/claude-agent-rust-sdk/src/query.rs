@@ -26,7 +26,7 @@ const ONE_SHOT_SESSION_ID: &str = "";
 ///
 /// Nothing runs until the stream is polled. The stream ends after the first
 /// error it yields. When the CLI reports an error result and exits with a
-/// non-zero code, the last item is [`Error::ResultError`] carrying the text
+/// non-zero code, the last item is [`ErrorKind::ResultError`](crate::ErrorKind::ResultError) carrying the text
 /// of that result. Dropping the stream ends the CLI process through the
 /// bounded shutdown of the transport, on a detached task.
 ///

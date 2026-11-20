@@ -532,7 +532,7 @@ pub type McpHttpServerConfig = McpRemoteServerConfig;
 /// concrete type. A session serves the handles made by
 /// [`create_sdk_mcp_server`](crate::create_sdk_mcp_server) and, with the
 /// `rmcp` feature, by `McpServerConfig::sdk_rmcp`; it refuses any other
-/// with [`Error::Config`](crate::Error::Config).
+/// with [`ErrorKind::Config`](crate::ErrorKind::Config).
 #[derive(Clone)]
 pub struct McpSdkServerInstance(Arc<dyn Any + Send + Sync>);
 

@@ -381,17 +381,17 @@ fn parse_settings_object(text: &str) -> std::result::Result<Map<String, Value>, 
 }
 
 fn settings_error(cause: String) -> Error {
-    Error::cli_connection(format!("Failed to load settings: {cause}"))
+    Error::spawn(format!("Failed to load settings: {cause}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Platform, reject_cmd_metacharacters, validate_skill_name};
-    use crate::error::Error;
+    use crate::error::ErrorKind;
 
     fn config_message(result: crate::error::Result<()>) -> String {
         match result {
-            Err(Error::Config { message }) => message,
+            Err(error) if error.kind() == ErrorKind::Config => error.to_string(),
             other => panic!("expected a config error, got {other:?}"),
         }
     }

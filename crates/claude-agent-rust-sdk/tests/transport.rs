@@ -5,6 +5,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     BoxError, ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, MessageStream, PermissionMode,
     PermissionResult, SharedTransport, StderrCallback, SubprocessTransport, ToolPermissionContext,
@@ -17,10 +18,11 @@ use common::capture::Warnings;
 use common::{Fake, collect, fake_claude, next, next_message, stand_in_options, wait_until_gone};
 
 fn connection_error(error: Error) -> String {
-    match error {
-        Error::CliConnection { message } => message,
-        other => panic!("expected a connection error, got {other:?}"),
-    }
+    assert!(
+        error.is_cli_connection(),
+        "expected a connection error, got {error:?}"
+    );
+    error.to_string()
 }
 
 #[tokio::test]
@@ -205,13 +207,12 @@ async fn a_missing_executable_is_a_not_found_error() {
         .build()
         .unwrap();
     let transport = SubprocessTransport::new(options);
-    match transport.connect().await.unwrap_err() {
-        Error::CliNotFound { message } => assert_eq!(
-            message,
-            format!("Claude CLI not found at: {}", cli_path.display())
-        ),
-        other => panic!("expected CliNotFound, got {other:?}"),
-    }
+    let error = transport.connect().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::CliNotFound);
+    assert_eq!(
+        error.to_string(),
+        format!("Claude Code not found at: {}", cli_path.display())
+    );
 }
 
 #[tokio::test]
@@ -219,7 +220,12 @@ async fn reading_before_connecting_yields_one_connection_error() {
     let transport = SubprocessTransport::new(stand_in_options().build().unwrap());
     let items = collect(transport.read_messages()).await;
     assert_eq!(items.len(), 1);
-    assert!(matches!(items[0], Err(Error::CliConnection { .. })));
+    assert!(
+        items[0]
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
 
     let before = transport.write("{}\n").await.unwrap_err();
     assert_eq!(
@@ -230,7 +236,12 @@ async fn reading_before_connecting_yields_one_connection_error() {
     transport.connect().await.unwrap();
     let first = transport.read_messages();
     let second = collect(transport.read_messages()).await;
-    assert!(matches!(second[0], Err(Error::CliConnection { .. })));
+    assert!(
+        second[0]
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     drop(first);
     transport.close().await.unwrap();
 }
@@ -278,12 +289,9 @@ async fn a_corrupt_line_yields_a_decode_error_and_ends_the_stream() {
     let items = collect(transport.read_messages()).await;
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].as_ref().unwrap()["type"], "first");
-    match &items[1] {
-        Err(Error::JsonDecode { line, .. }) => {
-            assert_eq!(line, "{\"type\": \"assistant\", broken");
-        }
-        other => panic!("expected a decode error, got {other:?}"),
-    }
+    let error = items[1].as_ref().unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::JsonDecode);
+    assert_eq!(error.line(), Some("{\"type\": \"assistant\", broken"));
     transport.close().await.unwrap();
 }
 
@@ -303,7 +311,7 @@ async fn an_oversize_message_yields_a_decode_error_and_ends_the_stream() {
     let items = collect(transport.read_messages()).await;
     assert_eq!(items.len(), 2);
     let error = items[1].as_ref().unwrap_err();
-    assert!(matches!(error, Error::JsonDecode { .. }));
+    assert_eq!(error.kind(), ErrorKind::JsonDecode);
     assert_eq!(
         error.to_string(),
         "Failed to decode JSON: JSON message exceeded maximum buffer size of 512 bytes..."
@@ -336,18 +344,14 @@ async fn a_non_zero_exit_code_ends_the_stream_with_a_process_error() {
     transport.connect().await.unwrap();
     let mut items = collect(transport.read_messages()).await;
     assert_eq!(items.len(), 2);
-    match items.pop().unwrap() {
-        Err(Error::Process {
-            message,
-            exit_code,
-            stderr,
-        }) => {
-            assert_eq!(message, "Command failed with exit code 3");
-            assert_eq!(exit_code, Some(3));
-            assert_eq!(stderr.as_deref(), Some("Check stderr output for details"));
-        }
-        other => panic!("expected a process error, got {other:?}"),
-    }
+    let error = items.pop().unwrap().unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Process);
+    assert_eq!(
+        error.to_string(),
+        "Command failed with exit code 3 (exit code: 3)"
+    );
+    assert_eq!(error.exit_code(), Some(3));
+    assert_eq!(error.stderr(), None, "stderr was not captured");
 
     let error = transport.write("{}\n").await.unwrap_err();
     assert_eq!(
@@ -585,10 +589,7 @@ async fn a_resume_value_with_cmd_metacharacters_fails_connect_on_windows() {
         let options = stand_in_options().resume(value).build().unwrap();
         let transport = SubprocessTransport::new(options);
         let error = transport.connect().await.unwrap_err();
-        assert!(
-            matches!(error, Error::Config { .. }),
-            "{value:?}: {error:?}"
-        );
+        assert!(error.kind() == ErrorKind::Config, "{value:?}: {error:?}");
         assert_eq!(transport.process_id(), None);
     }
 }
@@ -660,10 +661,14 @@ async fn an_unknown_user_fails_connect_and_nothing_is_spawned() {
         .build()
         .unwrap();
     let transport = SubprocessTransport::new(options);
-    let message = connection_error(transport.connect().await.unwrap_err());
+    let error = transport.connect().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Spawn);
+    assert_eq!(error.to_string(), "Failed to start Claude Code");
     assert_eq!(
-        message,
-        "Failed to start Claude CLI: unknown user: claude-agent-rust-sdk-no-such-user"
+        std::error::Error::source(&error)
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("unknown user: claude-agent-rust-sdk-no-such-user")
     );
     assert_eq!(transport.process_id(), None);
     assert!(!transport.is_ready());
@@ -674,10 +679,14 @@ async fn an_unknown_user_fails_connect_and_nothing_is_spawned() {
 async fn the_user_option_is_refused_on_windows_and_nothing_is_spawned() {
     let options = stand_in_options().user("claude").build().unwrap();
     let transport = SubprocessTransport::new(options);
-    let message = connection_error(transport.connect().await.unwrap_err());
+    let error = transport.connect().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Spawn);
+    assert_eq!(error.to_string(), "Failed to start Claude Code");
     assert_eq!(
-        message,
-        "Failed to start Claude CLI: the user option is not supported on this platform"
+        std::error::Error::source(&error)
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("the user option is not supported on this platform")
     );
     assert_eq!(transport.process_id(), None);
     assert!(!transport.is_ready());
@@ -874,7 +883,7 @@ async fn query_warns_about_a_shadowed_permission_callback_before_connecting() {
 
     let items: Vec<_> = query("Hello", options).collect().await;
 
-    assert!(matches!(items.as_slice(), [Err(Error::CliNotFound { .. })]));
+    assert!(matches!(items.as_slice(), [Err(error)] if error.kind() == ErrorKind::CliNotFound));
     let [Err(error)] = items.as_slice() else {
         unreachable!()
     };
@@ -1015,4 +1024,27 @@ async fn a_lone_surrogate_escape_from_the_cli_does_not_end_the_session() {
         messages.last(),
         Some(Ok(claude_agent_rust_sdk::Message::Result(_)))
     ));
+}
+
+#[tokio::test]
+async fn a_failed_process_keeps_the_last_lines_of_its_captured_error_output() {
+    let fake = Fake::new(json!({
+        "steps": [
+            {"stderr": "Starting\n"},
+            {"stderr": "Error: invalid API key\n"},
+            {"exit": 1},
+        ],
+    }));
+    let callback = StderrCallback::new(async |_line: String| {});
+    let transport = SubprocessTransport::new(fake.options().stderr(callback).build().unwrap());
+    transport.connect().await.unwrap();
+    let items = collect(transport.read_messages()).await;
+    let error = items.last().unwrap().as_ref().unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Process);
+    assert_eq!(error.stderr(), Some("Starting\nError: invalid API key"));
+    assert_eq!(
+        error.to_string(),
+        "Command failed with exit code 1 (exit code: 1)\nError output: Starting\nError: invalid API key"
+    );
+    transport.close().await.unwrap();
 }

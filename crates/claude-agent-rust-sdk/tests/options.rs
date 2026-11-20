@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptions, EffortLevel, Error, HookEvent, HookInput, HookMatcher,
     HookOutput, McpRemoteServerConfig, McpSdkServerConfig, McpSdkServerInstance, McpServerConfig,
@@ -26,7 +27,7 @@ async fn allow_everything(
 
 fn config_error(result: Result<ClaudeAgentOptions, Error>) -> String {
     match result {
-        Err(Error::Config { message }) => message,
+        Err(error) if error.kind() == ErrorKind::Config => error.to_string(),
         other => panic!("expected a config error, got {other:?}"),
     }
 }

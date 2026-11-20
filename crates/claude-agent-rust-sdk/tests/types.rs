@@ -2,10 +2,11 @@
 
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     AgentDefinition, AgentEffort, AgentMcpServer, AgentMemory, AssistantMessage, AsyncHookOutput,
     BackgroundTaskSummary, CanUseTool, ContentBlock, ContextUsageResponse, EffortLevel,
-    ElicitationAction, ElicitationHookSpecificOutput, Error, FastModeDisabledReason, FastModeState,
+    ElicitationAction, ElicitationHookSpecificOutput, FastModeDisabledReason, FastModeState,
     HookCallback, HookContext, HookDecision, HookEffort, HookEvent, HookFailureMode, HookInput,
     HookMatcher, HookOutput, HookPermissionDecision, HookSpecificOutput, McpServerConnectionStatus,
     McpServerStatus, McpServerStatusConfig, McpStatusResponse, PermissionBehavior, PermissionMode,
@@ -263,7 +264,7 @@ fn missing_required_field_fails() {
     ];
     for (update, missing) in cases {
         let error = update.to_wire().unwrap_err();
-        assert!(matches!(error, Error::Config { .. }), "{error:?}");
+        assert_eq!(error.kind(), ErrorKind::Config, "{error:?}");
         assert!(
             error.to_string().contains(&format!("has no {missing}")),
             "{error}"
@@ -276,7 +277,7 @@ fn missing_required_field_fails() {
 fn unknown_kind_fails() {
     let update = PermissionUpdate::new("addSomething").destination("session");
     let error = update.to_wire().unwrap_err();
-    assert!(matches!(error, Error::Config { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::Config, "{error:?}");
     assert!(
         error
             .to_string()

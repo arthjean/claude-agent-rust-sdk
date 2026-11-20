@@ -1,7 +1,5 @@
 //! A terminal error result surfaces as a typed error.
 
-use claude_agent_rust_sdk::Error;
-
 use crate::suite;
 
 const BAD_MODEL: &str = "claude-nonexistent-model-for-sdk-e2e";
@@ -25,13 +23,10 @@ async fn an_api_failure_ends_the_query_with_a_result_error_carrying_the_payload(
         error.is_process(),
         "except ProcessError catches it: {error:?}"
     );
-    let Error::ResultError {
-        data, exit_code, ..
-    } = &error
-    else {
+    let Some(data) = error.result() else {
         panic!("expected a result error, got {error:?}");
     };
-    assert!(exit_code.is_some());
+    assert!(error.exit_code().is_some());
     assert!(!text.contains("error result: success"), "{text}");
     let prose = result.result.as_deref().unwrap_or_default().trim();
     assert!(

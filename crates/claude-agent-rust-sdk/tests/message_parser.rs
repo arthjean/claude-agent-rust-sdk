@@ -1,7 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    AssistantMessage, AssistantMessageError, ContentBlock, Error, Message, MessageOriginKind,
+    AssistantMessage, AssistantMessageError, ContentBlock, Message, MessageOriginKind,
     RateLimitEvent, RateLimitStatus, RateLimitType, ResultMessage, ServerToolName, SessionKey,
     StreamEvent, SystemMessage, TERMINAL_TASK_STATUSES, TaskNotificationOriginSubkind,
     TaskNotificationStatus, TaskUpdatedMessage, TaskUpdatedStatus, TaskUsage, ToolResultContent,
@@ -60,7 +61,9 @@ fn task_updated(data: Value) -> TaskUpdatedMessage {
 
 fn parse_error(data: Value) -> (String, Option<Value>) {
     match parse_message(data) {
-        Err(Error::MessageParse { message, data }) => (message, data),
+        Err(error) if error.kind() == ErrorKind::MessageParse => {
+            (error.to_string(), error.data().cloned())
+        }
         other => panic!("expected a parse error, got {other:?}"),
     }
 }

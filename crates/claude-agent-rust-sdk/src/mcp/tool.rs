@@ -415,7 +415,7 @@ impl SdkMcpTool {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] when the schema is not a JSON object.
+    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when the schema is not a JSON object.
     pub fn raw<F, Fut>(
         name: impl Into<String>,
         description: impl Into<String>,

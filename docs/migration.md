@@ -66,20 +66,32 @@ being dropped, so a newer CLI does not break an older program.
 
 ## Errors
 
-The Python exception classes are the variants of one enum, `Error`. Match on
-the variant where Python caught a class.
+Every function returns one error type, `Error`. Its `kind()` says what went
+wrong, where Python raises a class: match on `ErrorKind` where Python caught a
+class, and read the data of the cause through accessors (`exit_code()`,
+`stderr()`, `result()`, `line()`). `is_retryable()` says whether trying again
+can succeed.
+
+```rust,ignore
+match error.kind() {
+    ErrorKind::ConnectionClosed => reconnect().await?,
+    ErrorKind::Process => eprintln!("exit code {:?}", error.exit_code()),
+    _ if error.is_retryable() => retry().await?,
+    _ => return Err(error),
+}
+```
 
 One difference matters when you port an `except` clause: in Python,
 `ResultError` is a subclass of `ProcessError`, so `except ProcessError` also
-catches it. In Rust, `Error::ResultError` and `Error::Process` are two variants,
-so a `match` arm on `Error::Process` alone misses a result error. The same holds
-for `CLINotFoundError`, a subclass of `CLIConnectionError`. Two predicates keep
-the Python meaning:
+catches it. In Rust, `ErrorKind::ResultError` and `ErrorKind::Process` are two
+kinds, so a `match` arm on `ErrorKind::Process` alone misses a result error.
+The same holds for `CLINotFoundError`, a subclass of `CLIConnectionError`, which
+Rust splits into four kinds by cause. Two predicates keep the Python meaning:
 
 | Python | Rust |
 |---|---|
-| `except ProcessError:` | `if error.is_process()`: true for `Error::Process` and `Error::ResultError` |
-| `except CLIConnectionError:` | `if error.is_cli_connection()`: true for `Error::CliConnection` and `Error::CliNotFound` |
+| `except ProcessError:` | `if error.is_process()`: true for `ErrorKind::Process` and `ErrorKind::ResultError` |
+| `except CLIConnectionError:` | `if error.is_cli_connection()`: true for `ErrorKind::CliNotFound`, `Spawn`, `NotConnected`, `ConnectionClosed`, and `Unsupported` |
 
 ## Hooks and the permission callback
 
@@ -175,14 +187,14 @@ shape, not only spelling.
 | `AssistantMessage` | `claude_agent_rust_sdk::AssistantMessage` |  |
 | `BackgroundTaskSummary` | `claude_agent_rust_sdk::BackgroundTaskSummary` |  |
 | `BaseHookInput` | `claude_agent_rust_sdk::HookInputBase` |  |
-| `CLIConnectionError` | `claude_agent_rust_sdk::Error::CliConnection` | Adapted: Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
-| `CLIJSONDecodeError` | `claude_agent_rust_sdk::Error::JsonDecode` | Adapted: Variant of `Error`. |
-| `CLINotFoundError` | `claude_agent_rust_sdk::Error::CliNotFound` | Adapted: Variant of `Error`. |
+| `CLIConnectionError` | `claude_agent_rust_sdk::Error::is_cli_connection`, `claude_agent_rust_sdk::ErrorKind::Spawn`, `claude_agent_rust_sdk::ErrorKind::NotConnected`, `claude_agent_rust_sdk::ErrorKind::ConnectionClosed`, `claude_agent_rust_sdk::ErrorKind::Unsupported` | Adapted: Four kinds tell its causes apart. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`. |
+| `CLIJSONDecodeError` | `claude_agent_rust_sdk::ErrorKind::JsonDecode` | Adapted: A kind of `Error`; `Error::line()` holds the line. |
+| `CLINotFoundError` | `claude_agent_rust_sdk::ErrorKind::CliNotFound` | Adapted: A kind of `Error`, read with `Error::kind()`. |
 | `CanUseTool` | `claude_agent_rust_sdk::CanUseTool` |  |
 | `CanUseToolShadowedWarning` | `claude_agent_rust_sdk::ClaudeAgentOptions::can_use_tool_shadowed_warning` | Adapted: Rust has no warning categories: the method returns the text, which the SDK logs through `tracing` at connect. |
 | `ClaudeAgentOptions` | `claude_agent_rust_sdk::ClaudeAgentOptions` |  |
 | `ClaudeSDKClient` | `claude_agent_rust_sdk::ClaudeSdkClient` |  |
-| `ClaudeSDKError` | `claude_agent_rust_sdk::Error` | One enum holds every error; match on its variants. |
+| `ClaudeSDKError` | `claude_agent_rust_sdk::Error` | One opaque error type holds every error; branch on `Error::kind()`. |
 | `ContentBlock` | `claude_agent_rust_sdk::ContentBlock` |  |
 | `ContextUsageCategory` | `claude_agent_rust_sdk::ContextUsageCategory` |  |
 | `ContextUsageResponse` | `claude_agent_rust_sdk::ContextUsageResponse` | Typed struct where Python returns the dictionary; it and its categories keep the keys they do not model in `extra`. |
@@ -239,12 +251,12 @@ shape, not only spelling.
 | `PreModelSwitchHookSpecificOutput` | `claude_agent_rust_sdk::PreModelSwitchHookSpecificOutput` |  |
 | `PreToolUseHookInput` | `claude_agent_rust_sdk::PreToolUseHookInput` |  |
 | `PreToolUseHookSpecificOutput` | `claude_agent_rust_sdk::PreToolUseHookSpecificOutput` |  |
-| `ProcessError` | `claude_agent_rust_sdk::Error::Process` | Adapted: Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
+| `ProcessError` | `claude_agent_rust_sdk::ErrorKind::Process` | Adapted: A kind of `Error`; `Error::exit_code()` and `Error::stderr()` hold its fields. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`. |
 | `RateLimitEvent` | `claude_agent_rust_sdk::RateLimitEvent` |  |
 | `RateLimitInfo` | `claude_agent_rust_sdk::RateLimitInfo` |  |
 | `RateLimitStatus` | `claude_agent_rust_sdk::RateLimitStatus` |  |
 | `RateLimitType` | `claude_agent_rust_sdk::RateLimitType` |  |
-| `ResultError` | `claude_agent_rust_sdk::Error::ResultError` | Adapted: Variant of `Error`; its fields are in `ResultErrorData`. |
+| `ResultError` | `claude_agent_rust_sdk::ErrorKind::ResultError` | Adapted: A kind of `Error`; `Error::result()` returns its fields as `ResultErrorData`. |
 | `ResultMessage` | `claude_agent_rust_sdk::ResultMessage` |  |
 | `SDKSessionInfo` | `claude_agent_rust_sdk::SdkSessionInfo` |  |
 | `SandboxIgnoreViolations` | `claude_agent_rust_sdk::SandboxIgnoreViolations` |  |

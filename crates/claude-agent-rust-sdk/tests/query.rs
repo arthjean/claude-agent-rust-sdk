@@ -5,6 +5,7 @@ mod common;
 
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::testing::MockTransport;
 use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, InputMessage, Message, PermissionResult, Prompt,
@@ -471,20 +472,12 @@ async fn error_result_followed_by_a_failing_exit_ends_with_a_result_error() {
             last.to_string(),
             format!("Claude Code returned an error result: {text} (exit code: 1)")
         );
-        let Error::ResultError {
-            message,
-            data,
-            exit_code,
-        } = last
-        else {
-            panic!("expected a result error for {text}");
-        };
+        assert_eq!(last.kind(), ErrorKind::ResultError, "{text}");
+        assert_eq!(last.exit_code(), Some(1));
         assert_eq!(
-            message,
-            format!("Claude Code returned an error result: {text}")
+            Value::Object(last.result().unwrap().clone().into_inner()),
+            frame
         );
-        assert_eq!(exit_code, Some(1));
-        assert_eq!(Value::Object(data.into_inner()), frame);
     }
 }
 
@@ -506,10 +499,9 @@ async fn failing_exit_is_kept_when_the_last_result_is_not_the_cause() {
         let mut items = run_ending_with(frames, exit(1)).await;
         assert_eq!(items.len(), count + 1);
         let last = items.pop().unwrap().unwrap_err();
-        assert!(matches!(
-            &last,
-            Error::Process { message, exit_code: Some(1), .. } if message == "Command failed"
-        ));
+        assert_eq!(last.kind(), ErrorKind::Process);
+        assert_eq!(last.exit_code(), Some(1));
+        assert!(last.to_string().starts_with("Command failed"), "{last}");
     }
 
     let mut visible_state = session_state("idle");
@@ -520,13 +512,13 @@ async fn failing_exit_is_kept_when_the_last_result_is_not_the_cause() {
     for marker in [session_state("idle"), visible_state] {
         let mut items = run_ending_with(vec![failed.clone(), marker], exit(1)).await;
         let last = items.pop().unwrap().unwrap_err();
-        assert!(matches!(last, Error::ResultError { .. }));
+        assert_eq!(last.kind(), ErrorKind::ResultError);
     }
 
     let broken: serde_json::Error = serde_json::from_str::<Value>("{\"type\": ").unwrap_err();
     let mut items = run_ending_with(vec![failed], Error::json_decode("{\"type\": ", broken)).await;
     let last = items.pop().unwrap().unwrap_err();
-    assert!(matches!(last, Error::JsonDecode { .. }));
+    assert_eq!(last.kind(), ErrorKind::JsonDecode);
 }
 
 #[tokio::test(start_paused = true)]
@@ -549,7 +541,7 @@ async fn pending_control_requests_fail_with_the_result_error() {
     let items = items.await.unwrap();
     assert_eq!(items.len(), 1);
     let error = items[0].as_ref().unwrap_err();
-    assert!(matches!(error, Error::ResultError { .. }));
+    assert_eq!(error.kind(), ErrorKind::ResultError);
     assert!(
         error
             .to_string()
@@ -574,13 +566,8 @@ async fn pending_control_requests_fail_with_the_result_error() {
     };
     let (status, ()) = tokio::join!(client.get_mcp_status(), fail);
     let error = status.unwrap_err();
-    assert!(matches!(
-        error,
-        Error::ResultError {
-            exit_code: Some(1),
-            ..
-        }
-    ));
+    assert_eq!(error.kind(), ErrorKind::ResultError);
+    assert_eq!(error.exit_code(), Some(1));
 }
 
 #[tokio::test(start_paused = true)]
@@ -604,7 +591,10 @@ async fn message_that_does_not_parse_ends_the_stream_with_an_error() {
     .await;
     assert_eq!(items.len(), 2);
     assert!(matches!(&items[0], Ok(Message::Unknown(raw)) if raw["forecast"] == "rain"));
-    assert!(matches!(items[1], Err(Error::MessageParse { .. })));
+    assert_eq!(
+        items[1].as_ref().err().map(Error::kind),
+        Some(ErrorKind::MessageParse)
+    );
     assert!(transport.is_closed());
 }
 
@@ -619,8 +609,8 @@ async fn failures_before_the_first_message_are_the_only_item() {
     ))
     .await;
     assert_eq!(items.len(), 1);
-    assert!(matches!(&items[0], Err(Error::CliConnection { message })
-        if message == "The service is unreachable"));
+    assert!(matches!(&items[0], Err(error)
+        if error.is_cli_connection() && error.to_string() == "The service is unreachable"));
     assert!(written(&unreachable, "control_request").is_empty());
 
     let mut conflicting = ClaudeAgentOptions::builder()
@@ -636,7 +626,10 @@ async fn failures_before_the_first_message_are_the_only_item() {
     ))
     .await;
     assert_eq!(items.len(), 1);
-    assert!(matches!(items[0], Err(Error::Config { .. })));
+    assert_eq!(
+        items[0].as_ref().err().map(Error::kind),
+        Some(ErrorKind::Config)
+    );
     assert_eq!(untouched.connect_count(), 0);
 
     let rejecting_writes = cli_answering(|_| Vec::new());
@@ -648,7 +641,12 @@ async fn failures_before_the_first_message_are_the_only_item() {
     rejecting_writes.fail_writes("The pipe is broken");
     let items = drain(stream).await;
     assert_eq!(items.len(), 1);
-    assert!(matches!(items[0], Err(Error::CliConnection { .. })));
+    assert!(
+        items[0]
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     assert!(rejecting_writes.is_closed());
 }
 

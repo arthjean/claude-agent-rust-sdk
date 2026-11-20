@@ -171,7 +171,7 @@ pub(crate) fn oversize_error(length: usize, limit: usize) -> Error {
 #[cfg(test)]
 mod tests {
     use super::{LineFramer, MAX_NESTING_DEPTH, parse_stdout_line, replace_lone_surrogates};
-    use crate::error::Error;
+    use crate::error::{Error, ErrorKind};
 
     fn lines(framer: &mut LineFramer, chunk: &str) -> Vec<String> {
         framer
@@ -251,10 +251,13 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(value["a"].is_array());
-        assert!(matches!(
-            parse_stdout_line(nested(MAX_NESTING_DEPTH + 1).as_bytes()),
-            Err(Error::JsonDecode { .. })
-        ));
+        assert_eq!(
+            parse_stdout_line(nested(MAX_NESTING_DEPTH + 1).as_bytes())
+                .as_ref()
+                .err()
+                .map(Error::kind),
+            Some(ErrorKind::JsonDecode)
+        );
         let in_string = format!("{{\"a\": \"{}\"}}", "[".repeat(MAX_NESTING_DEPTH * 2));
         assert!(parse_stdout_line(in_string.as_bytes()).unwrap().is_some());
     }
@@ -262,7 +265,8 @@ mod tests {
     #[test]
     fn a_line_that_is_still_invalid_keeps_the_original_error() {
         let error = parse_stdout_line(br#"{"t": "\ud83d", }"#).unwrap_err();
-        assert!(matches!(error, Error::JsonDecode { ref line, .. } if line.contains("\\ud83d")));
+        assert_eq!(error.kind(), ErrorKind::JsonDecode);
+        assert!(error.line().is_some_and(|line| line.contains("\\ud83d")));
     }
 
     #[test]
@@ -280,7 +284,7 @@ mod tests {
     #[test]
     fn a_line_that_looks_like_json_but_does_not_parse_is_an_error() {
         let error = parse_stdout_line(b"{\"type\": \"assistant\", ").unwrap_err();
-        assert!(matches!(error, Error::JsonDecode { .. }));
+        assert_eq!(error.kind(), ErrorKind::JsonDecode);
         assert!(
             error
                 .to_string()

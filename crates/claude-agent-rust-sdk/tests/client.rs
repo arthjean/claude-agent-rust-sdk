@@ -5,6 +5,7 @@ mod common;
 
 use std::sync::Arc;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::testing::MockTransport;
 use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeSdkClient, Error, InputMessage, McpServerConnectionStatus, Message,
@@ -24,10 +25,13 @@ fn default_options() -> ClaudeAgentOptions {
 
 fn assert_not_connected<T: std::fmt::Debug>(outcome: Result<T, Error>, method: &str) {
     match outcome {
-        Err(Error::CliConnection { message }) => {
-            assert!(message.starts_with("Not connected"), "{method}: {message}");
+        Err(error) if error.kind() == ErrorKind::NotConnected => {
+            assert!(
+                error.to_string().starts_with("Not connected"),
+                "{method}: {error}"
+            );
         }
-        other => panic!("{method}: expected a connection error, got {other:?}"),
+        other => panic!("{method}: expected a not-connected error, got {other:?}"),
     }
 }
 
@@ -191,8 +195,12 @@ async fn query_uses_the_default_session_unless_one_is_given_and_keeps_stdin_open
         Err("the source went away"),
     ]));
     let error = client.query(failing).await.unwrap_err();
-    assert!(matches!(&error, Error::CliConnection { message }
-        if message == "Prompt stream failed: the source went away"));
+    assert_eq!(error.kind(), ErrorKind::PromptStream);
+    assert_eq!(error.to_string(), "Prompt stream failed");
+    assert_eq!(
+        std::error::Error::source(&error).unwrap().to_string(),
+        "the source went away"
+    );
     assert_eq!(written(&transport, "user").len(), 5);
     assert!(!transport.input_ended());
 }
@@ -313,7 +321,7 @@ async fn receive_messages_yields_everything_and_survives_a_message_that_does_not
     for _ in 0..5 {
         texts.push(match messages.next().await.unwrap() {
             Ok(message) => text_of(&message),
-            Err(Error::MessageParse { .. }) => "<unparsable>".to_owned(),
+            Err(error) if error.kind() == ErrorKind::MessageParse => "<unparsable>".to_owned(),
             Err(other) => panic!("unexpected error {other}"),
         });
     }
@@ -453,8 +461,7 @@ async fn failed_connect_leaves_nothing_running() {
     transport.fail_connect("The service is unreachable");
     let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
     let error = client.connect().await.unwrap_err();
-    assert!(matches!(&error, Error::CliConnection { message }
-        if message == "The service is unreachable"));
+    assert!(error.is_cli_connection() && error.to_string() == "The service is unreachable");
     assert_not_connected(client.interrupt().await, "interrupt");
     assert_eq!(transport.close_count(), 1);
     client.disconnect().await.unwrap();

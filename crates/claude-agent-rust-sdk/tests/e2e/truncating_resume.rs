@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use claude_agent_rust_sdk::{Error, Message, SessionMessageType, get_session_messages};
+use claude_agent_rust_sdk::{Message, SessionMessageType, get_session_messages};
 
 use crate::suite;
 
@@ -121,10 +121,7 @@ async fn a_fork_that_names_another_turn_is_refused() {
     let source_prompts = prompts(&session.id, &cwd);
     suite::forget(&cwd);
     let error = error.unwrap_or_else(|| panic!("the fork was not refused: {messages:#?}"));
-    assert!(
-        matches!(error, Error::ResultError { .. } | Error::Process { .. }),
-        "{error:?}"
-    );
+    assert!(error.is_process(), "{error:?}");
     assert!(
         error
             .to_string()

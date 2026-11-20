@@ -93,7 +93,7 @@ fn absolute_from_env(name: &str) -> Option<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::CliNotFound`], with install instructions, when no
+/// Returns [`ErrorKind::CliNotFound`](crate::ErrorKind::CliNotFound), with install instructions, when no
 /// location holds the executable.
 pub fn find_cli() -> Result<PathBuf> {
     CliLocator::from_environment().find()
@@ -214,7 +214,7 @@ pub(crate) fn reject_windows_batch_cli(cli_path: &Path, platform: Platform) -> R
     if platform != Platform::Windows || !is_windows_batch_cli(&cli_path.to_string_lossy()) {
         return Ok(());
     }
-    Err(Error::cli_connection(format!(
+    Err(Error::spawn(format!(
         "Refusing to execute batch script {:?}: Windows runs .bat/.cmd files via cmd.exe, which \
          can execute commands injected through CLI arguments, and no reliable escaping for \
          cmd.exe exists. Use a native claude executable instead: install the CLI natively (irm \
@@ -229,7 +229,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{CliLocator, Platform, is_windows_batch_cli, reject_windows_batch_cli};
-    use crate::error::Error;
+    use crate::error::ErrorKind;
 
     fn add(directory: &Path, name: &str) -> PathBuf {
         std::fs::create_dir_all(directory).unwrap();
@@ -254,7 +254,7 @@ mod tests {
 
     fn not_found_message(result: crate::error::Result<PathBuf>) -> String {
         match result {
-            Err(Error::CliNotFound { message }) => message,
+            Err(error) if error.kind() == ErrorKind::CliNotFound => error.to_string(),
             other => panic!("expected CliNotFound, got {other:?}"),
         }
     }
@@ -443,8 +443,8 @@ mod tests {
             assert!(is_windows_batch_cli(path), "{path:?}");
             let refusal = reject_windows_batch_cli(Path::new(path), Platform::Windows);
             match refusal {
-                Err(Error::CliConnection { message }) => {
-                    assert!(message.contains("batch script"), "{path:?}");
+                Err(error) if error.kind() == ErrorKind::Spawn => {
+                    assert!(error.to_string().contains("batch script"), "{path:?}");
                 }
                 other => panic!("expected a refusal for {path:?}, got {other:?}"),
             }

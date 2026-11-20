@@ -187,7 +187,7 @@ impl PermissionUpdate {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] in the two failing cases above.
+    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) in the two failing cases above.
     pub fn to_wire(&self) -> Result<Value, Error> {
         let kind = self.kind.as_str();
         let missing = |field: &str, hint: &str| {
@@ -261,7 +261,7 @@ impl PermissionUpdate {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::MessageParse`] when `wire` is not an object, when
+    /// Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse) when `wire` is not an object, when
     /// `type` is missing, or when a rule lacks `toolName`.
     pub fn from_wire(wire: &Value) -> Result<Self, Error> {
         let invalid = |message: &str| Error::message_parse(message, Some(wire.clone()));

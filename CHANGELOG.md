@@ -6,14 +6,20 @@
 
 - Every pull request compares the public API with the newest release on crates.io through `cargo-semver-checks`, so a patch release cannot break a build against the previous release.
 - A scheduled check of `Cargo.lock` against the RustSec advisory database.
+- `Error::is_retryable()` says whether trying again can succeed: a control timeout, a closed connection, an API error result with status 429, 529, or 5xx, a process killed by a signal, an interrupted or timed-out I/O call, or a store that took too long.
+- `Error::stderr()` holds the last 8 KiB of the CLI's error output when a `stderr` callback captured it, where it used to hold a placeholder.
 
 ### Changed
 
 - Upstream moved to Python SDK 0.2.186 and CLI 2.1.329.
-- **Breaking:** `PermissionUpdate::to_wire` returns a `Result`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `Error::Config`. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
+- **Breaking:** `Error` is now an opaque, cheaply cloned type. `Error::kind()` returns an `ErrorKind` (`#[non_exhaustive]`), and the data of a cause is read through accessors: `exit_code()`, `stderr()`, `result()`, `line()`, `data()`, `control_subtype()`, `unsupported_operation()`, `io_kind()`. The former `Error::CliConnection` is split by cause into `ErrorKind::Spawn`, `NotConnected`, `ConnectionClosed`, and `Unsupported`, and a failing prompt stream is `ErrorKind::PromptStream`. `Error::new(kind, message)` and `with_source` build an error for a custom transport or store. `is_process()` and `is_cli_connection()` keep the meaning of the Python `except` clauses. Migrate `match error { Error::Process { exit_code, .. } => .. }` to `match error.kind() { ErrorKind::Process => error.exit_code(), .. }`.
+- **Breaking:** the text of an `Io` or `SessionStore` error no longer repeats its source, which `std::error::Error::source` returns with its type (an `io::Error` stays an `io::Error`).
+- Messages name the product "Claude Code", as upstream does: "Claude Code not found", "Failed to start Claude Code".
+- **Breaking:** `PermissionUpdate::to_wire` returns a `Result`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `ErrorKind::Config` error. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
 
 ### Fixed
 
+- A control request sent after the CLI died fails with `ErrorKind::ConnectionClosed` (retryable, the process error as its source), as upstream raises `CLIConnectionError`, instead of repeating the process error.
 - JSON keeps its key order end to end, as the Python SDK and the CLI do: the properties of an output schema, the order of MCP servers and subagents, the keys of settings, and every line a fork or a resume from a store writes. The crate now enables the `preserve_order` feature of `serde_json`; since Cargo features add up, a `serde_json::Map` elsewhere in a program that uses this crate also keeps insertion order.
 - Dropping the future of `ClaudeSdkClient::query`, `interrupt`, `set_model` or any other call, for example under `tokio::time::timeout`, no longer cuts a frame on the standard input of the CLI. Every frame now goes through one writer task per session, which finishes each frame it starts, also with a custom transport.
 - A line of CLI output that escapes a lone UTF-16 surrogate, which JavaScript writes for a string cut inside an emoji, no longer ends the session: the surrogate becomes U+FFFD. Lines nested up to 512 levels deep are read too, instead of 128.

@@ -40,6 +40,10 @@ const WRITE_LOCK_LIMIT: Duration = Duration::from_secs(5);
 const STDERR_STOP_LIMIT: Duration = Duration::from_secs(1);
 const OUTPUT_DRAIN_LIMIT: Duration = Duration::from_secs(1);
 const SKIPPED_TAIL_PREVIEW_CHARS: usize = 200;
+/// Bytes of error output a process error keeps, the last lines first kept.
+const STDERR_TAIL_BYTES: usize = 8 * 1024;
+/// Time the end of the error output is awaited once the process failed.
+const STDERR_TAIL_WAIT: Duration = Duration::from_millis(200);
 
 type SharedClose = Shared<BoxFuture<'static, ()>>;
 
@@ -96,6 +100,7 @@ struct Inner {
 
 #[derive(Default)]
 struct SharedState {
+    stderr_tail: StderrTail,
     ready: AtomicBool,
     closing: AtomicBool,
     exit_error: Mutex<Option<String>>,
@@ -149,9 +154,9 @@ impl SubprocessTransport {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] for an invalid skill name, a plugin that
+    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) for an invalid skill name, a plugin that
     /// is not local, or, on Windows, a resume or session value containing a
-    /// `cmd.exe` metacharacter. Returns [`Error::CliConnection`] when the
+    /// `cmd.exe` metacharacter. Returns [`ErrorKind::Spawn`](crate::ErrorKind::Spawn) when the
     /// settings to merge with the sandbox options cannot be loaded.
     pub fn command_arguments(&self) -> Result<Vec<OsString>> {
         build_arguments(&self.options, Platform::current())
@@ -167,27 +172,26 @@ impl SubprocessTransport {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CliNotFound`] when the executable is missing,
-    /// [`Error::CliConnection`] when it is a batch script on Windows, when
-    /// the working directory does not exist, when the `user` option names
-    /// an unknown user or is set on Windows, when the process cannot start,
-    /// or when the transport is already closed, and the errors of
+    /// Returns [`ErrorKind::CliNotFound`](crate::ErrorKind::CliNotFound) when the executable is missing,
+    /// [`ErrorKind::Spawn`](crate::ErrorKind::Spawn) when it is a batch script on Windows, when the working
+    /// directory does not exist, when the `user` option names an unknown
+    /// user or is set on Windows, or when the process cannot start,
+    /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the transport is already closed, and the
+    /// errors of
     /// [`command_arguments`](Self::command_arguments).
     pub async fn connect(&self) -> Result<()> {
         let _connecting = self.inner.connecting.lock().await;
         match &*lock(&self.inner.state) {
             State::Idle => {}
             State::Connected(_) => return Ok(()),
-            State::Closed(_) => return Err(Error::cli_connection("Transport is closed")),
+            State::Closed(_) => return Err(Error::not_connected("Transport is closed")),
         }
 
         let cli_path = match &self.options.cli_path {
             Some(path) => path.clone(),
             None => tokio::task::spawn_blocking(find_cli)
                 .await
-                .map_err(|error| {
-                    Error::cli_connection(format!("CLI discovery failed: {error}"))
-                })??,
+                .map_err(|error| Error::spawn(format!("CLI discovery failed: {error}")))??,
         };
         reject_windows_batch_cli(&cli_path, Platform::current())?;
         let arguments = self.command_arguments()?;
@@ -214,14 +218,13 @@ impl SubprocessTransport {
             command.current_dir(cwd);
         }
         if let Some(user) = &self.options.user {
-            process::run_as_user(&mut command, user).map_err(|error| {
-                Error::cli_connection(format!("Failed to start Claude CLI: {error}"))
-            })?;
+            process::run_as_user(&mut command, user)
+                .map_err(|error| Error::spawn("Failed to start Claude Code").with_source(error))?;
         }
 
         let spawned = process::spawn(command)
             .await
-            .map_err(|error| self.spawn_error(&cli_path, &error))?;
+            .map_err(|error| self.spawn_error(&cli_path, error))?;
         let process::Spawned { streams, handle } = spawned;
         let shared = &self.inner.shared;
         let _ = shared.exit.set(handle.exit());
@@ -254,11 +257,13 @@ impl SubprocessTransport {
             .zip(streams.stderr)
             .map(|(callback, stream)| {
                 let (stop, stopped) = oneshot::channel();
+                shared.stderr_tail.start();
                 let task = tokio::spawn(forward_stderr(
                     stream,
                     callback,
                     self.max_buffer_size(),
                     stopped,
+                    shared.stderr_tail.clone(),
                 ));
                 StderrTask { stop, task }
             });
@@ -280,8 +285,9 @@ impl SubprocessTransport {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CliConnection`] when the transport is not ready,
-    /// when the process has exited, or when the write fails.
+    /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the transport is not ready, and
+    /// [`ErrorKind::ConnectionClosed`](crate::ErrorKind::ConnectionClosed) when the process has exited or the write
+    /// fails.
     pub async fn write(&self, data: &str) -> Result<()> {
         let mut stdin = self.inner.stdin.lock().await;
         let shared = &self.inner.shared;
@@ -289,18 +295,18 @@ impl SubprocessTransport {
             .as_mut()
             .filter(|_| shared.ready.load(Ordering::SeqCst))
         else {
-            return Err(Error::cli_connection(
+            return Err(Error::not_connected(
                 "ProcessTransport is not ready for writing",
             ));
         };
         if let Some(exit) = shared.exit.get().and_then(|exit| *exit.borrow()) {
-            return Err(Error::cli_connection(format!(
+            return Err(Error::connection_closed(format!(
                 "Cannot write to terminated process (exit code: {})",
                 exit.code
             )));
         }
         if let Some(error) = &*lock(&shared.exit_error) {
-            return Err(Error::cli_connection(format!(
+            return Err(Error::connection_closed(format!(
                 "Cannot write to process that exited with error: {error}"
             )));
         }
@@ -312,18 +318,18 @@ impl SubprocessTransport {
             shared.ready.store(false, Ordering::SeqCst);
             let message = format!("Failed to write to process stdin: {error}");
             *lock(&shared.exit_error) = Some(message.clone());
-            return Err(Error::cli_connection(message));
+            return Err(Error::connection_closed(message).with_source(error));
         }
         Ok(())
     }
 
     /// Returns the stream of messages read from the standard output.
     ///
-    /// The stream is handed out once. It yields [`Error::JsonDecode`] for a
-    /// corrupt or oversize message and [`Error::Process`] when the CLI
+    /// The stream is handed out once. It yields [`ErrorKind::JsonDecode`](crate::ErrorKind::JsonDecode) for a
+    /// corrupt or oversize message and [`ErrorKind::Process`](crate::ErrorKind::Process) when the CLI
     /// exits with a non-zero code, and ends after either. Before
     /// [`connect`](Self::connect), or on a second call, the stream yields
-    /// one [`Error::CliConnection`].
+    /// one [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
     pub fn read_messages(&self) -> MessageStream {
         let messages = match &mut *lock(&self.inner.state) {
             State::Connected(connection) => connection.messages.take(),
@@ -333,9 +339,9 @@ impl SubprocessTransport {
             Some(messages) => Box::pin(stream::unfold(messages, |mut messages| async move {
                 messages.recv().await.map(|message| (message, messages))
             })),
-            None => Box::pin(stream::once(std::future::ready(Err(
-                Error::cli_connection("Not connected"),
-            )))),
+            None => Box::pin(stream::once(std::future::ready(Err(Error::not_connected(
+                "Not connected",
+            ))))),
         }
     }
 
@@ -401,22 +407,22 @@ impl SubprocessTransport {
             .unwrap_or(DEFAULT_MAX_BUFFER_SIZE)
     }
 
-    fn spawn_error(&self, cli_path: &Path, error: &std::io::Error) -> Error {
+    fn spawn_error(&self, cli_path: &Path, error: std::io::Error) -> Error {
         if let Some(cwd) = &self.options.cwd
             && !cwd.exists()
         {
-            return Error::cli_connection(format!(
+            return Error::spawn(format!(
                 "Working directory does not exist: {}",
                 cwd.display()
             ));
         }
         if error.kind() == std::io::ErrorKind::NotFound {
             return Error::cli_not_found(
-                Some("Claude CLI not found at"),
+                Some("Claude Code not found at"),
                 Some(&cli_path.to_string_lossy()),
             );
         }
-        Error::cli_connection(format!("Failed to start Claude CLI: {error}"))
+        Error::spawn("Failed to start Claude Code").with_source(error)
     }
 }
 
@@ -560,10 +566,11 @@ async fn read_output<R>(
 
     let code = wait_for_exit_code(&mut context.exit).await;
     if code != 0 && !context.shared.closing.load(Ordering::SeqCst) {
+        let stderr = context.shared.stderr_tail.text().await;
         let error = Error::process(
             format!("Command failed with exit code {code}"),
             Some(code),
-            Some("Check stderr output for details".to_owned()),
+            stderr,
         );
         *lock(&context.shared.exit_error) = Some(error.to_string());
         let _ = sender.send(Err(error)).await;
@@ -630,11 +637,75 @@ fn leading_number(text: &str) -> Option<(u64, &str)> {
     Some((text[..digits].parse().ok()?, &text[digits..]))
 }
 
+/// The last lines of error output, kept for [`Error::stderr`] while a
+/// task forwards them to the stderr callback.
+#[derive(Clone, Default)]
+struct StderrTail(Arc<TailState>);
+
+#[derive(Default)]
+struct TailState {
+    text: Mutex<Option<String>>,
+    done: tokio::sync::Notify,
+    finished: AtomicBool,
+}
+
+impl StderrTail {
+    /// Starts the capture; without it, [`Self::text`] stays `None`.
+    fn start(&self) {
+        *lock(&self.0.text) = Some(String::new());
+    }
+
+    fn push(&self, line: &str) {
+        let mut text = lock(&self.0.text);
+        let Some(text) = text.as_mut() else {
+            return;
+        };
+        text.push_str(line);
+        text.push('\n');
+        while text.len() > STDERR_TAIL_BYTES {
+            match text.find('\n') {
+                Some(end) if end + 1 < text.len() => {
+                    text.drain(..=end);
+                }
+                _ => {
+                    let mut cut = text.len() - STDERR_TAIL_BYTES;
+                    while !text.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    text.drain(..cut);
+                }
+            }
+        }
+    }
+
+    fn finish(&self) {
+        self.0.finished.store(true, Ordering::SeqCst);
+        self.0.done.notify_waiters();
+    }
+
+    /// The captured text, once the forwarding task has read the end of the
+    /// output or [`STDERR_TAIL_WAIT`] has passed; `None` when nothing was
+    /// captured.
+    async fn text(&self) -> Option<String> {
+        if lock(&self.0.text).is_none() {
+            return None;
+        }
+        let done = self.0.done.notified();
+        if !self.0.finished.load(Ordering::SeqCst) {
+            let _ = timeout(STDERR_TAIL_WAIT, done).await;
+        }
+        let text = lock(&self.0.text).clone()?;
+        let text = text.trim_end();
+        (!text.is_empty()).then(|| text.to_owned())
+    }
+}
+
 async fn forward_stderr<R>(
     mut stream: R,
     callback: StderrCallback,
     max_buffer_size: usize,
     mut stopped: oneshot::Receiver<()>,
+    tail: StderrTail,
 ) where
     R: AsyncRead + Unpin,
 {
@@ -651,21 +722,23 @@ async fn forward_stderr<R>(
             Ok(read) => read,
         };
         for line in framer.push(&chunk[..read]) {
-            emit_stderr_line(&callback, &line).await;
+            emit_stderr_line(&callback, &tail, &line).await;
         }
         if framer.pending_len() > max_buffer_size {
-            emit_stderr_line(&callback, &framer.flush()).await;
+            emit_stderr_line(&callback, &tail, &framer.flush()).await;
         }
     }
-    emit_stderr_line(&callback, &framer.flush()).await;
+    emit_stderr_line(&callback, &tail, &framer.flush()).await;
+    tail.finish();
 }
 
-async fn emit_stderr_line(callback: &StderrCallback, line: &[u8]) {
+async fn emit_stderr_line(callback: &StderrCallback, tail: &StderrTail, line: &[u8]) {
     let text = String::from_utf8_lossy(line);
     let text = text.trim_end();
     if text.is_empty() {
         return;
     }
+    tail.push(text);
     let call = AssertUnwindSafe(|| callback.call(text.to_owned()));
     let Ok(pending) = std::panic::catch_unwind(call) else {
         tracing::debug!("stderr callback panicked; continuing");
@@ -689,9 +762,10 @@ mod tests {
     use tokio::sync::{mpsc, oneshot, watch};
 
     use super::{
-        Exit, OutputContext, SharedState, VersionCheck, forward_stderr, parse_version, read_output,
+        Exit, OutputContext, SharedState, StderrTail, VersionCheck, forward_stderr, parse_version,
+        read_output,
     };
-    use crate::error::{Error, Result};
+    use crate::error::{Error, ErrorKind, Result};
     use crate::types::StderrCallback;
 
     struct Chunks(VecDeque<Vec<u8>>);
@@ -831,7 +905,7 @@ mod tests {
         let items = read_all([huge.as_str(), "\n{\"type\": \"late\"}\n"], MEBIBYTE, 0).await;
         assert_eq!(items.len(), 1);
         let error = items.into_iter().next().unwrap().unwrap_err();
-        assert!(matches!(error, Error::JsonDecode { .. }));
+        assert_eq!(error.kind(), ErrorKind::JsonDecode);
         assert!(
             error
                 .to_string()
@@ -856,7 +930,10 @@ mod tests {
         let line = format!("{}\n", json!({"data": "x".repeat(600)}));
         let items = read_all([line], 512, 0).await;
         assert_eq!(items.len(), 1);
-        assert!(matches!(items[0], Err(Error::JsonDecode { .. })));
+        assert_eq!(
+            items[0].as_ref().err().map(Error::kind),
+            Some(ErrorKind::JsonDecode)
+        );
     }
 
     #[tokio::test]
@@ -865,7 +942,10 @@ mod tests {
         assert!(line.chars().count() < 512);
         assert!(line.len() > 512);
         let items = read_all([line], 512, 0).await;
-        assert!(matches!(items[0], Err(Error::JsonDecode { .. })));
+        assert_eq!(
+            items[0].as_ref().err().map(Error::kind),
+            Some(ErrorKind::JsonDecode)
+        );
     }
 
     #[tokio::test]
@@ -921,7 +1001,10 @@ mod tests {
         )
         .await;
         assert_eq!(items.len(), 1);
-        assert!(matches!(items[0], Err(Error::JsonDecode { .. })));
+        assert_eq!(
+            items[0].as_ref().err().map(Error::kind),
+            Some(ErrorKind::JsonDecode)
+        );
     }
 
     #[tokio::test]
@@ -948,8 +1031,12 @@ mod tests {
         assert_eq!(error.exit_code(), Some(3));
         assert_eq!(
             error.to_string(),
-            "Command failed with exit code 3 (exit code: 3)\nError output: Check stderr output \
-             for details"
+            "Command failed with exit code 3 (exit code: 3)"
+        );
+        assert_eq!(
+            error.stderr(),
+            None,
+            "no stderr callback, so nothing was captured"
         );
     }
 
@@ -992,6 +1079,7 @@ mod tests {
             callback,
             1024,
             stopped,
+            StderrTail::default(),
         )
         .await;
         assert_eq!(*received.lock().unwrap(), ["line 1", "line 2", "line 3"]);
@@ -1013,7 +1101,14 @@ mod tests {
             }
         });
         let (_stop, stopped) = oneshot::channel();
-        forward_stderr(Chunks::new(["a\nb\n"]), callback, 1024, stopped).await;
+        forward_stderr(
+            Chunks::new(["a\nb\n"]),
+            callback,
+            1024,
+            stopped,
+            StderrTail::default(),
+        )
+        .await;
         assert_eq!(*received.lock().unwrap(), ["a", "b"]);
     }
 
@@ -1029,6 +1124,7 @@ mod tests {
             callback,
             1024,
             stopped,
+            StderrTail::default(),
         )
         .await;
         assert_eq!(
@@ -1046,6 +1142,7 @@ mod tests {
             callback,
             10,
             stopped,
+            StderrTail::default(),
         )
         .await;
         assert_eq!(
@@ -1059,7 +1156,13 @@ mod tests {
         let (callback, received) = recording_callback();
         let (stop, stopped) = oneshot::channel();
         let (mut writer, reader) = tokio::io::duplex(1024);
-        let task = tokio::spawn(forward_stderr(reader, callback, 1024, stopped));
+        let task = tokio::spawn(forward_stderr(
+            reader,
+            callback,
+            1024,
+            stopped,
+            StderrTail::default(),
+        ));
         writer.write_all(b"Error: model overloaded").await.unwrap();
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

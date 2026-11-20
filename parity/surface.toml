@@ -17,7 +17,7 @@
 #   kind as long as it keeps the keys it does not model.
 # - `adapted`: the Rust item is a different kind of item, so a ported line
 #   has to change shape. A class becomes a variant of an enum, a method, or
-#   a macro; an exception class becomes a variant of `Error`. An adapted
+#   a macro; an exception class becomes a kind of `ErrorKind`. An adapted
 #   name must carry a `note` that says what takes its place.
 
 [names]
@@ -174,9 +174,9 @@ create_sdk_mcp_server = { rust = "claude_agent_rust_sdk::create_sdk_mcp_server" 
 tool = { adapted = "claude_agent_rust_sdk::tool", note = "Attribute macro behind the `macros` feature; `SdkMcpTool::typed` and `SdkMcpTool::raw` need no feature." }
 SdkMcpTool = { rust = "claude_agent_rust_sdk::SdkMcpTool" }
 ToolAnnotations = { rust = "claude_agent_rust_sdk::ToolAnnotations" }
-ClaudeSDKError = { rust = "claude_agent_rust_sdk::Error", note = "One enum holds every error; match on its variants." }
-CLIConnectionError = { adapted = "claude_agent_rust_sdk::Error::CliConnection", note = "Variant of `Error`. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`." }
-CLINotFoundError = { adapted = "claude_agent_rust_sdk::Error::CliNotFound", note = "Variant of `Error`." }
-ProcessError = { adapted = "claude_agent_rust_sdk::Error::Process", note = "Variant of `Error`. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`." }
-ResultError = { adapted = "claude_agent_rust_sdk::Error::ResultError", note = "Variant of `Error`; its fields are in `ResultErrorData`." }
-CLIJSONDecodeError = { adapted = "claude_agent_rust_sdk::Error::JsonDecode", note = "Variant of `Error`." }
+ClaudeSDKError = { rust = "claude_agent_rust_sdk::Error", note = "One opaque error type holds every error; branch on `Error::kind()`." }
+CLIConnectionError = { adapted = ["claude_agent_rust_sdk::Error::is_cli_connection", "claude_agent_rust_sdk::ErrorKind::Spawn", "claude_agent_rust_sdk::ErrorKind::NotConnected", "claude_agent_rust_sdk::ErrorKind::ConnectionClosed", "claude_agent_rust_sdk::ErrorKind::Unsupported"], note = "Four kinds tell its causes apart. `except CLIConnectionError`, which also catches `CLINotFoundError`, becomes `Error::is_cli_connection()`." }
+CLINotFoundError = { adapted = "claude_agent_rust_sdk::ErrorKind::CliNotFound", note = "A kind of `Error`, read with `Error::kind()`." }
+ProcessError = { adapted = "claude_agent_rust_sdk::ErrorKind::Process", note = "A kind of `Error`; `Error::exit_code()` and `Error::stderr()` hold its fields. `except ProcessError`, which also catches `ResultError`, becomes `Error::is_process()`." }
+ResultError = { adapted = "claude_agent_rust_sdk::ErrorKind::ResultError", note = "A kind of `Error`; `Error::result()` returns its fields as `ResultErrorData`." }
+CLIJSONDecodeError = { adapted = "claude_agent_rust_sdk::ErrorKind::JsonDecode", note = "A kind of `Error`; `Error::line()` holds the line." }

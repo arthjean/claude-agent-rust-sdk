@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use tokio::runtime::Handle;
 
 use crate::control::{CONTROL_REQUEST_TIMEOUT, ControlSession, Inbox};
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::message_parser::parse_message;
 use crate::prompt::{Prompt, text_message, with_default_session};
 use crate::transport::SharedTransport;
@@ -36,7 +36,7 @@ const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 /// Every method takes `&self`, so one task can read messages while another
 /// sends a prompt or an interrupt. Every method other than
 /// [`connect`](Self::connect) and [`disconnect`](Self::disconnect) fails
-/// with [`Error::CliConnection`] before the client is connected.
+/// with [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) before the client is connected.
 ///
 /// Dropping a connected client ends the CLI process through the bounded
 /// shutdown of the transport, on a detached task. Call
@@ -89,7 +89,7 @@ impl Drop for Connection {
 }
 
 fn not_connected() -> Error {
-    Error::cli_connection(NOT_CONNECTED)
+    Error::not_connected(NOT_CONNECTED)
 }
 
 impl ClaudeSdkClient {
@@ -128,9 +128,9 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// Returns the errors of the transport, [`Error::Config`] for options
-    /// the CLI cannot honor, [`Error::ControlTimeout`] when the CLI does not
-    /// answer the handshake, and [`Error::CliConnection`] when a hook
+    /// Returns the errors of the transport, [`ErrorKind::Config`](crate::ErrorKind::Config) for options
+    /// the CLI cannot honor, [`ErrorKind::ControlTimeout`](crate::ErrorKind::ControlTimeout) when the CLI does not
+    /// answer the handshake, and [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) when a hook
     /// matcher asks to block on failure and the CLI cannot honor it. After
     /// an error nothing stays running.
     pub async fn connect(&self) -> Result<()> {
@@ -207,7 +207,7 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CliConnection`] when the client is not connected,
+    /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is not connected,
     /// when an input stream fails, or when a write fails.
     pub async fn query(&self, prompt: impl Into<Prompt>) -> Result<()> {
         self.query_with_session_id(prompt, DEFAULT_SESSION_ID).await
@@ -234,7 +234,8 @@ impl ClaudeSdkClient {
             Prompt::Stream(mut input) => {
                 while let Some(message) = input.next().await {
                     let message = message.map_err(|error| {
-                        Error::cli_connection(format!("Prompt stream failed: {error}"))
+                        Error::new(ErrorKind::PromptStream, "Prompt stream failed")
+                            .with_source(error)
                     })?;
                     session
                         .write_user_message(with_default_session(message, session_id))
@@ -251,7 +252,7 @@ impl ClaudeSdkClient {
     /// share the same queue: each message goes to one of them. A message
     /// that cannot be parsed is yielded as an error and the stream
     /// continues. Before [`connect`](Self::connect) the stream yields one
-    /// [`Error::CliConnection`].
+    /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
     pub fn receive_messages(&self) -> Messages<'_> {
         self.messages(false)
     }
@@ -261,7 +262,7 @@ impl ClaudeSdkClient {
     ///
     /// Without a result message the stream continues until the session
     /// ends. Before [`connect`](Self::connect) the stream yields one
-    /// [`Error::CliConnection`].
+    /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
     pub fn receive_response(&self) -> Messages<'_> {
         self.messages(true)
     }
@@ -293,9 +294,10 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// Every control method returns [`Error::CliConnection`] when the
-    /// client is not connected or the session ends, [`Error::Control`] when
-    /// the CLI refuses the request, and [`Error::ControlTimeout`] when the
+    /// Every control method returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) or
+    /// [`ErrorKind::ConnectionClosed`](crate::ErrorKind::ConnectionClosed) when the
+    /// client is not connected or the session ends, [`ErrorKind::Control`](crate::ErrorKind::Control) when
+    /// the CLI refuses the request, and [`ErrorKind::ControlTimeout`](crate::ErrorKind::ControlTimeout) when the
     /// CLI does not answer within 60 s.
     pub async fn interrupt(&self) -> Result<()> {
         self.control(json!({"subtype": "interrupt"})).await?;
@@ -384,7 +386,7 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// See [`interrupt`](Self::interrupt). Returns [`Error::MessageParse`]
+    /// See [`interrupt`](Self::interrupt). Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse)
     /// when the response does not have the expected shape.
     pub async fn get_mcp_status(&self) -> Result<McpStatusResponse> {
         typed(
@@ -398,7 +400,7 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// See [`interrupt`](Self::interrupt). Returns [`Error::MessageParse`]
+    /// See [`interrupt`](Self::interrupt). Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse)
     /// when the response does not have the expected shape.
     pub async fn get_context_usage(&self) -> Result<ContextUsageResponse> {
         typed(
@@ -413,7 +415,7 @@ impl ClaudeSdkClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::CliConnection`] when the client is not connected.
+    /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is not connected.
     pub fn get_server_info(&self) -> Result<Option<Value>> {
         Ok(self.connection()?.session.server_info())
     }

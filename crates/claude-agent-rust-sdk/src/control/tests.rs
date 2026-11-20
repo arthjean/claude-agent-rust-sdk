@@ -188,21 +188,27 @@ async fn closing_the_session_stops_handlers_and_fails_pending_requests() {
     session.close().await.unwrap();
     session.close().await.unwrap();
 
-    assert!(matches!(
-        pending.await.unwrap(),
-        Err(Error::CliConnection { .. })
-    ));
+    assert!(
+        pending
+            .await
+            .unwrap()
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     assert_eq!(session.handlers_in_flight(), 0);
     assert_eq!(transport.close_count(), 1);
     assert!(session.run().has_ended());
     assert_eq!(inbox.recv().await.unwrap().unwrap()["subtype"], "status");
     assert!(inbox.recv().await.is_none());
-    assert!(matches!(
+    assert!(
         session
             .send_control_request(json!({"subtype": "interrupt"}), Duration::from_secs(60))
-            .await,
-        Err(Error::CliConnection { .. })
-    ));
+            .await
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
 }
 
 struct StallingMirror {

@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::testing::{
     MockTransport, run_session_store_conformance, run_session_store_conformance_skipping,
 };
@@ -441,10 +442,15 @@ fn project_keys_resolve_relative_directories_and_sanitize() {
 #[test]
 fn store_options_are_validated() {
     let minimal = || ClaudeAgentOptions::builder().session_store(MinimalStore::default());
-    assert!(matches!(
-        minimal().continue_conversation(true).build(),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        minimal()
+            .continue_conversation(true)
+            .build()
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
     minimal()
         .continue_conversation(true)
         .resume("00000000-0000-4000-8000-000000000000")
@@ -452,10 +458,15 @@ fn store_options_are_validated() {
         .unwrap();
     let full = || ClaudeAgentOptions::builder().session_store(InMemorySessionStore::new());
     full().continue_conversation(true).build().unwrap();
-    assert!(matches!(
-        full().enable_file_checkpointing(true).build(),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        full()
+            .enable_file_checkpointing(true)
+            .build()
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
     let shared = SharedSessionStore::new(InMemorySessionStore::new());
     let options = ClaudeAgentOptions::builder()
         .session_store(shared.clone())

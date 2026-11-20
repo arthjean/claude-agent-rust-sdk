@@ -592,7 +592,7 @@ impl ClaudeAgentOptionsBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Config`] when `can_use_tool` is combined with
+    /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when `can_use_tool` is combined with
     /// `permission_prompt_tool_name`, when `session_store` is combined with
     /// `enable_file_checkpointing`, or when `continue_conversation` is used
     /// without `resume` on a store that does not list sessions.
@@ -607,7 +607,7 @@ impl ClaudeAgentOptionsBuilder {
 #[cfg(test)]
 mod tests {
     use super::{ClaudeAgentOptions, PermissionMode, shadowed_warning_message, whole_tool_allowed};
-    use crate::error::Error;
+    use crate::error::{Error, ErrorKind};
     use crate::types::{CanUseTool, PermissionResult};
 
     fn allow_everything() -> CanUseTool {
@@ -645,7 +645,10 @@ mod tests {
         );
 
         options.permission_prompt_tool_name = Some("mcp__approver__ask".to_owned());
-        assert!(matches!(options.for_session(), Err(Error::Config { .. })));
+        assert_eq!(
+            options.for_session().as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config)
+        );
     }
 
     #[test]

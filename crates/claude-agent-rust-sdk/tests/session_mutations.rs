@@ -4,6 +4,7 @@ mod common;
 
 use std::collections::HashSet;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     Error, delete_session, fork_session, get_session_info, get_session_messages, list_sessions,
     rename_session, tag_session,
@@ -50,18 +51,27 @@ fn rename_rejects_bad_input_and_missing_sessions() {
     let project = Project::new();
     let id = new_id();
     project.write(&id, &conversation(&id, "hello", json!({})));
-    assert!(matches!(
-        rename_session("bad", "t", None),
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        rename_session(&id, "   ", Some(project.path())),
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        rename_session(&new_id(), "t", Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
+    assert_eq!(
+        rename_session("bad", "t", None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        rename_session(&id, "   ", Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        rename_session(&new_id(), "t", Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
 }
 
 #[test]
@@ -69,14 +79,20 @@ fn empty_transcripts_are_not_touched_and_count_as_missing() {
     let project = Project::new();
     let id = new_id();
     std::fs::write(project.transcript(&id), "").unwrap();
-    assert!(matches!(
-        rename_session(&id, "t", Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
-    assert!(matches!(
-        tag_session(&id, Some("x"), Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
+    assert_eq!(
+        rename_session(&id, "t", Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
+    assert_eq!(
+        tag_session(&id, Some("x"), Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
     assert_eq!(std::fs::metadata(project.transcript(&id)).unwrap().len(), 0);
 }
 
@@ -94,14 +110,20 @@ fn a_transcript_whose_parent_directory_is_missing_counts_as_session_not_found() 
     let id = new_id();
     std::fs::remove_dir(&project.dir).unwrap();
     assert!(!project.transcript(&id).parent().unwrap().exists());
-    assert!(matches!(
-        rename_session(&id, "t", Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
-    assert!(matches!(
-        tag_session(&id, Some("x"), Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
+    assert_eq!(
+        rename_session(&id, "t", Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
+    assert_eq!(
+        tag_session(&id, Some("x"), Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
     assert!(!project.dir.exists());
 
     #[cfg(unix)]
@@ -117,10 +139,11 @@ fn a_transcript_whose_parent_directory_is_missing_counts_as_session_not_found() 
             let id = new_id();
             std::os::unix::fs::symlink(&target, project.transcript(&id)).unwrap();
             assert!(
-                matches!(
-                    rename_session(&id, "t", Some(project.path())),
-                    Err(Error::SessionNotFound { .. })
-                ),
+                rename_session(&id, "t", Some(project.path()))
+                    .as_ref()
+                    .err()
+                    .map(Error::kind)
+                    == Some(ErrorKind::SessionNotFound),
                 "{}",
                 target.display()
             );
@@ -137,7 +160,9 @@ fn host_process_for_the_missing_projects_directory_test() {
         return;
     }
     let outcome = match rename_session(&new_id(), "title", None) {
-        Err(error @ Error::SessionNotFound { .. }) => format!("session-not-found: {error}"),
+        Err(error) if error.kind() == ErrorKind::SessionNotFound => {
+            format!("session-not-found: {error}")
+        }
         other => format!("{other:?}"),
     };
     println!("rename-outcome={outcome}");
@@ -242,14 +267,20 @@ fn tags_are_sanitized_cleared_with_none_and_the_last_wins() {
         None
     );
 
-    assert!(matches!(
-        tag_session(&id, Some("\u{200b}\u{200d}  "), Some(project.path())),
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        tag_session("bad", Some("x"), None),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        tag_session(&id, Some("\u{200b}\u{200d}  "), Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        tag_session("bad", Some("x"), None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
 }
 
 #[test]
@@ -298,14 +329,17 @@ fn delete_removes_the_transcript_and_the_subagent_directory() {
     assert!(!project.transcript(&id).exists());
     assert!(!project.dir.join(&id).exists());
     assert!(list_sessions(Some(project.path()), None, 0, false).is_empty());
-    assert!(matches!(
-        delete_session(&id, Some(project.path())),
-        Err(Error::SessionNotFound { .. })
-    ));
-    assert!(matches!(
-        delete_session("bad", None),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        delete_session(&id, Some(project.path()))
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
+    assert_eq!(
+        delete_session("bad", None).as_ref().err().map(Error::kind),
+        Some(ErrorKind::Config)
+    );
 
     let other = new_id();
     project.write(&other, &conversation(&other, "hello", json!({})));
@@ -453,30 +487,45 @@ fn fork_errors_create_no_file() {
     let id = new_id();
     transcript(&project, &id);
     let before = std::fs::read_dir(&project.dir).unwrap().count();
-    assert!(matches!(
-        fork_session(&id, Some(project.path()), Some(&new_id()), None),
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        fork_session(&id, Some(project.path()), Some("bad"), None),
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        fork_session(&new_id(), Some(project.path()), None, None),
-        Err(Error::SessionNotFound { .. })
-    ));
-    assert!(matches!(
-        fork_session("bad", None, None, None),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        fork_session(&id, Some(project.path()), Some(&new_id()), None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        fork_session(&id, Some(project.path()), Some("bad"), None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        fork_session(&new_id(), Some(project.path()), None, None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
+    assert_eq!(
+        fork_session("bad", None, None, None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
     let only_meta = new_id();
     project.write(
         &only_meta,
         &[json!({"type": "custom-title", "customTitle": "t"})],
     );
-    assert!(matches!(
-        fork_session(&only_meta, Some(project.path()), None, None),
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        fork_session(&only_meta, Some(project.path()), None, None)
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
     assert_eq!(std::fs::read_dir(&project.dir).unwrap().count(), before + 1);
 }

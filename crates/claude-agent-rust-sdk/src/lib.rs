@@ -135,7 +135,7 @@ pub mod transport;
 pub mod types;
 
 pub use client::{ClaudeSdkClient, Messages};
-pub use error::{BoxError, Error, Result, ResultErrorData};
+pub use error::{BoxError, Error, ErrorKind, Result, ResultErrorData};
 pub use mcp::{
     ResourceContents, SdkMcpTool, ToolAnnotations, ToolContent, ToolHandler, ToolResult,
     create_sdk_mcp_server,

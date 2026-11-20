@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     Error, InMemorySessionStore, SdkSessionInfo, SessionKey, SessionListSubkeysKey, SessionStore,
     SessionStoreCapabilities, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
@@ -192,14 +193,22 @@ async fn import_batches_entries_and_stores_sidecars_as_agent_metadata() {
             .unwrap()
             .is_empty()
     );
-    assert!(matches!(
-        import_session_to_store("bad", &without_subagents, None, true, 0).await,
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        import_session_to_store(&new_id(), &without_subagents, Some(project.path()), true, 0).await,
-        Err(Error::SessionNotFound { .. })
-    ));
+    assert_eq!(
+        import_session_to_store("bad", &without_subagents, None, true, 0)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        import_session_to_store(&new_id(), &without_subagents, Some(project.path()), true, 0)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
 }
 
 struct CountingStore {
@@ -426,14 +435,20 @@ async fn listing_requires_list_sessions_or_summaries() {
         .await
         .unwrap_err();
     assert!(
-        matches!(error, Error::StoreUnsupported(ref unsupported) if unsupported.operation == "list_sessions"),
+        error
+            .unsupported_operation()
+            .map(|unsupported| unsupported.operation)
+            == Some("list_sessions"),
         "{error}"
     );
     let error = list_subagents_from_store(&store, &new_id(), None)
         .await
         .unwrap_err();
     assert!(
-        matches!(error, Error::StoreUnsupported(ref unsupported) if unsupported.operation == "list_subkeys"),
+        error
+            .unsupported_operation()
+            .map(|unsupported| unsupported.operation)
+            == Some("list_subkeys"),
         "{error}"
     );
 }
@@ -504,14 +519,22 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
         .unwrap();
     assert_eq!(info.summary, "Renamed");
     assert_eq!(info.tag, None);
-    assert!(matches!(
-        rename_session_via_store(&store, &id, " ", directory).await,
-        Err(Error::Config { .. })
-    ));
-    assert!(matches!(
-        tag_session_via_store(&store, "bad", None, directory).await,
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        rename_session_via_store(&store, &id, " ", directory)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
+    assert_eq!(
+        tag_session_via_store(&store, "bad", None, directory)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
 
     let fork = fork_session_via_store(&store, &id, directory, None, None)
         .await
@@ -523,14 +546,22 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
     assert_eq!(forked.len(), 2);
     assert_eq!(forked[0]["forkedFrom"]["sessionId"], id.as_str());
     assert_eq!(forked[1]["customTitle"], "Renamed (fork)");
-    assert!(matches!(
-        fork_session_via_store(&store, &new_id(), directory, None, None).await,
-        Err(Error::SessionNotFound { .. })
-    ));
-    assert!(matches!(
-        fork_session_via_store(&store, &id, directory, Some(&new_id()), None).await,
-        Err(Error::Config { .. })
-    ));
+    assert_eq!(
+        fork_session_via_store(&store, &new_id(), directory, None, None)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::SessionNotFound)
+    );
+    assert_eq!(
+        fork_session_via_store(&store, &id, directory, Some(&new_id()), None)
+            .await
+            .as_ref()
+            .err()
+            .map(Error::kind),
+        Some(ErrorKind::Config)
+    );
 
     delete_session_via_store(&store, &id, directory)
         .await
@@ -763,7 +794,7 @@ async fn subagent_helpers_return_nothing_for_a_session_id_that_is_not_a_uuid() {
 
 fn config_message<T: std::fmt::Debug>(outcome: Result<T, Error>) -> String {
     match outcome {
-        Err(Error::Config { message }) => message,
+        Err(error) if error.kind() == ErrorKind::Config => error.to_string(),
         other => panic!("expected a Config error, got {other:?}"),
     }
 }

@@ -69,7 +69,7 @@ const REQUEST_CANCELLED: i64 = -32800;
 ///
 /// # Errors
 ///
-/// Returns [`Error::Config`] when two tools have the same name.
+/// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when two tools have the same name.
 pub fn create_sdk_mcp_server(
     name: impl Into<String>,
     version: Option<&str>,

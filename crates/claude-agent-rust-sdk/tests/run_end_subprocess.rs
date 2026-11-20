@@ -5,6 +5,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, HookCallback, HookInput, HookMatcher,
     HookOutput, Message, query,
@@ -197,20 +198,16 @@ async fn error_result_then_failing_exit_ends_the_stream_with_a_result_error() {
     let error = last.as_ref().unwrap_err();
     assert!(error.is_process(), "{error:?}");
     assert!(!error.is_cli_connection(), "{error:?}");
-    let Err(Error::ResultError {
-        message,
-        data,
-        exit_code,
-    }) = last
-    else {
-        panic!("expected a result error, got {last:?}");
-    };
+    assert_eq!(error.kind(), ErrorKind::ResultError);
     assert_eq!(
-        message,
-        "Claude Code returned an error result: Reached maximum number of turns (1)"
+        error.to_string(),
+        "Claude Code returned an error result: Reached maximum number of turns (1) (exit code: 1)"
     );
-    assert_eq!(data.subtype(), Some("error_max_turns"));
-    assert_eq!(*exit_code, Some(1));
+    assert_eq!(
+        error.result().and_then(|data| data.subtype()),
+        Some("error_max_turns")
+    );
+    assert_eq!(error.exit_code(), Some(1));
 }
 
 #[tokio::test]
@@ -223,13 +220,11 @@ async fn failing_exit_without_an_error_result_stays_a_process_error() {
         tokio::time::timeout(STEP_LIMIT, query("go", fake.build()).collect())
             .await
             .unwrap();
-    assert!(matches!(
-        items.last(),
-        Some(Err(Error::Process {
-            exit_code: Some(7),
-            ..
-        }))
-    ));
+    let Some(Err(error)) = items.last() else {
+        panic!("expected a process error, got {items:?}");
+    };
+    assert_eq!(error.kind(), ErrorKind::Process);
+    assert_eq!(error.exit_code(), Some(7));
 }
 
 #[tokio::test]

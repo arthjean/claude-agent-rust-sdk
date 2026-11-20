@@ -223,7 +223,7 @@ async fn a_blocked_writer_cannot_hold_the_shutdown() {
         .expect("the blocked writer was never released")
         .unwrap();
     assert!(
-        matches!(written, Err(Error::CliConnection { .. })),
+        written.as_ref().err().is_some_and(Error::is_cli_connection),
         "{written:?}"
     );
 }

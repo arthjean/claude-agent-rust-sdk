@@ -4,7 +4,7 @@
 //! cost may exceed the budget by up to the cost of one call. When the
 //! budget is exceeded, the run ends with a result of subtype
 //! `error_max_budget_usd`. If the CLI then exits with a failure, [`query`]
-//! ends its stream with [`Error::ResultError`], which carries that result.
+//! ends its stream with [`ErrorKind::ResultError`](crate::ErrorKind::ResultError), which carries that result.
 //!
 //! Run it with `cargo run --example max_budget_usd`.
 
@@ -37,7 +37,9 @@ async fn run(prompt: &str, options: ClaudeAgentOptions) -> Result<(), Error> {
                 }
             }
             Ok(_) => {}
-            Err(Error::ResultError { data, .. }) if data.subtype() == Some(BUDGET_EXCEEDED) => {
+            Err(error)
+                if error.result().and_then(|data| data.subtype()) == Some(BUDGET_EXCEEDED) =>
+            {
                 println!("The query ended with the error result above.");
             }
             Err(error) => return Err(error),

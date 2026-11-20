@@ -7,8 +7,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
-    BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, Error, McpSdkServerConfig,
+    BoxError, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, McpSdkServerConfig,
     McpSdkServerInstance, McpServerConfig, SdkMcpTool, SubprocessTransport, ToolAnnotations,
     ToolContent, ToolResult, create_sdk_mcp_server, query_with_transport,
 };
@@ -249,9 +250,11 @@ fn raw_schema_that_is_not_a_json_object_is_a_config_error() {
         let outcome = SdkMcpTool::raw("broken", "Bad schema", schema.clone(), |_| async {
             Ok(ToolResult::default())
         });
-        let Err(Error::Config { message }) = outcome else {
+        let Err(error) = outcome else {
             panic!("expected a configuration error for {schema}");
         };
+        assert_eq!(error.kind(), ErrorKind::Config);
+        let message = error.to_string();
         assert!(message.contains("broken"), "{message}");
     }
 }
@@ -259,9 +262,11 @@ fn raw_schema_that_is_not_a_json_object_is_a_config_error() {
 #[test]
 fn two_tools_with_the_same_name_are_a_config_error() {
     let outcome = create_sdk_mcp_server("calc", None, [add(), noop("other"), add()]);
-    let Err(Error::Config { message }) = outcome else {
+    let Err(error) = outcome else {
         panic!("expected a configuration error");
     };
+    assert_eq!(error.kind(), ErrorKind::Config);
+    let message = error.to_string();
     assert!(message.contains("'add'"), "{message}");
     assert!(message.contains("'calc'"), "{message}");
 }
@@ -957,9 +962,11 @@ async fn in_process_server_of_an_unknown_kind_is_a_config_error() {
         .unwrap();
     let transport = silent_cli();
     let messages = drain(query_with_transport("Hi", options, transport.clone())).await;
-    let [Err(Error::Config { message })] = &messages[..] else {
+    let [Err(error)] = &messages[..] else {
         panic!("expected one configuration error, got {messages:?}");
     };
+    assert_eq!(error.kind(), ErrorKind::Config);
+    let message = error.to_string();
     assert!(message.contains("'mystery'"), "{message}");
     assert_eq!(transport.connect_count(), 0);
 }

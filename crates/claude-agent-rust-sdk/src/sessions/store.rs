@@ -41,7 +41,7 @@ fn project_path_of(directory: Option<&Path>) -> String {
 
 fn store_error(context: &'static str) -> impl FnOnce(SessionStoreError) -> Error {
     move |error| match error.downcast::<UnsupportedStoreOperation>() {
-        Ok(unsupported) => Error::StoreUnsupported(*unsupported),
+        Ok(unsupported) => Error::from(*unsupported),
         Err(error) => Error::session_store(context, error),
     }
 }
@@ -152,9 +152,9 @@ impl Slot {
 ///
 /// # Errors
 ///
-/// [`Error::StoreUnsupported`] when the store implements neither
+/// [`ErrorKind::StoreUnsupported`](crate::ErrorKind::StoreUnsupported) when the store implements neither
 /// `list_session_summaries` nor `list_sessions`, and
-/// [`Error::SessionStore`] when a listing call fails.
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when a listing call fails.
 pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
     store: &S,
     directory: Option<&Path>,
@@ -239,7 +239,7 @@ pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
     }
 
     if !capabilities.list_sessions {
-        return Err(Error::StoreUnsupported(UnsupportedStoreOperation {
+        return Err(Error::from(UnsupportedStoreOperation {
             operation: "list_sessions",
         }));
     }
@@ -260,7 +260,7 @@ pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::SessionStore`] when the load fails.
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the load fails.
 pub async fn get_session_info_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -291,7 +291,7 @@ pub async fn get_session_info_from_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::SessionStore`] when the load fails.
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the load fails.
 pub async fn get_session_messages_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -339,8 +339,8 @@ fn agent_id_of(subpath: &str) -> Option<&str> {
 ///
 /// # Errors
 ///
-/// [`Error::StoreUnsupported`] when the store does not implement
-/// `list_subkeys`, and [`Error::SessionStore`] when it fails.
+/// [`ErrorKind::StoreUnsupported`](crate::ErrorKind::StoreUnsupported) when the store does not implement
+/// `list_subkeys`, and [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when it fails.
 pub async fn list_subagents_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -350,7 +350,7 @@ pub async fn list_subagents_from_store<S: SessionStore + ?Sized>(
         return Ok(Vec::new());
     };
     if !store.capabilities().list_subkeys {
-        return Err(Error::StoreUnsupported(UnsupportedStoreOperation {
+        return Err(Error::from(UnsupportedStoreOperation {
             operation: "list_subkeys",
         }));
     }
@@ -378,7 +378,7 @@ pub async fn list_subagents_from_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::SessionStore`] when the store fails.
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the store fails.
 pub async fn get_subagent_messages_from_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -514,10 +514,10 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID,
-/// [`Error::SessionNotFound`] when the local transcript is missing,
-/// [`Error::JsonDecode`] for a corrupt line, [`Error::Io`] when a read
-/// fails, and [`Error::SessionStore`] when an append fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID,
+/// [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when the local transcript is missing,
+/// [`ErrorKind::JsonDecode`](crate::ErrorKind::JsonDecode) for a corrupt line, [`ErrorKind::Io`](crate::ErrorKind::Io) when a read
+/// fails, and [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when an append fails.
 pub async fn import_session_to_store<S: SessionStore + ?Sized>(
     session_id: &str,
     store: &S,

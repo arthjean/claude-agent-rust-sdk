@@ -42,7 +42,7 @@ type Parsed<T> = Result<T, String>;
 ///
 /// # Errors
 ///
-/// Returns [`Error::MessageParse`], carrying the original data, when the
+/// Returns [`ErrorKind::MessageParse`](crate::ErrorKind::MessageParse), carrying the original data, when the
 /// value is not a JSON object, when it has no `type`, or when a message of
 /// a known type lacks a required field or has it with the wrong JSON type.
 pub fn parse_message(data: Value) -> Result<Message, Error> {
@@ -53,10 +53,7 @@ pub fn parse_message(data: Value) -> Result<Message, Error> {
         }
         Ok(Some(message)) => Ok(message),
         Ok(None) => Ok(Message::Unknown(data)),
-        Err(message) => Err(Error::MessageParse {
-            message,
-            data: Some(data),
-        }),
+        Err(message) => Err(Error::message_parse(message, Some(data))),
     }
 }
 

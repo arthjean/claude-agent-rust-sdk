@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Mutex;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::cli::{find_cli, managed_install_dir};
 use claude_agent_rust_sdk::{ClaudeAgentOptions, Error, SubprocessTransport};
 use serde_json::json;
@@ -37,10 +38,8 @@ fn install(directory: &Path) -> std::path::PathBuf {
 }
 
 fn not_found_message(error: Error) -> String {
-    match error {
-        Error::CliNotFound { message } => message,
-        other => panic!("expected CliNotFound, got {other:?}"),
-    }
+    assert_eq!(error.kind(), ErrorKind::CliNotFound, "{error:?}");
+    error.to_string()
 }
 
 #[test]

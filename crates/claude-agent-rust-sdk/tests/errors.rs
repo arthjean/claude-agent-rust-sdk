@@ -1,13 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use claude_agent_rust_sdk::{Error, ResultErrorData};
+use claude_agent_rust_sdk::{Error, ErrorKind, ResultErrorData};
 use serde_json::{Value, json};
 
 fn result_error_data(error: &Error) -> &ResultErrorData {
-    match error {
-        Error::ResultError { data, .. } => data,
-        other => panic!("expected ResultError, got {other:?}"),
-    }
+    assert_eq!(error.kind(), ErrorKind::ResultError, "{error:?}");
+    error.result().unwrap()
 }
 
 fn invalid_json_error(line: &str) -> Error {
@@ -17,7 +15,7 @@ fn invalid_json_error(line: &str) -> Error {
 
 #[test]
 fn config_error_is_neither_a_process_nor_a_connection_failure() {
-    let error = Error::config("bad option");
+    let error = Error::new(ErrorKind::Config, "bad option");
     assert!(!error.is_process());
     assert!(!error.is_cli_connection());
 }
@@ -39,71 +37,64 @@ fn error_is_send_sync_and_static() {
 }
 
 #[test]
-fn every_specified_variant_exists_and_displays_its_message() {
-    let errors = [
-        Error::CliNotFound {
-            message: "not found".to_owned(),
-        },
-        Error::CliConnection {
-            message: "no connection".to_owned(),
-        },
-        Error::Process {
-            message: "failed".to_owned(),
-            exit_code: None,
-            stderr: None,
-        },
-        Error::ResultError {
-            message: "result".to_owned(),
-            data: ResultErrorData::default(),
-            exit_code: None,
-        },
-        invalid_json_error("{bad"),
-        Error::MessageParse {
-            message: "parse".to_owned(),
-            data: None,
-        },
-        Error::ControlTimeout {
-            subtype: "initialize".to_owned(),
-        },
-        Error::Control {
-            message: "control".to_owned(),
-        },
-        Error::Config {
-            message: "config".to_owned(),
-        },
+fn every_kind_can_be_built_and_displays_its_message() {
+    let kinds = [
+        ErrorKind::CliNotFound,
+        ErrorKind::Spawn,
+        ErrorKind::NotConnected,
+        ErrorKind::ConnectionClosed,
+        ErrorKind::Unsupported,
+        ErrorKind::Process,
+        ErrorKind::ResultError,
+        ErrorKind::JsonDecode,
+        ErrorKind::MessageParse,
+        ErrorKind::ControlTimeout,
+        ErrorKind::Control,
+        ErrorKind::Config,
+        ErrorKind::PromptStream,
+        ErrorKind::SessionNotFound,
+        ErrorKind::Io,
+        ErrorKind::SessionStore,
+        ErrorKind::StoreUnsupported,
     ];
-    let texts: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    for kind in kinds {
+        let error = Error::new(kind, format!("{kind:?} happened"));
+        assert_eq!(error.kind(), kind);
+        assert_eq!(error.to_string(), format!("{kind:?} happened"));
+        assert!(std::error::Error::source(&error).is_none());
+    }
+    let wrapped = Error::new(ErrorKind::Spawn, "Failed to start").with_source("no such file");
     assert_eq!(
-        texts,
-        [
-            "not found",
-            "no connection",
-            "failed",
-            "result",
-            "Failed to decode JSON: {bad...",
-            "parse",
-            "Control request timeout: initialize",
-            "control",
-            "config",
-        ]
+        std::error::Error::source(&wrapped).unwrap().to_string(),
+        "no such file"
     );
 }
 
 #[test]
 fn cli_not_found_error() {
     let error = Error::cli_not_found(None, None);
-    assert!(matches!(error, Error::CliNotFound { .. }));
-    assert_eq!(error.to_string(), "Claude CLI not found");
+    assert_eq!(error.kind(), ErrorKind::CliNotFound);
+    assert_eq!(error.to_string(), "Claude Code not found");
 
-    let error = Error::cli_not_found(Some("Claude CLI not found"), Some("/usr/bin/claude"));
-    assert_eq!(error.to_string(), "Claude CLI not found: /usr/bin/claude");
+    let error = Error::cli_not_found(Some("Claude Code not found at"), Some("/usr/bin/claude"));
+    assert_eq!(
+        error.to_string(),
+        "Claude Code not found at: /usr/bin/claude"
+    );
 }
 
 #[test]
 fn connection_error() {
-    let error = Error::cli_connection("Failed to connect to CLI");
-    assert!(matches!(error, Error::CliConnection { .. }));
-    assert!(error.to_string().contains("Failed to connect to CLI"));
+    for kind in [
+        ErrorKind::Spawn,
+        ErrorKind::NotConnected,
+        ErrorKind::ConnectionClosed,
+        ErrorKind::Unsupported,
+    ] {
+        let error = Error::new(kind, "Failed to connect to Claude Code");
+        assert!(error.is_cli_connection(), "{kind:?}");
+        assert!(!error.is_process(), "{kind:?}");
+    }
 }
 
 #[test]
@@ -113,16 +104,9 @@ fn process_error_with_exit_code_and_stderr() {
         Some(1),
         Some("Command not found".to_owned()),
     );
-    match &error {
-        Error::Process {
-            exit_code, stderr, ..
-        } => {
-            assert_eq!(*exit_code, Some(1));
-            assert_eq!(stderr.as_deref(), Some("Command not found"));
-        }
-        other => panic!("expected Process, got {other:?}"),
-    }
+    assert_eq!(error.kind(), ErrorKind::Process);
     assert_eq!(error.exit_code(), Some(1));
+    assert_eq!(error.stderr(), Some("Command not found"));
     assert_eq!(
         error.to_string(),
         "Process failed (exit code: 1)\nError output: Command not found"
@@ -235,15 +219,11 @@ fn result_error_text_prefers_errors_then_result_then_subtype_then_status() {
 #[test]
 fn json_decode_error_keeps_the_line_and_the_source() {
     let error = invalid_json_error("{invalid json}");
-    match &error {
-        Error::JsonDecode { line, source } => {
-            assert_eq!(line, "{invalid json}");
-            assert!(!source.to_string().is_empty());
-        }
-        other => panic!("expected JsonDecode, got {other:?}"),
-    }
+    assert_eq!(error.kind(), ErrorKind::JsonDecode);
+    assert_eq!(error.line(), Some("{invalid json}"));
     assert!(error.to_string().contains("Failed to decode JSON"));
-    assert!(std::error::Error::source(&error).is_some());
+    let source = std::error::Error::source(&error).unwrap();
+    assert!(source.downcast_ref::<serde_json::Error>().is_some());
 }
 
 #[test]
@@ -266,16 +246,9 @@ fn json_decode_error_displays_at_most_100_characters_of_the_line() {
 fn message_parse_error_carries_the_data() {
     let data = json!({"type": "assistant"});
     let error = Error::message_parse("Missing required field", Some(data.clone()));
-    match error {
-        Error::MessageParse {
-            message,
-            data: carried,
-        } => {
-            assert_eq!(message, "Missing required field");
-            assert_eq!(carried, Some(data));
-        }
-        other => panic!("expected MessageParse, got {other:?}"),
-    }
+    assert_eq!(error.kind(), ErrorKind::MessageParse);
+    assert_eq!(error.to_string(), "Missing required field");
+    assert_eq!(error.data(), Some(&data));
 }
 
 #[test]

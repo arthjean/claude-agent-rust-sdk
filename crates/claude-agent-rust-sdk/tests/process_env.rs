@@ -6,7 +6,7 @@ mod common;
 use std::time::Duration;
 
 use claude_agent_rust_sdk::{
-    ClaudeAgentOptions, ClaudeSdkClient, Error, HookMatcher, query_with_transport,
+    ClaudeAgentOptions, ClaudeSdkClient, HookMatcher, query_with_transport,
 };
 use futures_util::StreamExt;
 
@@ -37,7 +37,7 @@ async fn environment_of_the_process_is_honored() {
     let client = ClaudeSdkClient::with_transport(ClaudeAgentOptions::default(), transport);
     let started = tokio::time::Instant::now();
     let error = client.connect().await.unwrap_err();
-    assert!(matches!(&error, Error::ControlTimeout { subtype } if subtype == "initialize"));
+    assert!(error.control_subtype() == Some("initialize"));
     assert_eq!(started.elapsed(), Duration::from_millis(120_000));
 
     let from_process = stdin_closes_after(hook_options().build().unwrap()).await;

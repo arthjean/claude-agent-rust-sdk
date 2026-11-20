@@ -38,7 +38,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::prompt::{InputStream, stamp_user_message};
 use crate::resume::{ResumeDir, materialize_resume_session};
 use crate::session_store::SessionKey;
@@ -169,11 +169,11 @@ enum ReaderEnd {
 }
 
 fn session_closed() -> Error {
-    Error::cli_connection("The session was closed before the control request was answered")
+    Error::connection_closed("The session was closed before the control request was answered")
 }
 
 fn output_ended() -> Error {
-    Error::cli_connection("The CLI output ended before the control request was answered")
+    Error::connection_closed("The CLI output ended before the control request was answered")
 }
 
 impl State {
@@ -184,7 +184,12 @@ impl State {
         match &self.reader_end {
             None => None,
             Some(ReaderEnd::Clean) => Some(output_ended()),
-            Some(ReaderEnd::Failed(error)) => Some(error.duplicate()),
+            Some(ReaderEnd::Failed(error)) => Some(
+                Error::connection_closed(format!(
+                    "Cannot write to process that exited with error: {error}"
+                ))
+                .with_source(error.clone()),
+            ),
         }
     }
 
@@ -352,8 +357,8 @@ async fn read_messages(shared: Arc<Shared>, outbox: mpsc::Sender<Result<Value>>)
             let error = exit_error(error, last_error_result);
             {
                 let mut state = shared.state();
-                state.fail_pending(|| error.duplicate());
-                state.reader_end = Some(ReaderEnd::Failed(error.duplicate()));
+                state.fail_pending(|| error.clone());
+                state.reader_end = Some(ReaderEnd::Failed(error.clone()));
             }
             let _ = outbox.send(Err(error)).await;
         }
@@ -429,7 +434,8 @@ async fn route(
 /// by an error carrying what the CLI already reported.
 fn exit_error(error: Error, last_error_result: Option<Value>) -> Error {
     match (error, last_error_result) {
-        (Error::Process { exit_code, .. }, Some(result)) => {
+        (error, Some(result)) if error.kind() == ErrorKind::Process => {
+            let exit_code = error.exit_code();
             tracing::debug!(
                 "Replacing the process error (exit code {exit_code:?}) with the error result"
             );
@@ -569,14 +575,14 @@ impl ControlSession {
                 .and_then(Value::as_bool)
                 == Some(true);
             if !supported {
-                return Err(Error::cli_connection(
+                return Err(Error::unsupported(
                     "The process answering initialize does not honor on_failure on hook \
                      matchers, so a hook that fails would not block. Update the Claude CLI if \
                      it is old, or remove the block failure mode from your hooks.",
                 ));
             }
             if response.get("hooks_applied") == Some(&Value::Bool(false)) {
-                return Err(Error::cli_connection(
+                return Err(Error::unsupported(
                     "This session was already running and did not register your hooks, so a \
                      hook with the block failure mode would never run. Start a new session, or \
                      remove the block failure mode from your hooks.",

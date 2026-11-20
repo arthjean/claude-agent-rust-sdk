@@ -5,6 +5,7 @@ mod common;
 
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::testing::MockTransport;
 use claude_agent_rust_sdk::{Error, SharedTransport, Transport};
 use futures_util::{FutureExt, StreamExt};
@@ -16,7 +17,7 @@ use common::{collect, next, next_message};
 async fn written_frames_are_recorded() {
     let transport = MockTransport::new();
     let unready = transport.write("{}\n").await.unwrap_err();
-    assert!(matches!(unready, Error::CliConnection { .. }));
+    assert!(unready.is_cli_connection());
 
     transport.connect().await.unwrap();
     assert!(transport.is_ready());
@@ -145,13 +146,10 @@ async fn lifecycle_calls_are_observable() {
 #[tokio::test]
 async fn failures_can_be_scripted() {
     let refusing = MockTransport::new();
-    refusing.fail_connect("Failed to start Claude CLI: denied");
-    match refusing.connect().await.unwrap_err() {
-        Error::CliConnection { message } => {
-            assert_eq!(message, "Failed to start Claude CLI: denied");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
+    refusing.fail_connect("Failed to start Claude Code: denied");
+    let error = refusing.connect().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Spawn);
+    assert_eq!(error.to_string(), "Failed to start Claude Code: denied");
     assert!(!refusing.is_ready());
 
     let broken = MockTransport::new();

@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     ClaudeAgentOptions, ClaudeAgentOptionsBuilder, ClaudeSdkClient, Error, InMemorySessionStore,
     Message, QueryStream, SessionKey, SessionListSubkeysKey, SessionStore,
@@ -488,7 +489,7 @@ async fn a_slow_store_fails_the_resume_and_leaves_no_directory() {
             .build()
             .unwrap();
         let error = first_error(options).await;
-        assert!(matches!(error, Error::SessionStore { .. }), "{error:?}");
+        assert_eq!(error.kind(), ErrorKind::SessionStore, "{error:?}");
         assert!(
             error.to_string().contains("timed out after 100 ms"),
             "{error}"
@@ -528,7 +529,7 @@ async fn continue_needs_a_store_that_lists_sessions() {
         .build()
         .unwrap();
     options.continue_conversation = true;
-    assert!(matches!(first_error(options).await, Error::Config { .. }));
+    assert_eq!(first_error(options).await.kind(), ErrorKind::Config);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1043,7 +1044,7 @@ async fn a_slow_list_sessions_fails_continue_with_a_timeout_that_names_it() {
         .build()
         .unwrap();
     let error = first_error(options).await;
-    assert!(matches!(error, Error::SessionStore { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::SessionStore, "{error:?}");
     let message = error.to_string();
     assert!(message.contains("list_sessions"), "{message}");
     assert!(message.contains("timed out after 100 ms"), "{message}");
@@ -1096,8 +1097,9 @@ async fn a_store_load_error_fails_the_resume_with_the_message_of_the_store() {
     store.load = Some(Fault::Fail("network down"));
     let options = setup.options(store).resume(id.as_str()).build().unwrap();
     let error = first_error(options).await;
-    assert!(matches!(error, Error::SessionStore { .. }), "{error:?}");
-    assert!(error.to_string().contains("network down"), "{error}");
+    assert_eq!(error.kind(), ErrorKind::SessionStore, "{error:?}");
+    let source = std::error::Error::source(&error).map(ToString::to_string);
+    assert_eq!(source.as_deref(), Some("network down"), "{error}");
     assert!(setup.resume_dirs().is_empty());
 }
 
@@ -1114,8 +1116,9 @@ async fn a_list_subkeys_error_fails_the_resume_and_removes_the_directory() {
         .build()
         .unwrap();
     let error = first_error(options).await;
-    assert!(matches!(error, Error::SessionStore { .. }), "{error:?}");
-    assert!(error.to_string().contains("boom"), "{error}");
+    assert_eq!(error.kind(), ErrorKind::SessionStore, "{error:?}");
+    let source = std::error::Error::source(&error).map(ToString::to_string);
+    assert_eq!(source.as_deref(), Some("boom"), "{error}");
     let created = store.directories();
     assert_eq!(created.len(), 1);
     assert!(!created[0].exists());
@@ -1288,7 +1291,8 @@ async fn a_failed_materialization_retries_the_removal_while_a_handle_holds_a_fil
     };
     let options = setup.options(store).resume(id.as_str()).build().unwrap();
     let error = first_error(options).await;
-    assert!(error.to_string().contains("boom"), "{error}");
+    let source = std::error::Error::source(&error).map(ToString::to_string);
+    assert_eq!(source.as_deref(), Some("boom"), "{error}");
     let created = probe.directories();
     assert_eq!(created.len(), 1);
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1317,15 +1321,19 @@ async fn a_client_whose_cli_fails_to_spawn_removes_the_directory() {
         .unwrap();
     let client = ClaudeSdkClient::new(options);
     let error = client.connect().await.unwrap_err();
-    assert!(matches!(error, Error::CliNotFound { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::CliNotFound, "{error:?}");
     let created = store.directories();
     assert_eq!(created.len(), 1, "the session was materialized first");
     assert!(!created[0].exists());
     assert!(setup.resume_dirs().is_empty());
-    assert!(matches!(
-        client.query("x").await,
-        Err(Error::CliConnection { .. })
-    ));
+    assert!(
+        client
+            .query("x")
+            .await
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     client.disconnect().await.unwrap();
 }
 
@@ -1350,7 +1358,7 @@ async fn a_client_whose_initialize_fails_stops_the_child_and_removes_the_directo
         .unwrap();
     let client = ClaudeSdkClient::new(options);
     let error = client.connect().await.unwrap_err();
-    assert!(matches!(error, Error::Control { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::Control, "{error:?}");
     assert!(error.to_string().contains("control timeout"), "{error}");
     assert_eq!(
         common::processes_matching(&cli.name),
@@ -1361,10 +1369,14 @@ async fn a_client_whose_initialize_fails_stops_the_child_and_removes_the_directo
     assert_eq!(created.len(), 1, "the session was materialized first");
     assert!(!created[0].exists());
     assert!(setup.resume_dirs().is_empty());
-    assert!(matches!(
-        client.query("x").await,
-        Err(Error::CliConnection { .. })
-    ));
+    assert!(
+        client
+            .query("x")
+            .await
+            .as_ref()
+            .err()
+            .is_some_and(Error::is_cli_connection)
+    );
     client.disconnect().await.unwrap();
 }
 
@@ -1441,7 +1453,7 @@ async fn a_query_whose_cli_fails_to_spawn_yields_the_error_and_removes_the_direc
         Some(Err(error)) => error,
         other => panic!("expected an error, got {other:?}"),
     };
-    assert!(matches!(error, Error::CliNotFound { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::CliNotFound, "{error:?}");
     assert!(messages.next().await.is_none());
     let created = store.directories();
     assert_eq!(created.len(), 1, "the session was materialized first");

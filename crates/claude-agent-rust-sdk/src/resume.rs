@@ -171,13 +171,10 @@ impl MaterializedResume {
 }
 
 fn timeout_error(what: &str, limit: Duration) -> Error {
-    Error::SessionStore {
-        message: format!(
-            "Session store {what} timed out after {} ms during resume materialization",
-            limit.as_millis()
-        ),
-        source: None,
-    }
+    Error::session_store_timeout(format!(
+        "Session store {what} timed out after {} ms during resume materialization",
+        limit.as_millis()
+    ))
 }
 
 async fn bounded<T>(
@@ -187,10 +184,10 @@ async fn bounded<T>(
 ) -> Result<T> {
     match tokio::time::timeout(limit, call).await {
         Ok(Ok(value)) => Ok(value),
-        Ok(Err(error)) => Err(Error::SessionStore {
-            message: format!("Session store {what} failed during resume materialization: {error}"),
-            source: Some(error),
-        }),
+        Ok(Err(error)) => Err(Error::session_store(
+            format!("Session store {what} failed during resume materialization"),
+            error,
+        )),
         Err(_) => Err(timeout_error(what, limit)),
     }
 }
@@ -430,7 +427,7 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Io`] naming the credentials file when credentials were
+/// Returns [`ErrorKind::Io`](crate::ErrorKind::Io) naming the credentials file when credentials were
 /// found but cannot be written. A seed file that cannot be copied is only
 /// logged.
 fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) -> Result<()> {
@@ -643,7 +640,7 @@ mod tests {
 
     /// Options resuming a session the store holds, with the caller config
     /// directory `config` and a CLI path that does not exist: a run that
-    /// gets past the resume fails with [`Error::CliNotFound`].
+    /// gets past the resume fails with [`ErrorKind::CliNotFound`](crate::ErrorKind::CliNotFound).
     async fn resumable(config: &Path, cwd: &Path) -> ClaudeAgentOptionsBuilder {
         let id = uuid::Uuid::new_v4().to_string();
         let store = InMemorySessionStore::new();
@@ -675,20 +672,17 @@ mod tests {
         let arm = Arm::new();
         let mut messages = crate::query("hi", options);
         let first = messages.next().await;
-        let Some(Err(Error::Io { message, source })) = &first else {
+        let Some(Err(error)) = &first else {
             panic!("expected the credentials error, got {first:?}");
         };
-        assert!(message.contains(".credentials.json"), "{message}");
-        assert_eq!(source.kind(), ErrorKind::PermissionDenied);
+        assert_eq!(error.kind(), crate::ErrorKind::Io);
+        assert!(error.to_string().contains(".credentials.json"), "{error}");
+        assert_eq!(error.io_kind(), Some(ErrorKind::PermissionDenied));
+        let source = std::error::Error::source(error).unwrap();
         assert!(source.to_string().contains("injected: disk refused"));
         assert!(
-            first
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .unwrap_err()
-                .to_string()
-                .contains("injected: disk refused")
+            !error.to_string().contains("injected: disk refused"),
+            "the text does not repeat the source"
         );
         assert!(messages.next().await.is_none());
         let attempts = arm.attempts();
@@ -721,7 +715,7 @@ mod tests {
         let mut messages = crate::query("hi", options);
         let first = messages.next().await;
         assert!(
-            matches!(first, Some(Err(Error::CliNotFound { .. }))),
+            matches!(&first, Some(Err(error)) if error.kind() == crate::ErrorKind::CliNotFound),
             "the resume was materialized and the CLI looked up: {first:?}"
         );
         assert!(arm.attempts().is_empty());

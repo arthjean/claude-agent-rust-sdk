@@ -4,6 +4,7 @@ mod common;
 
 use std::path::PathBuf;
 
+use claude_agent_rust_sdk::ErrorKind;
 use claude_agent_rust_sdk::{
     AgentDefinition, ClaudeAgentOptions, ClaudeAgentOptionsBuilder, EffortLevel, Error,
     McpSdkServerConfig, McpSdkServerInstance, McpServers, McpStdioServerConfig, PermissionMode,
@@ -35,7 +36,7 @@ fn build(builder: ClaudeAgentOptionsBuilder) -> Vec<String> {
 
 fn config_error(builder: ClaudeAgentOptionsBuilder) -> String {
     match try_command(builder) {
-        Err(Error::Config { message }) => message,
+        Err(error) if error.kind() == ErrorKind::Config => error.to_string(),
         other => panic!("expected a config error, got {other:?}"),
     }
 }
@@ -867,7 +868,8 @@ fn sandbox_with_unloadable_settings_is_an_error_that_hides_inline_content() {
                 .cwd(directory.path()),
         );
         match result {
-            Err(Error::CliConnection { message }) => {
+            Err(error) if error.kind() == ErrorKind::Spawn => {
+                let message = error.to_string();
                 assert!(message.contains("settings"), "{settings}: {message}");
                 assert!(!message.contains("secret-value"), "{settings}: {message}");
             }
@@ -1069,7 +1071,7 @@ async fn an_invalid_skill_name_fails_connect_before_anything_is_spawned() {
         .unwrap();
     let transport = SubprocessTransport::new(options);
     let error = transport.connect().await.unwrap_err();
-    assert!(matches!(error, Error::Config { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::Config, "{error:?}");
     assert_eq!(transport.process_id(), None);
     assert!(!transport.is_ready());
 
@@ -1080,6 +1082,6 @@ async fn an_invalid_skill_name_fails_connect_before_anything_is_spawned() {
         .unwrap();
     let transport = SubprocessTransport::new(options);
     let error = transport.connect().await.unwrap_err();
-    assert!(matches!(error, Error::Config { .. }), "{error:?}");
+    assert_eq!(error.kind(), ErrorKind::Config, "{error:?}");
     assert_eq!(transport.process_id(), None);
 }

@@ -175,9 +175,9 @@ fn find_session_file(session_id: &str, directory: Option<&Path>) -> Option<(Path
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID or a title that is empty
-/// after trimming, [`Error::SessionNotFound`] when no non-empty transcript
-/// exists, and [`Error::Io`] when the write fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID or a title that is empty
+/// after trimming, [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when no non-empty transcript
+/// exists, and [`ErrorKind::Io`](crate::ErrorKind::Io) when the write fails.
 pub fn rename_session(session_id: &str, title: &str, directory: Option<&Path>) -> Result<()> {
     let session_id = require_uuid(session_id, "session_id")?;
     let title = clean_title(title)?;
@@ -203,9 +203,9 @@ pub fn rename_session(session_id: &str, title: &str, directory: Option<&Path>) -
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID or a tag that is empty
-/// after sanitizing, [`Error::SessionNotFound`] when no non-empty
-/// transcript exists, and [`Error::Io`] when the write fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID or a tag that is empty
+/// after sanitizing, [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when no non-empty
+/// transcript exists, and [`ErrorKind::Io`](crate::ErrorKind::Io) when the write fails.
 pub fn tag_session(session_id: &str, tag: Option<&str>, directory: Option<&Path>) -> Result<()> {
     let session_id = require_uuid(session_id, "session_id")?;
     let tag = clean_tag(tag)?;
@@ -230,9 +230,9 @@ pub fn tag_session(session_id: &str, tag: Option<&str>, directory: Option<&Path>
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID,
-/// [`Error::SessionNotFound`] when no non-empty transcript exists, and
-/// [`Error::Io`] when the transcript cannot be removed.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID,
+/// [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when no non-empty transcript exists, and
+/// [`ErrorKind::Io`](crate::ErrorKind::Io) when the transcript cannot be removed.
 pub fn delete_session(session_id: &str, directory: Option<&Path>) -> Result<()> {
     let session_id = require_uuid(session_id, "session_id")?;
     let Some((path, project_dir)) = find_session_file(session_id, directory) else {
@@ -483,10 +483,10 @@ fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID, a source with no
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID, a source with no
 /// message, or an `up_to_message_id` absent from the transcript (no file is
-/// created then), [`Error::SessionNotFound`] when the source is missing,
-/// and [`Error::Io`] when a read or write fails.
+/// created then), [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when the source is missing,
+/// and [`ErrorKind::Io`](crate::ErrorKind::Io) when a read or write fails.
 pub fn fork_session(
     session_id: &str,
     directory: Option<&Path>,
@@ -547,8 +547,8 @@ async fn append_via_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID or an empty title, and
-/// [`Error::SessionStore`] when the store fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID or an empty title, and
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the store fails.
 pub async fn rename_session_via_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -572,8 +572,8 @@ pub async fn rename_session_via_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID or a tag empty after
-/// sanitizing, and [`Error::SessionStore`] when the store fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID or a tag empty after
+/// sanitizing, and [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the store fails.
 pub async fn tag_session_via_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -599,8 +599,8 @@ pub async fn tag_session_via_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an id that is not a UUID, and
-/// [`Error::SessionStore`] when the store fails.
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID, and
+/// [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the store fails.
 pub async fn delete_session_via_store<S: SessionStore + ?Sized>(
     store: &S,
     session_id: &str,
@@ -622,9 +622,9 @@ pub async fn delete_session_via_store<S: SessionStore + ?Sized>(
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an invalid id, a source with no message, or an
-/// absent `up_to_message_id`, [`Error::SessionNotFound`] when the store
-/// holds nothing for the source, and [`Error::SessionStore`] when the store
+/// [`ErrorKind::Config`](crate::ErrorKind::Config) for an invalid id, a source with no message, or an
+/// absent `up_to_message_id`, [`ErrorKind::SessionNotFound`](crate::ErrorKind::SessionNotFound) when the store
+/// holds nothing for the source, and [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when the store
 /// fails.
 pub async fn fork_session_via_store<S: SessionStore + ?Sized>(
     store: &S,
@@ -673,6 +673,7 @@ pub async fn fork_session_via_store<S: SessionStore + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     #[test]
     fn sanitizing_removes_invisible_and_private_characters() {
@@ -689,11 +690,14 @@ mod tests {
     fn tags_and_titles_are_validated() {
         assert_eq!(clean_tag(None).unwrap(), "");
         assert_eq!(clean_tag(Some("  hi\u{200b} ")).unwrap(), "hi");
-        assert!(matches!(
-            clean_tag(Some("\u{200b} ")),
-            Err(Error::Config { .. })
-        ));
-        assert!(matches!(clean_title("   "), Err(Error::Config { .. })));
+        assert_eq!(
+            clean_tag(Some("\u{200b} ")).as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config)
+        );
+        assert_eq!(
+            clean_title("   ").as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config)
+        );
         assert_eq!(clean_title(" t ").unwrap(), "t");
     }
 
@@ -759,7 +763,10 @@ mod tests {
             ]
         };
         let missing = build_fork_entries(source(), vec![], "src", Some("nope"), None, || None);
-        assert!(matches!(missing, Err(Error::Config { .. })));
+        assert_eq!(
+            missing.as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config)
+        );
         let (_, entries) = build_fork_entries(
             source(),
             vec![],
@@ -775,9 +782,12 @@ mod tests {
             build_fork_entries(source(), vec![], "src", None, None, || None).unwrap();
         assert_eq!(entries[2]["customTitle"], "Forked session (fork)");
         let progress_only = vec![entry(json!({"type": "progress", "uuid": "p"}))];
-        assert!(matches!(
-            build_fork_entries(progress_only, vec![], "src", None, None, || None),
-            Err(Error::Config { .. })
-        ));
+        assert_eq!(
+            build_fork_entries(progress_only, vec![], "src", None, None, || None)
+                .as_ref()
+                .err()
+                .map(Error::kind),
+            Some(ErrorKind::Config)
+        );
     }
 }

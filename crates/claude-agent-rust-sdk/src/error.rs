@@ -1,22 +1,37 @@
 //! Error model of the crate.
 //!
-//! Every fallible operation returns [`Error`], a single enum whose variants
-//! name the failure cause, so callers match on a variant instead of parsing
-//! text.
+//! Every fallible operation returns [`Error`], an opaque value whose
+//! [`kind`](Error::kind) names the cause, the way [`std::io::Error`] does.
+//! The data of a cause is read through accessors ([`Error::exit_code`],
+//! [`Error::result`], ...), so a later release can add data without
+//! breaking a caller, and [`ErrorKind`] can gain kinds for the same reason.
+//! [`Error::is_retryable`] says whether trying again can succeed.
 //!
-//! Message texts follow the upstream Python SDK, with one deliberate
-//! difference: they name the executable "Claude CLI".
+//! An error is cheap to clone: one failure reaches every waiter of a
+//! session as clones of one value, with its typed source.
 //!
-//! The error model differs from upstream in one deliberate way: Python has
-//! a class hierarchy (`ResultError` is a `ProcessError`, `CLINotFoundError`
-//! is a `CLIConnectionError`), and this crate has sibling variants of one
-//! enum. [`Error::is_process`] and [`Error::is_cli_connection`] answer the
-//! questions an `except` on the parent class asks.
+//! The error model differs from upstream in deliberate ways:
+//!
+//! - Python has a class hierarchy (`ResultError` is a `ProcessError`,
+//!   `CLINotFoundError` is a `CLIConnectionError`), and this crate has one
+//!   kind per cause. [`Error::is_process`] and [`Error::is_cli_connection`]
+//!   answer the questions an `except` on the parent class asks.
+//! - Python raises `CLIConnectionError` for about a dozen causes; here they
+//!   are told apart: [`ErrorKind::Spawn`], [`ErrorKind::NotConnected`],
+//!   [`ErrorKind::ConnectionClosed`], and [`ErrorKind::Unsupported`].
+//! - The text of an error does not repeat its [`source`](std::error::Error::source),
+//!   which carries the underlying error instead.
+//! - [`Error::stderr`] holds the last lines the CLI wrote to its error
+//!   output when they were captured (a [`StderrCallback`](crate::StderrCallback)
+//!   was set), where Python always says "Check stderr output for details".
 
 use std::fmt;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use serde_json::{Map, Value};
+
+use crate::session_store::UnsupportedStoreOperation;
 
 /// Result alias whose error type defaults to [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -24,13 +39,94 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// Boxed error returned by application callbacks (hooks, tool permission).
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+type SharedSource = Arc<dyn std::error::Error + Send + Sync + 'static>;
+
+/// What went wrong, as [`Error::kind`] reports it.
+///
+/// New kinds may be added in a minor release, so a `match` needs a
+/// wildcard arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ErrorKind {
+    /// The CLI executable was not found in any searched location.
+    CliNotFound,
+    /// The CLI process could not be started: the executable failed to run,
+    /// the working directory is missing, the settings could not be read, or
+    /// the executable is a Windows batch script, which is refused.
+    Spawn,
+    /// The call needs a connected session or transport, and there is none:
+    /// it was never connected, or it was disconnected.
+    NotConnected,
+    /// The CLI exited or closed its pipes before the call completed: a write
+    /// to a process that has ended, output that ended before a response, or
+    /// a session closed while a request waited.
+    ConnectionClosed,
+    /// The CLI cannot do what the options require, such as honoring
+    /// `on_failure` on hook matchers.
+    Unsupported,
+    /// The CLI process exited with an error code.
+    Process,
+    /// The CLI reported a terminal error result and then exited.
+    ///
+    /// The CLI ends a failed run by emitting a `result` message with
+    /// `is_error: true` and exiting with a non-zero code. This kind replaces
+    /// the bare [`ErrorKind::Process`] for that case; [`Error::result`]
+    /// holds the payload of the result, so callers branch on why the run
+    /// failed.
+    ResultError,
+    /// A line of CLI output started like a JSON object but did not parse.
+    /// [`Error::line`] holds it.
+    JsonDecode,
+    /// A JSON message from the CLI did not have the expected shape.
+    /// [`Error::data`] holds it when available.
+    MessageParse,
+    /// A control request received no response in time.
+    /// [`Error::control_subtype`] names it.
+    ControlTimeout,
+    /// The CLI answered a control request with an error.
+    Control,
+    /// The options or arguments are invalid or contradictory.
+    Config,
+    /// A prompt stream supplied by the application yielded an error, which
+    /// is the [`source`](std::error::Error::source).
+    PromptStream,
+    /// A session transcript was not found.
+    SessionNotFound,
+    /// A filesystem operation on a transcript or a temporary directory
+    /// failed; the [`source`](std::error::Error::source) is the
+    /// [`std::io::Error`].
+    Io,
+    /// A session store failed or took too long; the
+    /// [`source`](std::error::Error::source) is the error of the store, when
+    /// it returned one.
+    SessionStore,
+    /// A session store does not implement an optional method the operation
+    /// needs. [`Error::unsupported_operation`] names it.
+    StoreUnsupported,
+}
+
 /// Every failure this crate reports.
 ///
-/// The variants are siblings, while the Python SDK nests some of its
-/// exception classes: `ResultError` is a subclass of `ProcessError`, and
-/// `CLINotFoundError` a subclass of `CLIConnectionError`. A Rust `match` on
-/// [`Error::Process`] therefore does not see [`Error::ResultError`]. Use
-/// the predicates to keep the Python meaning:
+/// Branch on [`kind`](Self::kind) and read the data of a cause through the
+/// accessors:
+///
+/// ```
+/// use claude_agent_rust_sdk::{Error, ErrorKind};
+///
+/// fn handle(error: &Error) -> String {
+///     match error.kind() {
+///         ErrorKind::ConnectionClosed => "reconnect".to_owned(),
+///         ErrorKind::Process => format!("exit code {:?}", error.exit_code()),
+///         _ if error.is_retryable() => "retry".to_owned(),
+///         _ => error.to_string(),
+///     }
+/// }
+///
+/// let error = Error::process("Command failed with exit code 2", Some(2), None);
+/// assert_eq!(handle(&error), "exit code Some(2)");
+/// ```
+///
+/// The predicates keep the meaning of the Python exception hierarchy:
 ///
 /// ```python
 /// try:
@@ -42,7 +138,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 /// ```
 ///
 /// ```
-/// use claude_agent_rust_sdk::Error;
+/// use claude_agent_rust_sdk::{Error, ErrorKind};
 ///
 /// fn handle(error: &Error) -> &'static str {
 ///     if error.is_process() {
@@ -56,133 +152,90 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 ///
 /// assert_eq!(handle(&Error::result_error(serde_json::json!({}), Some(1))), "process failed");
 /// assert_eq!(handle(&Error::cli_not_found(None, None)), "reconnect");
-/// assert_eq!(handle(&Error::config("bad option")), "other");
+/// assert_eq!(handle(&Error::new(ErrorKind::Config, "bad option")), "other");
 /// ```
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    /// The CLI executable was not found in any searched location.
-    #[error("{message}")]
-    CliNotFound {
-        /// Human-readable description, including the searched path when known.
-        message: String,
-    },
+#[derive(Clone)]
+pub struct Error(Arc<Inner>);
 
-    /// The CLI could not be reached, or the session is not connected.
-    #[error("{message}")]
-    CliConnection {
-        /// Human-readable description of the connection failure.
-        message: String,
-    },
+struct Inner {
+    kind: ErrorKind,
+    message: String,
+    source: Option<SharedSource>,
+    detail: Detail,
+}
 
-    /// The CLI process failed.
-    #[error("{}", process_text(message, *exit_code, stderr.as_deref()))]
-    Process {
-        /// Description of the failure, without the exit code or stderr.
-        message: String,
-        /// Exit code of the process, when it exited.
-        exit_code: Option<i32>,
-        /// Captured error output, when available.
-        stderr: Option<String>,
-    },
-
-    /// The CLI reported a terminal error result and then exited.
-    ///
-    /// The CLI ends a failed run by emitting a `result` message with
-    /// `is_error: true` and exiting with a non-zero code. This variant
-    /// replaces the bare [`Error::Process`] for that case and carries the
-    /// payload of the result, so callers branch on why the run failed.
-    #[error("{}", process_text(message, *exit_code, None))]
-    ResultError {
-        /// Description of the failure, without the exit code.
-        message: String,
-        /// Raw `result` payload emitted by the CLI, with typed accessors.
-        data: ResultErrorData,
-        /// Exit code of the process, when it exited.
-        exit_code: Option<i32>,
-    },
-
-    /// A line of CLI output started like a JSON object but did not parse.
-    #[error(
-        "Failed to decode JSON: {}...",
-        leading_chars(line, JSON_DECODE_PREVIEW_CHARS)
-    )]
-    JsonDecode {
-        /// The offending line, in full.
-        line: String,
-        /// The underlying JSON error.
-        source: serde_json::Error,
-    },
-
-    /// A JSON message from the CLI did not have the expected shape.
-    #[error("{message}")]
-    MessageParse {
-        /// Description of the missing or malformed part.
-        message: String,
-        /// The message that failed to parse, when available.
-        data: Option<Value>,
-    },
-
-    /// A control request received no response in time.
-    #[error("Control request timeout: {subtype}")]
-    ControlTimeout {
-        /// Subtype of the request that timed out.
-        subtype: String,
-    },
-
-    /// The CLI answered a control request with an error.
-    #[error("{message}")]
-    Control {
-        /// Error text reported by the CLI.
-        message: String,
-    },
-
-    /// The options are invalid or mutually exclusive.
-    #[error("{message}")]
-    Config {
-        /// Description of the invalid configuration.
-        message: String,
-    },
-
-    /// A session transcript was not found.
-    #[error("{message}")]
-    SessionNotFound {
-        /// Description naming the session and where it was searched.
-        message: String,
-    },
-
-    /// A filesystem operation on a transcript or a temporary directory
-    /// failed.
-    #[error("{message}: {source}")]
-    Io {
-        /// What was being done.
-        message: String,
-        /// The underlying error.
-        source: std::io::Error,
-    },
-
-    /// A session store failed or took too long.
-    #[error("{message}")]
-    SessionStore {
-        /// Description of the failure, including the text of the store
-        /// error.
-        message: String,
-        /// The error returned by the store, when it returned one.
-        source: Option<BoxError>,
-    },
-
-    /// A session store does not implement an optional method the operation
-    /// needs.
-    #[error(transparent)]
-    StoreUnsupported(#[from] crate::session_store::UnsupportedStoreOperation),
+#[derive(Default)]
+struct Detail {
+    exit_code: Option<i32>,
+    stderr: Option<String>,
+    result: Option<ResultErrorData>,
+    line: Option<String>,
+    data: Option<Value>,
+    control_subtype: Option<String>,
+    timed_out: bool,
+    unsupported: Option<UnsupportedStoreOperation>,
 }
 
 const JSON_DECODE_PREVIEW_CHARS: usize = 100;
-const DEFAULT_CLI_NOT_FOUND_MESSAGE: &str = "Claude CLI not found";
+const DEFAULT_CLI_NOT_FOUND_MESSAGE: &str = "Claude Code not found";
 const ERROR_RESULT_PREFIX: &str = "Claude Code returned an error result: ";
+const RETRYABLE_HTTP_STATUSES: [i64; 2] = [429, 529];
 
 impl Error {
-    /// Builds [`Error::CliNotFound`], appending the searched path when given.
+    /// Builds an error of a kind with its text, like
+    /// `std::io::Error::new`. A custom
+    /// [`Transport`](crate::Transport) or
+    /// [`SessionStore`](crate::SessionStore) uses it for the failures it
+    /// reports.
+    #[must_use]
+    pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
+        Self::with_detail(kind, message.into(), None, Detail::default())
+    }
+
+    /// Returns the error with `source` as its
+    /// [`source`](std::error::Error::source).
+    #[must_use]
+    pub fn with_source(self, source: impl Into<BoxError>) -> Self {
+        let source: SharedSource = Arc::from(source.into());
+        match Arc::try_unwrap(self.0) {
+            Ok(mut inner) => {
+                inner.source = Some(source);
+                Self(Arc::new(inner))
+            }
+            Err(shared) => Self(Arc::new(Inner {
+                kind: shared.kind,
+                message: shared.message.clone(),
+                source: Some(source),
+                detail: Detail {
+                    exit_code: shared.detail.exit_code,
+                    stderr: shared.detail.stderr.clone(),
+                    result: shared.detail.result.clone(),
+                    line: shared.detail.line.clone(),
+                    data: shared.detail.data.clone(),
+                    control_subtype: shared.detail.control_subtype.clone(),
+                    timed_out: shared.detail.timed_out,
+                    unsupported: shared.detail.unsupported,
+                },
+            })),
+        }
+    }
+
+    fn with_detail(
+        kind: ErrorKind,
+        message: String,
+        source: Option<SharedSource>,
+        detail: Detail,
+    ) -> Self {
+        Self(Arc::new(Inner {
+            kind,
+            message,
+            source,
+            detail,
+        }))
+    }
+
+    /// Builds an [`ErrorKind::CliNotFound`] error, appending the searched
+    /// path when given.
     #[must_use]
     pub fn cli_not_found(message: Option<&str>, cli_path: Option<&str>) -> Self {
         let message = message.unwrap_or(DEFAULT_CLI_NOT_FOUND_MESSAGE);
@@ -190,232 +243,355 @@ impl Error {
             Some(path) if !path.is_empty() => format!("{message}: {path}"),
             _ => message.to_owned(),
         };
-        Self::CliNotFound { message }
+        Self::new(ErrorKind::CliNotFound, message)
     }
 
-    /// Builds [`Error::CliConnection`].
-    #[must_use]
-    pub fn cli_connection(message: impl Into<String>) -> Self {
-        Self::CliConnection {
-            message: message.into(),
-        }
-    }
-
-    /// Builds [`Error::Process`].
+    /// Builds an [`ErrorKind::Process`] error. The text appends the exit
+    /// code and the error output to `message`.
     #[must_use]
     pub fn process(
         message: impl Into<String>,
         exit_code: Option<i32>,
         stderr: Option<String>,
     ) -> Self {
-        Self::Process {
-            message: message.into(),
-            exit_code,
-            stderr,
-        }
+        let message = process_text(&message.into(), exit_code, stderr.as_deref());
+        Self::with_detail(
+            ErrorKind::Process,
+            message,
+            None,
+            Detail {
+                exit_code,
+                stderr,
+                ..Detail::default()
+            },
+        )
     }
 
-    /// Builds [`Error::ResultError`] from the raw `result` payload.
+    /// Builds an [`ErrorKind::ResultError`] error from the raw `result`
+    /// payload.
     ///
-    /// The message is the upstream error-result prefix followed by
-    /// [`ResultErrorData::summary`].
+    /// The text is the upstream error-result prefix followed by
+    /// [`ResultErrorData::summary`] and the exit code.
     #[must_use]
     pub fn result_error(data: Value, exit_code: Option<i32>) -> Self {
         let data = ResultErrorData::from(data);
-        Self::ResultError {
-            message: format!("{ERROR_RESULT_PREFIX}{}", data.summary()),
-            data,
+        let message = process_text(
+            &format!("{ERROR_RESULT_PREFIX}{}", data.summary()),
             exit_code,
-        }
+            None,
+        );
+        Self::with_detail(
+            ErrorKind::ResultError,
+            message,
+            None,
+            Detail {
+                exit_code,
+                result: Some(data),
+                ..Detail::default()
+            },
+        )
     }
 
-    /// Builds [`Error::JsonDecode`].
+    /// Builds an [`ErrorKind::JsonDecode`] error for a line of output.
     #[must_use]
     pub fn json_decode(line: impl Into<String>, source: serde_json::Error) -> Self {
-        Self::JsonDecode {
-            line: line.into(),
-            source,
-        }
+        let line = line.into();
+        let message = format!(
+            "Failed to decode JSON: {}...",
+            leading_chars(&line, JSON_DECODE_PREVIEW_CHARS)
+        );
+        Self::with_detail(
+            ErrorKind::JsonDecode,
+            message,
+            Some(Arc::new(source)),
+            Detail {
+                line: Some(line),
+                ..Detail::default()
+            },
+        )
     }
 
-    /// Builds [`Error::MessageParse`].
+    /// Builds an [`ErrorKind::MessageParse`] error, with the message that
+    /// failed to parse when available.
     #[must_use]
     pub fn message_parse(message: impl Into<String>, data: Option<Value>) -> Self {
-        Self::MessageParse {
-            message: message.into(),
-            data,
-        }
+        Self::with_detail(
+            ErrorKind::MessageParse,
+            message.into(),
+            None,
+            Detail {
+                data,
+                ..Detail::default()
+            },
+        )
     }
 
-    /// Builds [`Error::Config`].
-    #[must_use]
-    pub fn config(message: impl Into<String>) -> Self {
-        Self::Config {
-            message: message.into(),
-        }
-    }
-
-    /// Builds [`Error::Control`].
-    #[must_use]
-    pub fn control(message: impl Into<String>) -> Self {
-        Self::Control {
-            message: message.into(),
-        }
-    }
-
-    /// Builds [`Error::ControlTimeout`].
+    /// Builds an [`ErrorKind::ControlTimeout`] error for a request subtype.
     #[must_use]
     pub fn control_timeout(subtype: impl Into<String>) -> Self {
-        Self::ControlTimeout {
-            subtype: subtype.into(),
-        }
+        let subtype = subtype.into();
+        Self::with_detail(
+            ErrorKind::ControlTimeout,
+            format!("Control request timeout: {subtype}"),
+            None,
+            Detail {
+                control_subtype: Some(subtype),
+                ..Detail::default()
+            },
+        )
     }
 
-    /// Builds [`Error::SessionNotFound`].
-    #[must_use]
-    pub fn session_not_found(message: impl Into<String>) -> Self {
-        Self::SessionNotFound {
-            message: message.into(),
-        }
-    }
-
-    /// Builds [`Error::Io`].
+    /// Builds an [`ErrorKind::Io`] error: what was being done, and the
+    /// error, which becomes the source.
     #[must_use]
     pub fn io(message: impl Into<String>, source: std::io::Error) -> Self {
-        Self::Io {
-            message: message.into(),
-            source,
-        }
+        Self::with_detail(
+            ErrorKind::Io,
+            message.into(),
+            Some(Arc::new(source)),
+            Detail::default(),
+        )
     }
 
-    /// Builds [`Error::SessionStore`] from the error a store returned.
+    /// Builds an [`ErrorKind::SessionStore`] error from the error a store
+    /// returned, which becomes the source.
     #[must_use]
-    pub fn session_store(context: &str, source: BoxError) -> Self {
-        Self::SessionStore {
-            message: format!("{context}: {source}"),
-            source: Some(source),
+    pub fn session_store(context: impl Into<String>, source: BoxError) -> Self {
+        Self::with_detail(
+            ErrorKind::SessionStore,
+            context.into(),
+            Some(Arc::from(source)),
+            Detail::default(),
+        )
+    }
+
+    /// Builds an [`ErrorKind::SessionStore`] error for a store call that
+    /// took too long. It is retryable.
+    #[must_use]
+    pub fn session_store_timeout(message: impl Into<String>) -> Self {
+        Self::with_detail(
+            ErrorKind::SessionStore,
+            message.into(),
+            None,
+            Detail {
+                timed_out: true,
+                ..Detail::default()
+            },
+        )
+    }
+
+    pub(crate) fn config(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Config, message)
+    }
+
+    pub(crate) fn control(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Control, message)
+    }
+
+    pub(crate) fn session_not_found(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::SessionNotFound, message)
+    }
+
+    pub(crate) fn not_connected(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::NotConnected, message)
+    }
+
+    pub(crate) fn connection_closed(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::ConnectionClosed, message)
+    }
+
+    pub(crate) fn spawn(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Spawn, message)
+    }
+
+    pub(crate) fn unsupported(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Unsupported, message)
+    }
+
+    /// What went wrong.
+    #[must_use]
+    pub fn kind(&self) -> ErrorKind {
+        self.0.kind
+    }
+
+    /// Whether trying again, with the same call or a new session, can
+    /// succeed without a change of code or options.
+    ///
+    /// | Kind | Retryable |
+    /// |---|---|
+    /// | [`ControlTimeout`](ErrorKind::ControlTimeout), [`ConnectionClosed`](ErrorKind::ConnectionClosed) | always |
+    /// | [`ResultError`](ErrorKind::ResultError) | when the failing API call answered 429, 529, or a 5xx status |
+    /// | [`Process`](ErrorKind::Process) | when the process ended without an exit code (killed by a signal) |
+    /// | [`Io`](ErrorKind::Io), [`Spawn`](ErrorKind::Spawn) | when the I/O error is `Interrupted`, `TimedOut`, or `WouldBlock` |
+    /// | [`SessionStore`](ErrorKind::SessionStore) | when the store took too long |
+    /// | every other kind | never |
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self.0.kind {
+            ErrorKind::ControlTimeout | ErrorKind::ConnectionClosed => true,
+            ErrorKind::ResultError => self
+                .result()
+                .and_then(ResultErrorData::api_error_status)
+                .is_some_and(|status| {
+                    RETRYABLE_HTTP_STATUSES.contains(&status) || (500..600).contains(&status)
+                }),
+            ErrorKind::Process => self.0.detail.exit_code.is_none(),
+            ErrorKind::Io | ErrorKind::Spawn => self.io_kind().is_some_and(|kind| {
+                matches!(
+                    kind,
+                    std::io::ErrorKind::Interrupted
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::WouldBlock
+                )
+            }),
+            ErrorKind::SessionStore => self.0.detail.timed_out,
+            _ => false,
         }
     }
 
-    /// Copies the error so one failure can be reported to several waiters.
-    /// The JSON error of [`Error::JsonDecode`] is rebuilt from its text.
-    pub(crate) fn duplicate(&self) -> Self {
-        match self {
-            Self::CliNotFound { message } => Self::CliNotFound {
-                message: message.clone(),
-            },
-            Self::CliConnection { message } => Self::CliConnection {
-                message: message.clone(),
-            },
-            Self::Process {
-                message,
-                exit_code,
-                stderr,
-            } => Self::Process {
-                message: message.clone(),
-                exit_code: *exit_code,
-                stderr: stderr.clone(),
-            },
-            Self::ResultError {
-                message,
-                data,
-                exit_code,
-            } => Self::ResultError {
-                message: message.clone(),
-                data: data.clone(),
-                exit_code: *exit_code,
-            },
-            Self::JsonDecode { line, source } => Self::JsonDecode {
-                line: line.clone(),
-                source: <serde_json::Error as serde::de::Error>::custom(source.to_string()),
-            },
-            Self::MessageParse { message, data } => Self::MessageParse {
-                message: message.clone(),
-                data: data.clone(),
-            },
-            Self::ControlTimeout { subtype } => Self::ControlTimeout {
-                subtype: subtype.clone(),
-            },
-            Self::Control { message } => Self::Control {
-                message: message.clone(),
-            },
-            Self::Config { message } => Self::Config {
-                message: message.clone(),
-            },
-            Self::SessionNotFound { message } => Self::SessionNotFound {
-                message: message.clone(),
-            },
-            Self::Io { message, source } => Self::Io {
-                message: message.clone(),
-                source: std::io::Error::new(source.kind(), source.to_string()),
-            },
-            Self::SessionStore { message, source } => Self::SessionStore {
-                message: message.clone(),
-                source: source
-                    .as_ref()
-                    .map(|source| BoxError::from(source.to_string())),
-            },
-            Self::StoreUnsupported(unsupported) => Self::StoreUnsupported(*unsupported),
-        }
-    }
-
-    /// Whether the CLI process failed: true for [`Error::Process`] and
-    /// [`Error::ResultError`].
+    /// Whether the CLI process failed: true for [`ErrorKind::Process`] and
+    /// [`ErrorKind::ResultError`].
     ///
     /// This is the Rust form of `except ProcessError`, which in Python also
     /// catches `ResultError`.
     #[must_use]
     pub fn is_process(&self) -> bool {
-        match self {
-            Self::Process { .. } | Self::ResultError { .. } => true,
-            Self::CliNotFound { .. }
-            | Self::CliConnection { .. }
-            | Self::JsonDecode { .. }
-            | Self::MessageParse { .. }
-            | Self::ControlTimeout { .. }
-            | Self::Control { .. }
-            | Self::Config { .. }
-            | Self::SessionNotFound { .. }
-            | Self::Io { .. }
-            | Self::SessionStore { .. }
-            | Self::StoreUnsupported(_) => false,
-        }
+        matches!(self.0.kind, ErrorKind::Process | ErrorKind::ResultError)
     }
 
     /// Whether the CLI could not be reached: true for
-    /// [`Error::CliConnection`] and [`Error::CliNotFound`].
+    /// [`ErrorKind::CliNotFound`], [`ErrorKind::Spawn`],
+    /// [`ErrorKind::NotConnected`], [`ErrorKind::ConnectionClosed`], and
+    /// [`ErrorKind::Unsupported`].
     ///
     /// This is the Rust form of `except CLIConnectionError`, which in
     /// Python also catches `CLINotFoundError`.
     #[must_use]
     pub fn is_cli_connection(&self) -> bool {
-        match self {
-            Self::CliConnection { .. } | Self::CliNotFound { .. } => true,
-            Self::Process { .. }
-            | Self::ResultError { .. }
-            | Self::JsonDecode { .. }
-            | Self::MessageParse { .. }
-            | Self::ControlTimeout { .. }
-            | Self::Control { .. }
-            | Self::Config { .. }
-            | Self::SessionNotFound { .. }
-            | Self::Io { .. }
-            | Self::SessionStore { .. }
-            | Self::StoreUnsupported(_) => false,
-        }
+        matches!(
+            self.0.kind,
+            ErrorKind::CliNotFound
+                | ErrorKind::Spawn
+                | ErrorKind::NotConnected
+                | ErrorKind::ConnectionClosed
+                | ErrorKind::Unsupported
+        )
     }
 
-    /// Exit code of the CLI process, for the variants that carry one.
+    /// Exit code of the CLI process, for [`ErrorKind::Process`] and
+    /// [`ErrorKind::ResultError`].
     #[must_use]
     pub fn exit_code(&self) -> Option<i32> {
-        match self {
-            Self::Process { exit_code, .. } | Self::ResultError { exit_code, .. } => *exit_code,
-            _ => None,
-        }
+        self.0.detail.exit_code
+    }
+
+    /// The last lines the CLI wrote to its error output, for
+    /// [`ErrorKind::Process`], when they were captured.
+    #[must_use]
+    pub fn stderr(&self) -> Option<&str> {
+        self.0.detail.stderr.as_deref()
+    }
+
+    /// Payload of the error result, for [`ErrorKind::ResultError`].
+    #[must_use]
+    pub fn result(&self) -> Option<&ResultErrorData> {
+        self.0.detail.result.as_ref()
+    }
+
+    /// The line that did not parse, in full, for [`ErrorKind::JsonDecode`].
+    #[must_use]
+    pub fn line(&self) -> Option<&str> {
+        self.0.detail.line.as_deref()
+    }
+
+    /// The message that failed to parse, for [`ErrorKind::MessageParse`],
+    /// when available.
+    #[must_use]
+    pub fn data(&self) -> Option<&Value> {
+        self.0.detail.data.as_ref()
+    }
+
+    /// Subtype of the request that timed out, for
+    /// [`ErrorKind::ControlTimeout`].
+    #[must_use]
+    pub fn control_subtype(&self) -> Option<&str> {
+        self.0.detail.control_subtype.as_deref()
+    }
+
+    /// The store method that is not implemented, for
+    /// [`ErrorKind::StoreUnsupported`].
+    #[must_use]
+    pub fn unsupported_operation(&self) -> Option<UnsupportedStoreOperation> {
+        self.0.detail.unsupported
+    }
+
+    /// Kind of the underlying I/O error, when the source is one.
+    #[must_use]
+    pub fn io_kind(&self) -> Option<std::io::ErrorKind> {
+        self.0
+            .source
+            .as_deref()
+            .and_then(|source| source.downcast_ref::<std::io::Error>())
+            .map(std::io::Error::kind)
     }
 }
 
-/// Raw `result` payload carried by [`Error::ResultError`].
+impl From<UnsupportedStoreOperation> for Error {
+    fn from(unsupported: UnsupportedStoreOperation) -> Self {
+        Self::with_detail(
+            ErrorKind::StoreUnsupported,
+            unsupported.to_string(),
+            None,
+            Detail {
+                unsupported: Some(unsupported),
+                ..Detail::default()
+            },
+        )
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0.message)
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let detail = &self.0.detail;
+        let mut debug = formatter.debug_struct("Error");
+        debug
+            .field("kind", &self.0.kind)
+            .field("message", &self.0.message);
+        if let Some(code) = detail.exit_code {
+            debug.field("exit_code", &code);
+        }
+        if let Some(stderr) = &detail.stderr {
+            debug.field("stderr", stderr);
+        }
+        if let Some(result) = &detail.result {
+            debug.field("result", result);
+        }
+        if let Some(subtype) = &detail.control_subtype {
+            debug.field("control_subtype", subtype);
+        }
+        if let Some(source) = &self.0.source {
+            debug.field("source", source);
+        }
+        debug.finish_non_exhaustive()
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0
+            .source
+            .as_deref()
+            .map(|source| source as &(dyn std::error::Error + 'static))
+    }
+}
+
+/// Raw `result` payload carried by [`ErrorKind::ResultError`].
 ///
 /// Dereferences to the JSON object emitted by the CLI. A payload that is not
 /// a JSON object is replaced by an empty one. The accessors return `None`
@@ -557,54 +733,37 @@ fn leading_chars(text: &str, count: usize) -> &str {
     }
 }
 
-fn process_text<'a>(
-    message: &'a str,
-    exit_code: Option<i32>,
-    stderr: Option<&'a str>,
-) -> ProcessText<'a> {
-    ProcessText {
-        message,
-        exit_code,
-        stderr,
+fn process_text(message: &str, exit_code: Option<i32>, stderr: Option<&str>) -> String {
+    let mut text = message.to_owned();
+    if let Some(code) = exit_code {
+        text.push_str(&format!(" (exit code: {code})"));
     }
-}
-
-struct ProcessText<'a> {
-    message: &'a str,
-    exit_code: Option<i32>,
-    stderr: Option<&'a str>,
-}
-
-impl fmt::Display for ProcessText<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.message)?;
-        if let Some(code) = self.exit_code {
-            write!(formatter, " (exit code: {code})")?;
-        }
-        if let Some(stderr) = self.stderr
-            && !stderr.is_empty()
-        {
-            write!(formatter, "\nError output: {stderr}")?;
-        }
-        Ok(())
+    if let Some(stderr) = stderr
+        && !stderr.is_empty()
+    {
+        text.push_str(&format!("\nError output: {stderr}"));
     }
+    text
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::Error;
+    use super::{Error, ErrorKind};
     use crate::session_store::UnsupportedStoreOperation;
 
-    /// One value of every variant. The match in [`expected`] has no
-    /// wildcard, so a new variant does not compile until it is listed there
-    /// with a decision, and [`one_of_each`] must then build it for the test
-    /// to keep its count.
+    /// One value of every kind. The match in [`expected`] has no wildcard,
+    /// so a new kind does not compile until it is listed there with a
+    /// decision, and [`one_of_each`] must then build it for the test to
+    /// keep its count.
     fn one_of_each() -> Vec<Error> {
         vec![
             Error::cli_not_found(None, None),
-            Error::cli_connection("not connected"),
+            Error::spawn("cannot start"),
+            Error::not_connected("not connected"),
+            Error::connection_closed("closed"),
+            Error::unsupported("no on_failure"),
             Error::process("failed", Some(1), None),
             Error::result_error(json!({"subtype": "error_max_turns"}), Some(1)),
             Error::json_decode(
@@ -615,43 +774,48 @@ mod tests {
             Error::control_timeout("initialize"),
             Error::control("refused"),
             Error::config("bad option"),
+            Error::new(ErrorKind::PromptStream, "the stream failed"),
             Error::session_not_found("missing"),
             Error::io("write", std::io::Error::other("disk")),
             Error::session_store("append", "down".into()),
-            Error::StoreUnsupported(UnsupportedStoreOperation { operation: "list" }),
+            Error::from(UnsupportedStoreOperation { operation: "list" }),
         ]
     }
 
-    const VARIANTS: usize = 13;
+    const KINDS: usize = 17;
 
     /// `(is_process, is_cli_connection)` as the Python hierarchy decides it.
-    fn expected(error: &Error) -> (bool, bool) {
-        match error {
-            Error::Process { .. } | Error::ResultError { .. } => (true, false),
-            Error::CliConnection { .. } | Error::CliNotFound { .. } => (false, true),
-            Error::JsonDecode { .. }
-            | Error::MessageParse { .. }
-            | Error::ControlTimeout { .. }
-            | Error::Control { .. }
-            | Error::Config { .. }
-            | Error::SessionNotFound { .. }
-            | Error::Io { .. }
-            | Error::SessionStore { .. }
-            | Error::StoreUnsupported(_) => (false, false),
+    fn expected(kind: ErrorKind) -> (bool, bool) {
+        match kind {
+            ErrorKind::Process | ErrorKind::ResultError => (true, false),
+            ErrorKind::CliNotFound
+            | ErrorKind::Spawn
+            | ErrorKind::NotConnected
+            | ErrorKind::ConnectionClosed
+            | ErrorKind::Unsupported => (false, true),
+            ErrorKind::JsonDecode
+            | ErrorKind::MessageParse
+            | ErrorKind::ControlTimeout
+            | ErrorKind::Control
+            | ErrorKind::Config
+            | ErrorKind::PromptStream
+            | ErrorKind::SessionNotFound
+            | ErrorKind::Io
+            | ErrorKind::SessionStore
+            | ErrorKind::StoreUnsupported => (false, false),
         }
     }
 
     #[test]
-    fn predicates_follow_the_python_exception_hierarchy_for_every_variant() {
+    fn predicates_follow_the_python_exception_hierarchy_for_every_kind() {
         let errors = one_of_each();
-        let distinct: std::collections::HashSet<_> =
-            errors.iter().map(std::mem::discriminant).collect();
-        assert_eq!(distinct.len(), VARIANTS);
-        assert_eq!(errors.len(), VARIANTS);
+        let distinct: std::collections::HashSet<_> = errors.iter().map(Error::kind).collect();
+        assert_eq!(distinct.len(), KINDS);
+        assert_eq!(errors.len(), KINDS);
         for error in &errors {
             assert_eq!(
                 (error.is_process(), error.is_cli_connection()),
-                expected(error),
+                expected(error.kind()),
                 "{error:?}"
             );
         }
@@ -660,6 +824,98 @@ mod tests {
             .iter()
             .filter(|error| error.is_cli_connection())
             .count();
-        assert_eq!((processes, connections), (2, 2));
+        assert_eq!((processes, connections), (2, 5));
+    }
+
+    #[test]
+    fn retryable_errors_are_the_documented_ones() {
+        let retryable: Vec<ErrorKind> = one_of_each()
+            .iter()
+            .filter(|error| error.is_retryable())
+            .map(Error::kind)
+            .collect();
+        assert_eq!(
+            retryable,
+            [ErrorKind::ConnectionClosed, ErrorKind::ControlTimeout]
+        );
+        for status in [429, 500, 503, 529] {
+            let error = Error::result_error(json!({"api_error_status": status}), Some(1));
+            assert!(error.is_retryable(), "{status}");
+        }
+        for status in [400, 401, 404] {
+            let error = Error::result_error(json!({"api_error_status": status}), Some(1));
+            assert!(!error.is_retryable(), "{status}");
+        }
+        assert!(Error::process("killed", None, None).is_retryable());
+        let interrupted = std::io::Error::from(std::io::ErrorKind::Interrupted);
+        assert!(Error::io("read", interrupted).is_retryable());
+        let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
+        assert!(!Error::io("read", missing).is_retryable());
+        assert!(Error::session_store_timeout("load timed out").is_retryable());
+    }
+
+    #[test]
+    fn the_text_does_not_repeat_the_source_and_the_source_keeps_its_type() {
+        let error = Error::io("Cannot write /tmp/x", std::io::Error::other("disk full"));
+        assert_eq!(error.to_string(), "Cannot write /tmp/x");
+        let source = std::error::Error::source(&error).unwrap();
+        assert_eq!(source.to_string(), "disk full");
+        assert!(source.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(error.io_kind(), Some(std::io::ErrorKind::Other));
+
+        let store = Error::session_store("Session store append failed", "backend down".into());
+        assert_eq!(store.to_string(), "Session store append failed");
+        assert_eq!(
+            std::error::Error::source(&store).unwrap().to_string(),
+            "backend down"
+        );
+    }
+
+    #[test]
+    fn a_clone_shares_the_data_and_the_source() {
+        let error = Error::process(
+            "Command failed with exit code 3",
+            Some(3),
+            Some("boom".to_owned()),
+        );
+        let copy = error.clone();
+        assert_eq!(copy.kind(), ErrorKind::Process);
+        assert_eq!(copy.exit_code(), Some(3));
+        assert_eq!(copy.stderr(), Some("boom"));
+        assert_eq!(
+            copy.to_string(),
+            "Command failed with exit code 3 (exit code: 3)\nError output: boom"
+        );
+        let wrapped = copy.with_source(std::io::Error::other("pipe"));
+        assert_eq!(wrapped.exit_code(), Some(3));
+        assert!(std::error::Error::source(&wrapped).is_some());
+        assert!(std::error::Error::source(&error).is_none());
+    }
+
+    #[test]
+    fn accessors_return_the_data_of_their_kind_only() {
+        let decode = Error::json_decode(
+            "{\"a\": ",
+            serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+        );
+        assert_eq!(decode.line(), Some("{\"a\": "));
+        assert_eq!(decode.exit_code(), None);
+        let timeout = Error::control_timeout("interrupt");
+        assert_eq!(timeout.control_subtype(), Some("interrupt"));
+        assert_eq!(timeout.to_string(), "Control request timeout: interrupt");
+        let parse = Error::message_parse("bad", Some(json!({"type": "x"})));
+        assert_eq!(parse.data(), Some(&json!({"type": "x"})));
+        let result = Error::result_error(json!({"subtype": "error_max_turns"}), Some(1));
+        assert_eq!(
+            result.result().and_then(|data| data.subtype()),
+            Some("error_max_turns")
+        );
+        let unsupported = Error::from(UnsupportedStoreOperation {
+            operation: "delete",
+        });
+        assert_eq!(
+            unsupported.unsupported_operation().map(|op| op.operation),
+            Some("delete")
+        );
     }
 }
