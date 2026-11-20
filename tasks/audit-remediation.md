@@ -75,8 +75,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | A01: `e2e` `a_whole_tool_rule_returned_by_the_callback_is_applied_by_the_cli`, four runs on the fixed code | about 0.016 (0.0038 per run, two runs not measured) | Three passes, one failure where `first.txt` was missing (the model did not write it; the run printed nothing more). |
 | 2026-11-20 | A01: the same test on `cb286bc~1`, before the fix, in a separate worktree | 0.0038 | Fails: the callback runs for both writes, so the CLI did not apply the `Write` rule sent with `ruleContent: null`. |
 | 2026-11-20 | `e2e` `a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`, fixed code then the previous `tool.rs` (handshake and `mcp_status` only) | 0.00 | Passes with the fix; with the previous code the CLI lists `tools: []` for the server. |
+| 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `9036340` (55 tests, `--test-threads=4`) | about 0.80 (the documented cost of a run; the suite does not print its total) | 54 pass. `session_store_resume_settings::a_store_resume_applies_the_user_settings` fails by design here: it runs the CLI under an empty config directory and needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, which a claude.ai login does not provide (before A32 it returned early and passed without checking anything). |
 
-Total spent: about 0.02 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 0.82 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
