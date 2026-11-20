@@ -22,7 +22,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use claude_agent_rust_sdk::{
     ContentBlock, Error, ErrorKind, HookInput, Message, MessageOrigin, PermissionRuleValue,
     PermissionUpdate, RateLimitInfo, SessionKey, SystemMessage, ToolPermissionContext,
-    ToolResultContent, UserContent,
+    ToolResultContent, Usage, UserContent,
 };
 use serde_json::{Map, Value, json};
 
@@ -314,7 +314,7 @@ pub(crate) fn message(message: &Message) -> Value {
                     "error",
                     text(message.error.as_ref().map(|error| error.as_str())),
                 ),
-                ("usage", raw(message.usage.as_ref())),
+                ("usage", raw(message.usage.as_ref().map(Usage::as_value))),
                 ("message_id", text(message.message_id.as_deref())),
                 ("stop_reason", text(message.stop_reason.as_deref())),
                 ("session_id", text(message.session_id.as_deref())),
@@ -341,7 +341,7 @@ pub(crate) fn message(message: &Message) -> Value {
                 ("session_id", json!(message.session_id)),
                 ("stop_reason", text(message.stop_reason.as_deref())),
                 ("total_cost_usd", json!(message.total_cost_usd)),
-                ("usage", raw(message.usage.as_ref())),
+                ("usage", raw(message.usage.as_ref().map(Usage::as_value))),
                 ("result", text(message.result.as_deref())),
                 ("structured_output", raw(message.structured_output.as_ref())),
                 (
