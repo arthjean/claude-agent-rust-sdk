@@ -86,8 +86,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | A04 probe: a `user` frame whose text holds the escape `\ud800`, with `--replay-user-messages` and `--model haiku`, process killed after the echo | under 0.01 (killed before the answer) | The CLI echoes the escape as written (`"content":"Reply with one word: \\ud800 ok"`): a lone surrogate escape does reach the SDK, which before A04 failed the whole session on it. |
 | 2026-11-20 | Counter-audit probe: a `user` frame holding `café`, same flags as the A04 probe, killed after the echo | under 0.01 (killed before the answer) | The transcript the CLI wrote holds the raw bytes `caf\xc3\xa9` and no `\u00e9`: the CLI writes raw UTF-8, which settles `[unclassified.raw-utf8-in-transcripts]` as `[behavior.transcript-raw-utf8]`. |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `e02cdda`, after the counter-audit fixes (a first attempt with a stray `--` filtered every test out and ran nothing) | about 0.80 (the documented cost of a run) | 54 of 55 pass; the one failure is again `a_store_resume_applies_the_user_settings`, which needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (the owner agreed to supply a token). |
+| 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `c4f364b`, with `CLAUDE_CODE_OAUTH_TOKEN` from a token the owner created with `claude setup-token` (read from a file outside the repository, never printed; the log holds no token) | about 0.80 (the documented cost of a run) | **55 of 55 pass**, `a_store_resume_applies_the_user_settings` included. |
 
-Total spent: about 1.64 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 2.44 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
