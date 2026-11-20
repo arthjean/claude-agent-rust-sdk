@@ -234,9 +234,18 @@ pub(crate) enum PromptText {
     Prompt(String),
 }
 
+/// Strips what Python's `str.strip()` strips: Unicode white space, and the
+/// separators U+001C to U+001F, which Python counts as space and Rust
+/// does not.
+pub(crate) fn python_strip(text: &str) -> &str {
+    text.trim_matches(|character: char| {
+        character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
+    })
+}
+
 pub(crate) fn classify_prompt(raw: &str) -> PromptText {
     let flattened = raw.replace('\n', " ");
-    let text = flattened.trim();
+    let text = python_strip(&flattened);
     if text.is_empty() {
         return PromptText::Skipped;
     }

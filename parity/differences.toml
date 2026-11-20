@@ -504,6 +504,16 @@ category = "deliberate"
 reason = "A line the live session read must stay readable afterwards; a Rust string cannot hold a lone surrogate, and the depth limit is the one the transport applies for the stack of a tokio worker thread."
 test = "crates/claude-agent-rust-sdk/tests/sessions.rs::a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_history_before_it"
 
+[behavior.fork-progress-parent-cycle]
+summary = "A fork of a transcript whose `progress` entries name each other as parents"
+python = "The walk past `progress` parents never ends: `fork_session` hangs."
+rust = "The walk stops at an entry it already visited, and the forked message gets no parent."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:411"
+anchor = "while parent_id:"
+category = "python-defect"
+reason = "A corrupt transcript must not hang the program that forks it."
+test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_ends_on_a_cycle_of_progress_parents"
+
 [behavior.transcript-invalid-utf8]
 summary = "A transcript that is not valid UTF-8"
 python = "Reading the session or a subagent from disk, and importing it into a store, decode it strictly: one byte such as `0xff` raises `UnicodeDecodeError`. Credentials that are not UTF-8 fail a resume the same way."

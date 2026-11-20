@@ -45,7 +45,7 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ## Deliberately different
 
-62 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 52 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+63 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 53 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
 ### Deliberate choices (32)
 
@@ -135,13 +135,14 @@ Rust returns an error for input Python lets through.
 | A required message field of the wrong JSON type | Any value is accepted and handed over. (upstream `src/claude_agent_sdk/_internal/message_parser.py:315-318`) | Parsing fails with `Invalid field in <kind> message: '<field>' (expected <type>, got <type>)`. | A typed field cannot hold a value of another type; the error names the field instead of failing later. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::required_field_of_the_wrong_type_is_an_error` |
 | User message content that is neither text nor a list | Any value is accepted as the content. (upstream `src/claude_agent_sdk/_internal/message_parser.py:139-145`) | Parsing fails with `Invalid user content (expected str or list, got <type>)`. | `UserContent` is either text or blocks. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::user_content_that_is_neither_text_nor_a_list_is_an_error` |
 
-### Python defects the port does not copy (2)
+### Python defects the port does not copy (3)
 
 Python gets this wrong; each entry cites the upstream lines at fault.
 
 | Difference | Python | Rust | Reason | Shown by |
 |---|---|---|---|---|
 | A transcript line holding U+2028, U+2029, or U+0085 when a session is forked | `str.splitlines()` also cuts on those characters, which JSON allows unescaped in a string, so the halves fail to parse and the entry is missing from the fork. (upstream `src/claude_agent_sdk/_internal/session_mutations.py:601`) | Lines are cut on `\n` only, as the CLI writes them, and the entry is kept. | The CLI ends each JSONL line with `\n`; any other line break is part of a value. | `crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_splits_lines_on_newlines_only_and_keeps_an_entry_holding_a_line_separator` |
+| A fork of a transcript whose `progress` entries name each other as parents | The walk past `progress` parents never ends: `fork_session` hangs. (upstream `src/claude_agent_sdk/_internal/session_mutations.py:411`) | The walk stops at an entry it already visited, and the forked message gets no parent. | A corrupt transcript must not hang the program that forks it. | `crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_ends_on_a_cycle_of_progress_parents` |
 | A raw tool schema without `properties` | A schema counts as complete only with both `type` and `properties`; `{"type": "object"}` is read as a table of argument names and sent rewritten. (upstream `src/claude_agent_sdk/__init__.py:439-444`) | Any object is sent as the schema, unchanged. | `{"type": "object"}` is a valid JSON Schema; rewriting it changes the tool the model sees. | `crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_lists_what_upstream_lists` |
 
 ## Not ported

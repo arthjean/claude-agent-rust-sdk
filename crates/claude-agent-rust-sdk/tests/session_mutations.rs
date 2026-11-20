@@ -641,3 +641,46 @@ fn fork_errors_create_no_file() {
     );
     assert_eq!(std::fs::read_dir(&project.dir).unwrap().count(), before + 1);
 }
+
+#[test]
+fn fork_ends_on_a_cycle_of_progress_parents() {
+    let project = Project::new();
+    let id = new_id();
+    let lines = vec![
+        json!({"type": "progress", "uuid": "p1", "parentUuid": "p2", "sessionId": id}),
+        json!({"type": "progress", "uuid": "p2", "parentUuid": "p1", "sessionId": id}),
+        user("u1", Some("p1"), &id, Value::from("prompt")),
+        assistant("a1", Some("u1"), &id, "answer"),
+    ];
+    project.write(&id, &lines);
+    let directory = project.path().to_path_buf();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let forked = fork_session(&id, ForkSessionOptions::new().directory(&directory));
+        sender.send(forked.map(|fork| fork.session_id)).unwrap();
+    });
+    let fork = receiver
+        .recv_timeout(std::time::Duration::from_secs(20))
+        .expect("the fork loops on the cycle")
+        .unwrap();
+    let messages = get_session_messages(
+        &fork,
+        SessionMessagesOptions::new().directory(project.path()),
+    );
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].message["content"], "prompt");
+}
+
+#[test]
+fn titles_and_tags_are_stripped_of_what_python_strip_removes() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &conversation(&id, "hello", json!({})));
+    let blank = rename_session(&id, "\u{1f}\u{1c}", Some(project.path())).unwrap_err();
+    assert_eq!(blank.kind(), ErrorKind::Config);
+    rename_session(&id, "\u{1d} Title \u{3000}", Some(project.path())).unwrap();
+    tag_session(&id, Some("\u{1c}tag\u{1e}"), Some(project.path())).unwrap();
+    let info = get_session_info(&id, Some(project.path())).unwrap();
+    assert_eq!(info.custom_title.as_deref(), Some("Title"));
+    assert_eq!(info.tag.as_deref(), Some("tag"));
+}

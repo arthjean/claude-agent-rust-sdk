@@ -44,7 +44,7 @@ pub(crate) fn require_uuid<'a>(session_id: &'a str, name: &str) -> Result<&'a st
 }
 
 pub(crate) fn clean_title(title: &str) -> Result<String> {
-    let title = title.trim();
+    let title = super::lite::python_strip(title);
     if title.is_empty() {
         return Err(Error::config("title must be non-empty"));
     }
@@ -57,7 +57,7 @@ pub(crate) fn clean_tag(tag: Option<&str>) -> Result<String> {
         return Ok(String::new());
     };
     let sanitized = sanitize_unicode(tag);
-    let sanitized = sanitized.trim();
+    let sanitized = super::lite::python_strip(&sanitized);
     if sanitized.is_empty() {
         return Err(Error::config("tag must be non-empty (use None to clear)"));
     }
@@ -381,8 +381,9 @@ pub(crate) fn build_fork_entries(
             .get("parentUuid")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty());
+        let mut visited = std::collections::HashSet::new();
         while let Some(id) = parent_id {
-            let Some(parent) = by_uuid.get(id) else {
+            let Some(parent) = by_uuid.get(id).filter(|_| visited.insert(id)) else {
                 break;
             };
             if parent.get("type").and_then(Value::as_str) != Some("progress") {
