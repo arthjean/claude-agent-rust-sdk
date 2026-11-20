@@ -1,11 +1,12 @@
 //! `upstream-diff`: what changed in the upstream SDK between the pinned
 //! commit and another revision, read from the git objects of the submodule.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
 
+use super::ledger::{self, Ledger};
 use super::python;
 
 const INIT: &str = "src/claude_agent_sdk/__init__.py";
@@ -63,20 +64,21 @@ fn is_test_module(file: &str) -> bool {
     name.ends_with(".py") && (name.starts_with("test_") || name.ends_with("_test.py"))
 }
 
+/// The tests under `directory`, each with its normalized source.
 fn tests_under(
     upstream: &Path,
     revision: &str,
     directory: &str,
-) -> Result<BTreeSet<String>, String> {
+) -> Result<BTreeMap<String, String>, String> {
     let listing = git(
         upstream,
         &["ls-tree", "-r", "--name-only", revision, "--", directory],
     )?
     .unwrap_or_default();
-    let mut tests = BTreeSet::new();
+    let mut tests = BTreeMap::new();
     for file in listing.lines().filter(|file| is_test_module(file)) {
-        for test in python::tests(&show(upstream, revision, file)?) {
-            tests.insert(format!("{file}::{test}"));
+        for (test, source) in python::test_sources(&show(upstream, revision, file)?) {
+            tests.insert(format!("{file}::{test}"), source);
         }
     }
     Ok(tests)
@@ -95,6 +97,9 @@ pub struct Snapshot {
     pub exports: BTreeSet<String>,
     /// Unit tests under `tests/`.
     pub tests: BTreeSet<String>,
+    /// The normalized source of each unit test, to find a test rewritten
+    /// in place, which keeps its name.
+    pub test_sources: BTreeMap<String, String>,
     /// End-to-end tests under `e2e-tests/`.
     pub e2e_tests: BTreeSet<String>,
     /// Version headings of the changelog.
@@ -103,6 +108,7 @@ pub struct Snapshot {
 
 /// Reads the snapshot of one revision of the submodule.
 pub fn snapshot(upstream: &Path, revision: &str) -> Result<Snapshot, String> {
+    let test_sources = tests_under(upstream, revision, "tests")?;
     Ok(Snapshot {
         cli_flags: python::cli_flags(&show(upstream, revision, TRANSPORT)?),
         option_fields: python::class_fields(&show(upstream, revision, TYPES)?, OPTIONS_CLASS),
@@ -113,8 +119,11 @@ pub fn snapshot(upstream: &Path, revision: &str) -> Result<Snapshot, String> {
         exports: python::exports(&show(upstream, revision, INIT)?)
             .into_iter()
             .collect(),
-        tests: tests_under(upstream, revision, "tests")?,
-        e2e_tests: tests_under(upstream, revision, "e2e-tests")?,
+        tests: test_sources.keys().cloned().collect(),
+        test_sources,
+        e2e_tests: tests_under(upstream, revision, "e2e-tests")?
+            .into_keys()
+            .collect(),
         changelog: python::changelog_versions(&show(upstream, revision, CHANGELOG)?)
             .into_iter()
             .collect(),
@@ -133,8 +142,42 @@ fn section(report: &mut String, title: &str, base: &BTreeSet<String>, target: &B
     }
 }
 
+/// The unit tests both snapshots hold whose source differs, each with what
+/// `tests` (the tests ledger, when given) says covers it, so the Rust side
+/// gets reviewed: a test rewritten in place keeps its name, so the lists of
+/// added and removed tests miss it.
+fn changed_tests(report: &mut String, base: &Snapshot, target: &Snapshot, tests: Option<&Ledger>) {
+    let changed: Vec<&String> = base
+        .test_sources
+        .iter()
+        .filter(|(test, source)| {
+            target
+                .test_sources
+                .get(*test)
+                .is_some_and(|other| other != *source)
+        })
+        .map(|(test, _)| test)
+        .collect();
+    let _ = writeln!(report, "\nUnit tests changed in place: {}", changed.len());
+    for test in changed {
+        let _ = writeln!(report, "  ~ {test}");
+        let Some(tests) = tests else {
+            continue;
+        };
+        let covered_by = match tests.entries.get(test) {
+            None => "not in the ledger".to_owned(),
+            Some(entry) => match (entry.state(), &entry.excluded, &entry.pending) {
+                (Some(ledger::State::Excluded), Some(reason), _) => format!("excluded: {reason}"),
+                (Some(ledger::State::Pending), _, Some(reason)) => format!("pending: {reason}"),
+                _ => entry.paths().cloned().collect::<Vec<_>>().join(", "),
+            },
+        };
+        let _ = writeln!(report, "      review: {covered_by}");
+    }
+}
+
 /// Renders the differences between two snapshots.
-pub fn render(heading: &str, base: &Snapshot, target: &Snapshot) -> String {
+pub fn render(heading: &str, base: &Snapshot, target: &Snapshot, tests: Option<&Ledger>) -> String {
     let mut report = format!("{heading}\n");
     section(&mut report, "CLI flags", &base.cli_flags, &target.cli_flags);
     section(
@@ -156,6 +199,7 @@ pub fn render(heading: &str, base: &Snapshot, target: &Snapshot) -> String {
         &target.exports,
     );
     section(&mut report, "Unit tests", &base.tests, &target.tests);
+    changed_tests(&mut report, base, target, tests);
     section(
         &mut report,
         "End-to-end tests",
@@ -235,8 +279,11 @@ pub fn verdict(upstream: &Path, base: &str, target: &str) -> Result<Verdict, Str
     Ok(Verdict::CliOnly)
 }
 
-/// Compares the pinned commit of the submodule with `revision`.
-pub fn run(upstream: &Path, revision: &str) -> Result<String, String> {
+/// Compares the pinned commit of the submodule with `revision`. With
+/// `tests_ledger`, each test changed in place names the Rust tests to
+/// review.
+pub fn run(upstream: &Path, revision: &str, tests_ledger: Option<&Path>) -> Result<String, String> {
+    let tests = tests_ledger.map(ledger::load_tests).transpose()?;
     let pinned = commit(upstream, "HEAD")?.ok_or_else(|| {
         format!(
             "{} is not a git checkout; run `git submodule update --init`",
@@ -254,6 +301,7 @@ pub fn run(upstream: &Path, revision: &str) -> Result<String, String> {
         &heading,
         &snapshot(upstream, &pinned)?,
         &snapshot(upstream, &target)?,
+        tests.as_ref(),
     ))
 }
 
@@ -278,7 +326,7 @@ mod tests {
             tests: set(&["tests/test_new.py::test_added"]),
             ..Snapshot::default()
         };
-        let report = render("heading", &base, &target);
+        let report = render("heading", &base, &target, None);
         assert!(report.starts_with("heading\n"));
         assert!(report.contains("CLI flags: +1 -1\n  + --new-flag\n  - --old-flag\n"));
         assert!(report.contains("Exported names: +1 -0\n  + NewExport\n"));
@@ -286,6 +334,53 @@ mod tests {
         assert!(report.contains("Option fields (ClaudeAgentOptions): +0 -0\n"));
         assert!(report.contains("Control subtypes: +0 -0\n"));
         assert!(report.contains("End-to-end tests: +0 -0\n"));
+    }
+
+    #[test]
+    fn a_test_rewritten_in_place_is_listed_with_the_rust_tests_to_review() {
+        let sources = |body: &str| {
+            [
+                ("tests/test_a.py::test_kept".to_owned(), "same\n".to_owned()),
+                (
+                    "tests/test_a.py::test_rewritten".to_owned(),
+                    body.to_owned(),
+                ),
+            ]
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+        };
+        let base = Snapshot {
+            test_sources: sources("old\n"),
+            ..Snapshot::default()
+        };
+        let target = Snapshot {
+            test_sources: sources("new\n"),
+            ..Snapshot::default()
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("tests.toml");
+        std::fs::write(
+            &path,
+            "[tests.\"tests/test_a.py\"]\n\
+             test_kept = { rust = \"tests/a.rs::kept\" }\n\
+             test_rewritten = { rust = \"tests/a.rs::rewritten\" }\n",
+        )
+        .unwrap();
+        let ledger = ledger::load_tests(&path).unwrap();
+        let report = render("heading", &base, &target, Some(&ledger));
+        assert!(
+            report.contains(
+                "Unit tests changed in place: 1\n  ~ tests/test_a.py::test_rewritten\n      \
+                 review: tests/a.rs::rewritten\n"
+            ),
+            "{report}"
+        );
+        assert!(!report.contains("test_kept"), "{report}");
+        let unlisted = render("heading", &base, &target, None);
+        assert!(
+            unlisted.contains("  ~ tests/test_a.py::test_rewritten\n\n"),
+            "{unlisted}"
+        );
     }
 
     #[test]

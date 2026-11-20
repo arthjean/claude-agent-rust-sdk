@@ -201,7 +201,11 @@ fn plan(repo: &Repo, tag: &str) -> Result<Plan, String> {
     let verdict = diff::verdict(&upstream, &pin, &target)?;
     let report = match verdict {
         Verdict::CliOnly => String::new(),
-        Verdict::NeedsPort => diff::run(&upstream, tag)?,
+        Verdict::NeedsPort => diff::run(
+            &upstream,
+            tag,
+            Some(&repo.root.join("parity").join("tests.toml")),
+        )?,
     };
     Ok(Plan {
         old,

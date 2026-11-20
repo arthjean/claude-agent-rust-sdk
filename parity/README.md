@@ -112,7 +112,7 @@ reason = "Each SDK names itself to the CLI."
 
 - `case` is a case name, or `*` for every case.
 - `python` and `rust` are JSON text; a missing key means that side sent nothing there.
-- `category` is `deliberate` (the port chose to differ), `rust-follows-cli` (Rust matches what the CLI does where Python does not), `rust-more-robust` (Rust keeps going, or keeps the data, where Python fails or drops it), `rust-stricter` (Rust refuses input Python accepts), or `python-defect` (Python is wrong; Rust matches the CLI). A `python-defect` entry must cite the upstream line at fault as `ref = "path:line"` or `ref = "path:first-last"`, relative to the submodule, and loading fails when those lines do not exist. Nothing is reported upstream.
+- `category` is `deliberate` (the port chose to differ), `rust-follows-cli` (Rust matches what the CLI does where Python does not), `rust-more-robust` (Rust keeps going, or keeps the data, where Python fails or drops it), `rust-stricter` (Rust refuses input Python accepts), or `python-defect` (Python is wrong; Rust matches the CLI). A `python-defect` entry must cite the upstream line at fault as `ref = "path:line"` or `ref = "path:first-last"`, relative to the submodule, with an `anchor`: text those lines hold verbatim. Loading fails when the lines do not exist or no longer hold the anchor, so a ref that drifts onto unrelated code when the pin moves is caught. Nothing is reported upstream.
 - `reason` explains why the difference is accepted.
 - A value that moves with every release is written as a token, so no release edits the ledger: `{crate_version}` is the workspace version of the root `Cargo.toml`, and `{upstream_version}` the version of the submodule's `pyproject.toml`. Both are replaced before the file is read, by the comparison and by the parity page alike.
 
@@ -128,16 +128,23 @@ summary = "An unknown message type"
 python = "The parser returns `None` and the message is skipped."
 rust = "Kept as `Message::Unknown` with its raw JSON."
 ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
+anchor = 'logger.debug("Skipping unknown message type: %s", message_type)'
 category = "rust-more-robust"
 reason = "A newer CLI must not make an older program lose data."
 test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
 ```
 
 - `python` and `rust` are prose here: what each SDK does.
-- `ref` is required and checked like the one of a `python-defect` entry.
+- `ref` and `anchor` are required and checked like those of a `python-defect` entry.
 - `test` is a Rust test as `cargo xtask parity-tests` prints it, with the platform suffix of `tests.toml` (` @unix`, for example) when it is compiled on one platform only. `cargo xtask parity-check` fails when it does not exist.
 
 The `[unclassified]` table names, with `source` (the section of `docs/research/python-sdk-parity.md`) and `summary`, the divergences of the audit that are not reviewed into `[wire]` or `[behavior]` yet. Move an entry out of it once a test or a case shows it.
+
+## Upstream tests rewritten in place
+
+`cargo xtask upstream-diff <tag>` (and `upstream-sync`, which prints it) lists, under `Unit tests changed in place`, each upstream test that keeps its name but whose code or strings changed, with the Rust tests its `tests.toml` entry names after `review:`. The ledger only checks names, so review each listed Rust test against the new upstream test before the port is done.
+
+`crates/claude-agent-rust-sdk/tests/fixtures/fold_session_summary.json` holds what the upstream `fold_session_summary` returns for its batches. `fold_session_summary.py` next to it regenerates it from the pinned submodule, and `--check` fails when it is stale; run it after moving the pin.
 
 ## The parity page
 

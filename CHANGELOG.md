@@ -11,6 +11,7 @@
 - A warning is logged when the CLI reports a version older or newer than `CLI_VERSION`, the one release the crate is tested against: an older CLI exits with an error on an option it does not know.
 - The types an application sends keep keys the crate does not model, as upstream passes its dictionaries through: every hook-specific output, `AsyncHookOutput`, `SandboxSettings`, `SandboxNetworkConfig`, and the stdio and remote MCP server configurations have a flattened `extra` map and an `extra_field(key, value)` builder, so a key a newer CLI reads, such as `classifierContext` or `timeout`, can be sent today.
 - `HookSpecificOutput::Unknown` holds the output of an event the crate does not model, such as `Setup`, and sends it as written; reading one no longer fails.
+- `cargo xtask upstream-diff` lists the upstream tests rewritten in place, which keep their names, with the Rust tests to review, and every `ref` of `parity/differences.toml` carries an `anchor` the cited lines must hold, so a ref that drifts when the pin moves fails `parity-check`. Five refs that had drifted since the sync to 0.2.186 now point at the code they describe.
 
 ### Changed
 

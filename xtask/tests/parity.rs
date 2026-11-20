@@ -541,7 +541,7 @@ fn a_behavior_entry_naming_a_missing_rust_test_fails_the_check_by_name() {
     let entry = |test: &str| {
         format!(
             "[behavior.kept]\nsummary = \"An unknown message\"\npython = \"Skipped.\"\nrust = \"Kept.\"\n\
-             ref = \"tests/test_sample.py:1-2\"\ncategory = \"rust-more-robust\"\nreason = \"No loss.\"\n\
+             ref = \"tests/test_sample.py:1-2\"\nanchor = \"def test_one\"\ncategory = \"rust-more-robust\"\nreason = \"No loss.\"\n\
              test = \"{test}\"\n"
         )
     };

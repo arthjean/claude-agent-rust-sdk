@@ -593,7 +593,11 @@ pub fn run_diff(arguments: &[String]) -> ExitCode {
         let [revision] = arguments.positional.as_slice() else {
             return Err("usage: cargo xtask upstream-diff <tag>".to_owned());
         };
-        print!("{}", diff::run(&arguments.locations.upstream, revision)?);
+        let ledger = arguments.locations.parity.join("tests.toml");
+        print!(
+            "{}",
+            diff::run(&arguments.locations.upstream, revision, Some(&ledger))?
+        );
         Ok(Vec::new())
     });
     outcome("upstream-diff", result)

@@ -453,12 +453,14 @@ python = '"a|b"'
 category = "python-defect"
 reason = "Python writes a pipe."
 ref = "src/a.py:2"
+anchor = "two"
 
 [behavior.kept]
 summary = "An unknown message"
 python = "Skipped."
 rust = "Kept raw."
 ref = "src/a.py:2-3"
+anchor = "two"
 category = "rust-more-robust"
 reason = "No data is lost."
 test = "tests/a.rs::kept"

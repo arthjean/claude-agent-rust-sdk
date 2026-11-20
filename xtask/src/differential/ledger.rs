@@ -97,6 +97,7 @@ struct RawBehavior {
     rust: String,
     #[serde(rename = "ref")]
     reference: String,
+    anchor: String,
     category: String,
     reason: String,
     test: String,
@@ -151,6 +152,7 @@ struct RawEntry {
     reason: String,
     #[serde(rename = "ref")]
     reference: Option<String>,
+    anchor: Option<String>,
 }
 
 /// One reviewed difference.
@@ -210,9 +212,16 @@ fn json_value(id: &str, side: &str, text: Option<&String>) -> Result<Option<Valu
 }
 
 /// Checks that `reference`, written `path:line` or `path:first-last`,
-/// names lines that exist in a file of the upstream checkout. `key` is the
-/// entry, as `table.id`, for messages.
-fn check_reference(key: &str, reference: &str, upstream: &Path) -> Result<(), String> {
+/// names lines that exist in a file of the upstream checkout, and that
+/// those lines hold `anchor` verbatim, so a ref that drifts onto unrelated
+/// code when upstream moves fails. `key` is the entry, as `table.id`, for
+/// messages.
+fn check_reference(
+    key: &str,
+    reference: &str,
+    anchor: &str,
+    upstream: &Path,
+) -> Result<(), String> {
     let invalid =
         || format!("{key}: `ref` must be `path:line` or `path:first-last`, got `{reference}`");
     let (path, lines) = reference.rsplit_once(':').ok_or_else(invalid)?;
@@ -244,6 +253,22 @@ fn check_reference(key: &str, reference: &str, upstream: &Path) -> Result<(), St
             if first == 0 { first } else { last }
         ));
     }
+    if anchor.trim().is_empty() {
+        return Err(format!(
+            "{key}: a `ref` needs an `anchor`, text the cited lines hold verbatim"
+        ));
+    }
+    let cited: Vec<&str> = text
+        .lines()
+        .skip(first - 1)
+        .take(last - first + 1)
+        .collect();
+    if !cited.join("\n").contains(anchor) {
+        return Err(format!(
+            "{key}: `ref` {reference} no longer holds its `anchor` `{anchor}`; find the lines \
+             that do the cited thing now and update both"
+        ));
+    }
     Ok(())
 }
 
@@ -272,7 +297,7 @@ fn behavior_entry(id: String, entry: RawBehavior, upstream: &Path) -> Result<Beh
             return Err(format!("{key}: `{field}` is empty"));
         }
     }
-    check_reference(&key, &entry.reference, upstream)?;
+    check_reference(&key, &entry.reference, &entry.anchor, upstream)?;
     Ok(Behavior {
         id,
         summary: entry.summary,
@@ -321,7 +346,8 @@ pub fn parse(text: &str, upstream: &Path) -> Result<Ledger, String> {
                     "wire.{id}: a python-defect entry must cite the upstream line at fault as `ref = \"path:line\"`"
                 ));
             };
-            check_reference(&format!("wire.{id}"), reference, upstream)?;
+            let anchor = entry.anchor.as_deref().unwrap_or_default();
+            check_reference(&format!("wire.{id}"), reference, anchor, upstream)?;
         }
         entries.push(Entry {
             id,
@@ -553,7 +579,7 @@ mod tests {
             ),
             (
                 entry(
-                    "location = \"env A\"\npython = '1'\ncategory = \"python-defect\"\nref = \"src/a.py:4\"",
+                    "location = \"env A\"\npython = '1'\ncategory = \"python-defect\"\nref = \"src/a.py:4\"\nanchor = \"one\"",
                 ),
                 "which has 3 lines",
             ),
@@ -576,6 +602,12 @@ mod tests {
                 "inside the upstream checkout",
             ),
             (
+                entry(
+                    "location = \"env A\"\npython = '1'\ncategory = \"python-defect\"\nref = \"src/a.py:1\"",
+                ),
+                "needs an `anchor`",
+            ),
+            (
                 entry("location = \"env A\"\npython = '1'\ncategory = \"deliberate\"\nextra = 1"),
                 "unknown field",
             ),
@@ -589,7 +621,7 @@ mod tests {
             );
         }
         let valid = entry(
-            "location = \"process[1] arg --x\"\nrust = '1'\ncategory = \"python-defect\"\nref = \"src/a.py:3\"",
+            "location = \"process[1] arg --x\"\nrust = '1'\ncategory = \"python-defect\"\nref = \"src/a.py:3\"\nanchor = \"three\"",
         );
         assert!(parse(&valid, upstream.path()).is_ok());
     }
@@ -600,6 +632,7 @@ summary = "An unknown message"
 python = "Skipped."
 rust = "Kept raw."
 ref = "src/a.py:2-3"
+anchor = "two"
 category = "rust-more-robust"
 reason = "No data is lost."
 test = "tests/a.rs::kept"
@@ -650,6 +683,12 @@ summary = "Budget spelling."
             ("src/a.py:2-3", "src/a.py:0", "line 0"),
             ("src/a.py:2-3", "src/a.py", "`path:first-last`"),
             ("rust-more-robust", "nicer", "category `nicer`"),
+            (
+                "anchor = \"two\"",
+                "anchor = \"four\"",
+                "no longer holds its `anchor`",
+            ),
+            ("anchor = \"two\"\n", "", "missing field `anchor`"),
             (
                 "test = \"tests/a.rs::kept\"",
                 "test = \" \"",

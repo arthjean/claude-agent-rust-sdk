@@ -11,6 +11,8 @@ use std::collections::BTreeSet;
 /// `""`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
+    /// Index of the line in the source, from 0.
+    pub number: usize,
     /// Number of leading spaces.
     pub indent: usize,
     /// Whether the line begins inside a string opened on an earlier line.
@@ -26,7 +28,7 @@ pub struct Line {
 pub fn lex(source: &str) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut open: Option<Vec<char>> = None;
-    for raw in source.lines() {
+    for (number, raw) in source.lines().enumerate() {
         let characters: Vec<char> = raw.chars().collect();
         let continuation = open.is_some();
         let mut code = String::new();
@@ -70,6 +72,7 @@ pub fn lex(source: &str) -> Vec<Line> {
             }
         }
         lines.push(Line {
+            number,
             indent: raw.len() - raw.trim_start_matches(' ').len(),
             continuation,
             code,
@@ -171,6 +174,71 @@ pub fn tests(source: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// The source of each test [`tests`] finds, keyed by the same name: its
+/// decorators, its `def` line, and its body, up to the next line at its
+/// indentation or less. Comment lines and trailing spaces are dropped and
+/// blank lines are skipped, so only a change of code or of a string shows.
+pub fn test_sources(source: &str) -> Vec<(String, String)> {
+    let raw: Vec<&str> = source.lines().collect();
+    let lexed = lex(source);
+    let mut found = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut scopes: Vec<(usize, Option<String>)> = Vec::new();
+    for (position, line) in lexed.iter().enumerate() {
+        let Some(code) = structural(line) else {
+            continue;
+        };
+        while scopes.last().is_some_and(|scope| scope.0 >= line.indent) {
+            scopes.pop();
+        }
+        if let Some(name) = class_name(code) {
+            let collected = name.starts_with("Test");
+            scopes.push((line.indent, collected.then(|| name.to_owned())));
+        } else if let Some(name) = function_name(code) {
+            if name.starts_with("test_") && scopes.iter().all(|scope| scope.1.is_some()) {
+                let mut path: Vec<&str> = scopes
+                    .iter()
+                    .filter_map(|scope| scope.1.as_deref())
+                    .collect();
+                path.push(name);
+                let test = path.join("::");
+                if seen.insert(test.clone()) {
+                    found.push((test, body(&raw, &lexed, position)));
+                }
+            }
+            scopes.push((line.indent, None));
+        }
+    }
+    found
+}
+
+/// The normalized source of the function whose `def` is `lexed[position]`.
+fn body(raw: &[&str], lexed: &[Line], position: usize) -> String {
+    let def = &lexed[position];
+    let mut start = def.number;
+    for line in lexed[..position].iter().rev() {
+        let code = line.code.trim();
+        if line.indent != def.indent || !code.starts_with('@') {
+            break;
+        }
+        start = line.number;
+    }
+    let end = lexed[position + 1..]
+        .iter()
+        .find(|line| structural(line).is_some() && line.indent <= def.indent)
+        .map_or(raw.len(), |line| line.number);
+    let mut text = String::new();
+    for line in &raw[start..end] {
+        let trimmed = line.trim_end();
+        if trimmed.trim_start().is_empty() || trimmed.trim_start().starts_with('#') {
+            continue;
+        }
+        text.push_str(trimmed);
+        text.push('\n');
+    }
+    text
 }
 
 /// Long options (`--name`) that appear as string literals in a module.
@@ -387,5 +455,45 @@ mod tests {
         let query = "request = {\n    \"subtype\": \"set_model\",\n    \"model\": model,\n}\n";
         let subtypes: Vec<String> = control_subtypes(&types, query).into_iter().collect();
         assert_eq!(subtypes, ["interrupt", "set_model"]);
+    }
+
+    #[test]
+    fn a_test_source_holds_its_decorators_and_body_but_no_comment() {
+        let source = "import pytest\n\n\
+            class TestThing:\n\
+            \x20   @pytest.mark.parametrize(\"x\", [1])\n\
+            \x20   def test_one(self, x):\n\
+            \x20       # explains\n\
+            \x20       assert x == 1\n\
+            \n\
+            \x20   def test_two(self):\n\
+            \x20       assert \"two\"\n\
+            \n\
+            def test_free():\n\
+            \x20   pass\n";
+        let sources = test_sources(source);
+        let names: Vec<&str> = sources.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["TestThing::test_one", "TestThing::test_two", "test_free"]
+        );
+        assert_eq!(
+            sources[0].1,
+            "    @pytest.mark.parametrize(\"x\", [1])\n    def test_one(self, x):\n        assert x == 1\n"
+        );
+        assert_eq!(
+            sources[1].1,
+            "    def test_two(self):\n        assert \"two\"\n"
+        );
+        assert_eq!(sources[2].1, "def test_free():\n    pass\n");
+    }
+
+    #[test]
+    fn a_comment_change_leaves_a_test_source_unchanged_and_a_string_change_does_not() {
+        let base = "def test_a():\n    assert f() == \"x\"\n";
+        let commented = "def test_a():\n    # new comment\n    assert f() == \"x\"   \n";
+        let rewritten = "def test_a():\n    assert f() == \"y\"\n";
+        assert_eq!(test_sources(base), test_sources(commented));
+        assert_ne!(test_sources(base), test_sources(rewritten));
     }
 }
