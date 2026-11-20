@@ -1087,3 +1087,30 @@ async fn an_invalid_skill_name_fails_connect_before_anything_is_spawned() {
     assert_eq!(error.kind(), ErrorKind::Config, "{error:?}");
     assert_eq!(transport.process_id(), None);
 }
+
+#[test]
+fn keys_the_crate_does_not_model_reach_the_cli_in_sandbox_and_mcp_settings() {
+    let sandbox = SandboxSettings::new()
+        .enabled(true)
+        .extra_field("allowNestedUserNamespaces", true)
+        .network(SandboxNetworkConfig::new().extra_field("futureNetworkKey", "on"));
+    let command = build(options().sandbox(sandbox).mcp_server(
+        "slow",
+        McpStdioServerConfig::new("/path/to/server").extra_field("timeout", 5000),
+    ));
+    assert_eq!(
+        settings_value(&command),
+        json!({
+            "sandbox": {
+                "enabled": true,
+                "network": {"futureNetworkKey": "on"},
+                "allowNestedUserNamespaces": true,
+            }
+        })
+    );
+    let config: Value = serde_json::from_str(value_of(&command, "--mcp-config")).unwrap();
+    assert_eq!(
+        config,
+        json!({"mcpServers": {"slow": {"command": "/path/to/server", "timeout": 5000}}})
+    );
+}

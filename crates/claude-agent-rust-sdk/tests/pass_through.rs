@@ -313,11 +313,26 @@ fn values_parsed_with_unknown_keys_write_them_back() {
 }
 
 #[test]
-fn a_known_server_config_with_a_key_it_does_not_model_is_kept_whole() {
+fn a_known_server_config_with_a_key_it_does_not_model_keeps_it_in_extra() {
     let raw = json!({"type": "http", "url": "https://example.test/mcp", KEY: VALUE});
     let config: McpServerStatusConfig = serde_json::from_value(raw.clone()).unwrap();
-    assert_eq!(config, McpServerStatusConfig::Unknown(raw.clone()));
+    let McpServerStatusConfig::Http(http) = &config else {
+        panic!("expected an http configuration, got {config:?}");
+    };
+    assert_eq!(http.url, "https://example.test/mcp");
+    assert_eq!(
+        http.extra.keys().collect::<Vec<_>>(),
+        [KEY],
+        "the type is not an extra key"
+    );
     assert_eq!(config.type_name(), Some("http"));
+    assert_eq!(
+        serde_json::to_string(&config)
+            .unwrap()
+            .matches("\"type\"")
+            .count(),
+        1
+    );
     assert_eq!(serde_json::to_value(&config).unwrap(), raw);
 
     let typed: McpServerStatusConfig =

@@ -1621,3 +1621,43 @@ fn the_real_cli_reports_no_tools_for_a_server_listing_a_schema_that_is_not_an_ob
         "the valid tool is dropped too"
     );
 }
+
+#[test]
+fn a_hook_output_for_an_event_the_crate_does_not_model_is_sent_as_written() {
+    let setup = json!({"hookEventName": "Setup", "additionalContext": "ready"});
+    let read: HookSpecificOutput = serde_json::from_value(setup.clone()).unwrap();
+    assert_eq!(read, HookSpecificOutput::Unknown(setup.clone()));
+    assert_eq!(read.hook_event_name(), "Setup");
+    assert_eq!(serde_json::to_value(&read).unwrap(), setup);
+
+    let output =
+        SyncHookOutput::default().hook_specific_output(HookSpecificOutput::Unknown(setup.clone()));
+    assert_eq!(
+        serde_json::to_value(&output).unwrap()["hookSpecificOutput"],
+        setup
+    );
+}
+
+#[test]
+fn a_hook_output_keeps_the_keys_of_a_known_event_the_crate_does_not_model() {
+    let wire = json!({
+        "hookEventName": "PostToolUse",
+        "additionalContext": "noted",
+        "classifierContext": {"verdict": "safe"},
+    });
+    let read: HookSpecificOutput = serde_json::from_value(wire.clone()).unwrap();
+    let HookSpecificOutput::PostToolUse(post) = &read else {
+        panic!("expected a typed PostToolUse output, got {read:?}");
+    };
+    assert_eq!(post.additional_context.as_deref(), Some("noted"));
+    assert_eq!(post.extra["classifierContext"], json!({"verdict": "safe"}));
+    assert_eq!(serde_json::to_value(&read).unwrap(), wire);
+
+    let built = PostToolUseHookSpecificOutput::default()
+        .additional_context("noted")
+        .extra_field("classifierContext", json!({"verdict": "safe"}));
+    assert_eq!(
+        serde_json::to_value(HookSpecificOutput::from(built)).unwrap(),
+        wire
+    );
+}

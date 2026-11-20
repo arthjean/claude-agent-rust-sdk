@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::BoxFuture;
-use super::macros::{setters, wire_enum};
+use super::macros::{extra_field, setters, wire_enum};
 use super::permission::PermissionMode;
 
 wire_enum! {
@@ -450,6 +450,11 @@ pub struct McpStdioServerConfig {
     /// Environment of the command.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env: Option<IndexMap<String, String>>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl McpStdioServerConfig {
@@ -460,6 +465,7 @@ impl McpStdioServerConfig {
             command: command.into(),
             args: None,
             env: None,
+            extra: Map::new(),
         }
     }
 
@@ -482,6 +488,8 @@ impl McpStdioServerConfig {
     }
 }
 
+extra_field!(McpStdioServerConfig);
+
 /// MCP server reached over a URL, with optional headers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -491,6 +499,11 @@ pub struct McpRemoteServerConfig {
     /// HTTP headers sent with each request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headers: Option<IndexMap<String, String>>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl McpRemoteServerConfig {
@@ -500,6 +513,7 @@ impl McpRemoteServerConfig {
         Self {
             url: url.into(),
             headers: None,
+            extra: Map::new(),
         }
     }
 
@@ -644,6 +658,7 @@ impl Serialize for McpServerConfig {
                 if let Some(env) = &config.env {
                     map.serialize_entry("env", env)?;
                 }
+                serialize_extra(&mut map, &config.extra, &["type", "command", "args", "env"])?;
             }
             Self::Sse(config) | Self::Http(config) => {
                 map.serialize_entry("type", self.type_name())?;
@@ -651,6 +666,7 @@ impl Serialize for McpServerConfig {
                 if let Some(headers) = &config.headers {
                     map.serialize_entry("headers", headers)?;
                 }
+                serialize_extra(&mut map, &config.extra, &["type", "url", "headers"])?;
             }
             Self::Sdk(config) => {
                 map.serialize_entry("type", self.type_name())?;
@@ -659,6 +675,21 @@ impl Serialize for McpServerConfig {
         }
         map.end()
     }
+}
+
+/// Writes the keys of `extra` after the modeled ones, leaving out a key
+/// the modeled fields already wrote, so no key appears twice.
+fn serialize_extra<M: SerializeMap>(
+    map: &mut M,
+    extra: &Map<String, Value>,
+    modeled: &[&str],
+) -> Result<(), M::Error> {
+    for (key, value) in extra {
+        if !modeled.contains(&key.as_str()) {
+            map.serialize_entry(key, value)?;
+        }
+    }
+    Ok(())
 }
 
 /// MCP servers of a session.
@@ -742,6 +773,8 @@ impl SdkPluginConfig {
     }
 }
 
+extra_field!(McpRemoteServerConfig);
+
 /// Network configuration of the sandbox.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -775,7 +808,14 @@ pub struct SandboxNetworkConfig {
     /// Port of your own SOCKS5 proxy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub socks_proxy_port: Option<u16>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
+
+extra_field!(SandboxNetworkConfig, SandboxSettings);
 
 impl SandboxNetworkConfig {
     /// Creates an empty network configuration.
@@ -838,6 +878,11 @@ pub struct SandboxSettings {
     /// (Linux only). Reduces security.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enable_weaker_nested_sandbox: Option<bool>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl SandboxSettings {

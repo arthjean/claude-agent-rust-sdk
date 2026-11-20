@@ -9,7 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::BoxFuture;
-use super::macros::{setters, wire_enum};
+use super::macros::{extra_field, setters, wire_enum};
 use super::permission::PermissionBehavior;
 use crate::error::BoxError;
 
@@ -489,6 +489,11 @@ pub struct PreToolUseHookSpecificOutput {
     /// Extra context delivered to the model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_context: Option<String>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl PreToolUseHookSpecificOutput {
@@ -519,6 +524,11 @@ pub struct PostToolUseHookSpecificOutput {
         skip_serializing_if = "Option::is_none"
     )]
     pub updated_mcp_tool_output: Option<Value>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl PostToolUseHookSpecificOutput {
@@ -540,6 +550,11 @@ macro_rules! context_only_output {
                 /// Extra context delivered to the model.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub additional_context: Option<String>,
+                /// Keys this version of the crate does not model, sent to the CLI as
+                /// they are, so a key a newer CLI reads can be set before the crate
+                /// knows it.
+                #[serde(flatten)]
+                pub extra: Map<String, Value>,
             }
 
             impl $name {
@@ -588,6 +603,11 @@ pub struct UserPromptSubmitHookSpecificOutput {
     /// block message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suppress_original_prompt: Option<bool>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl UserPromptSubmitHookSpecificOutput {
@@ -610,6 +630,11 @@ pub struct UserPromptExpansionHookSpecificOutput {
     /// block message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suppress_original_prompt: Option<bool>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl UserPromptExpansionHookSpecificOutput {
@@ -640,6 +665,11 @@ pub struct SessionStartHookSpecificOutput {
     /// Scans skill and command directories again after the hooks complete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload_skills: Option<bool>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl SessionStartHookSpecificOutput {
@@ -658,13 +688,21 @@ impl SessionStartHookSpecificOutput {
 pub struct PermissionRequestHookSpecificOutput {
     /// Decision object, such as `{"behavior": "allow"}`.
     pub decision: Value,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl PermissionRequestHookSpecificOutput {
     /// Creates the output from a decision object.
     #[must_use]
     pub fn new(decision: Value) -> Self {
-        Self { decision }
+        Self {
+            decision,
+            extra: Map::new(),
+        }
     }
 }
 
@@ -676,6 +714,11 @@ pub struct PermissionDeniedHookSpecificOutput {
     /// without a classifier verdict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry: Option<bool>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl PermissionDeniedHookSpecificOutput {
@@ -696,6 +739,11 @@ pub struct PreModelSwitchHookSpecificOutput {
     /// Reason for the decision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_decision_reason: Option<String>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl PreModelSwitchHookSpecificOutput {
@@ -718,6 +766,11 @@ macro_rules! elicitation_output {
                 /// Form field values, used when the action is `accept`.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub content: Option<Value>,
+                /// Keys this version of the crate does not model, sent to the CLI as
+                /// they are, so a key a newer CLI reads can be set before the crate
+                /// knows it.
+                #[serde(flatten)]
+                pub extra: Map<String, Value>,
             }
 
             impl $name {
@@ -751,6 +804,11 @@ macro_rules! watch_paths_output {
                 /// current dynamic watch list.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub watch_paths: Option<Vec<String>>,
+                /// Keys this version of the crate does not model, sent to the CLI as
+                /// they are, so a key a newer CLI reads can be set before the crate
+                /// knows it.
+                #[serde(flatten)]
+                pub extra: Map<String, Value>,
             }
 
             impl $name {
@@ -776,6 +834,11 @@ watch_paths_output! {
 pub struct WorktreeCreateHookSpecificOutput {
     /// Absolute path of the created worktree directory.
     pub worktree_path: String,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl WorktreeCreateHookSpecificOutput {
@@ -784,6 +847,7 @@ impl WorktreeCreateHookSpecificOutput {
     pub fn new(worktree_path: impl Into<String>) -> Self {
         Self {
             worktree_path: worktree_path.into(),
+            extra: Map::new(),
         }
     }
 }
@@ -800,6 +864,11 @@ pub struct MessageDisplayHookSpecificOutput {
     /// original.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_content: Option<String>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl MessageDisplayHookSpecificOutput {
@@ -811,26 +880,83 @@ impl MessageDisplayHookSpecificOutput {
 macro_rules! hook_specific_outputs {
     ($( $variant:ident($ty:ident) ),+ $(,)?) => {
         /// Event-specific part of a hook output, tagged by `hookEventName`.
-        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-        #[serde(tag = "hookEventName")]
+        ///
+        /// An output for an event this version of the crate does not model
+        /// is [`HookSpecificOutput::Unknown`]: its JSON, `hookEventName`
+        /// included, is sent to the CLI as written.
+        #[derive(Debug, Clone, PartialEq)]
         #[non_exhaustive]
         pub enum HookSpecificOutput {
             $(
                 #[doc = concat!("Output for `", stringify!($variant), "` events.")]
                 $variant($ty),
             )+
+            /// Output for an event this version of the crate does not model,
+            /// kept as raw JSON with its `hookEventName`.
+            Unknown(Value),
+        }
+
+        /// The typed outputs, tagged as on the wire, as read.
+        #[derive(Deserialize)]
+        #[serde(tag = "hookEventName")]
+        enum TaggedHookSpecificOutput {
+            $( $variant($ty), )+
+        }
+
+        /// The typed outputs, tagged as on the wire, as written.
+        #[derive(Serialize)]
+        #[serde(tag = "hookEventName")]
+        enum TaggedHookSpecificOutputRef<'a> {
+            $( $variant(&'a $ty), )+
         }
 
         impl HookSpecificOutput {
             /// Event names that have a typed output, in upstream order.
             pub const EVENT_NAMES: &'static [&'static str] = &[$(stringify!($variant)),+];
 
-            /// Name of the event this output belongs to.
+            /// Name of the event this output belongs to; for an
+            /// [`Unknown`](Self::Unknown) output, its `hookEventName`, or
+            /// the empty string when it has none.
             #[must_use]
-            pub fn hook_event_name(&self) -> &'static str {
+            pub fn hook_event_name(&self) -> &str {
                 match self {
                     $( Self::$variant(_) => stringify!($variant), )+
+                    Self::Unknown(raw) => raw
+                        .get("hookEventName")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
                 }
+            }
+        }
+
+        impl Serialize for HookSpecificOutput {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                match self {
+                    $(
+                        Self::$variant(output) => {
+                            TaggedHookSpecificOutputRef::$variant(output).serialize(serializer)
+                        }
+                    )+
+                    Self::Unknown(raw) => raw.serialize(serializer),
+                }
+            }
+        }
+
+        impl<'de> Deserialize<'de> for HookSpecificOutput {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let raw = Value::deserialize(deserializer)?;
+                let known = raw
+                    .get("hookEventName")
+                    .and_then(Value::as_str)
+                    .is_some_and(|name| Self::EVENT_NAMES.contains(&name));
+                if !known {
+                    return Ok(Self::Unknown(raw));
+                }
+                let tagged = TaggedHookSpecificOutput::deserialize(raw)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(match tagged {
+                    $( TaggedHookSpecificOutput::$variant(output) => Self::$variant(output), )+
+                })
             }
         }
 
@@ -866,6 +992,32 @@ hook_specific_outputs! {
     FileChanged(FileChangedHookSpecificOutput),
     WorktreeCreate(WorktreeCreateHookSpecificOutput),
     MessageDisplay(MessageDisplayHookSpecificOutput),
+}
+
+extra_field! {
+    PreToolUseHookSpecificOutput,
+    PostToolUseHookSpecificOutput,
+    PostToolUseFailureHookSpecificOutput,
+    UserPromptSubmitHookSpecificOutput,
+    SessionStartHookSpecificOutput,
+    NotificationHookSpecificOutput,
+    SubagentStartHookSpecificOutput,
+    PermissionRequestHookSpecificOutput,
+    UserPromptExpansionHookSpecificOutput,
+    PostToolBatchHookSpecificOutput,
+    StopHookSpecificOutput,
+    SubagentStopHookSpecificOutput,
+    PermissionDeniedHookSpecificOutput,
+    PreModelSwitchHookSpecificOutput,
+    PostModelSwitchHookSpecificOutput,
+    ElicitationHookSpecificOutput,
+    ElicitationResultHookSpecificOutput,
+    CwdChangedHookSpecificOutput,
+    FileChangedHookSpecificOutput,
+    WorktreeCreateHookSpecificOutput,
+    MessageDisplayHookSpecificOutput,
+    AsyncHookOutput,
+    SyncHookOutput,
 }
 
 wire_enum! {
@@ -959,6 +1111,11 @@ pub struct AsyncHookOutput {
         skip_serializing_if = "Option::is_none"
     )]
     pub async_timeout: Option<u64>,
+    /// Keys this version of the crate does not model, sent to the CLI as
+    /// they are, so a key a newer CLI reads can be set before the crate
+    /// knows it.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl AsyncHookOutput {
@@ -968,6 +1125,7 @@ impl AsyncHookOutput {
         Self {
             async_: true,
             async_timeout: None,
+            extra: Map::new(),
         }
     }
 

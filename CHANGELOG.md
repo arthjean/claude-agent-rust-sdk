@@ -9,6 +9,8 @@
 - `Error::is_retryable()` says whether trying again can succeed: a control timeout, a closed connection, an API error result with status 429, 529, or 5xx, a process killed by a signal, an interrupted or timed-out I/O call, or a store that took too long.
 - `Error::stderr()` holds the last 8 KiB of the CLI's error output when a `stderr` callback captured it, where it used to hold a placeholder. The text of the error leaves it out, so logging an error never logs what the CLI wrote to stderr.
 - A warning is logged when the CLI reports a version older or newer than `CLI_VERSION`, the one release the crate is tested against: an older CLI exits with an error on an option it does not know.
+- The types an application sends keep keys the crate does not model, as upstream passes its dictionaries through: every hook-specific output, `AsyncHookOutput`, `SandboxSettings`, `SandboxNetworkConfig`, and the stdio and remote MCP server configurations have a flattened `extra` map and an `extra_field(key, value)` builder, so a key a newer CLI reads, such as `classifierContext` or `timeout`, can be sent today.
+- `HookSpecificOutput::Unknown` holds the output of an event the crate does not model, such as `Setup`, and sends it as written; reading one no longer fails.
 
 ### Changed
 
@@ -20,6 +22,8 @@
 - **Breaking:** the variants that carry fields, `PermissionResult::Allow` and `Deny`, `ThinkingConfig::Adaptive` and `Enabled`, and every `ToolContent` variant, are `#[non_exhaustive]`: build them with their constructors (`PermissionResult::allow().updated_permissions(..)`, `PermissionResult::deny_and_interrupt`, `ThinkingConfig::enabled(n).display(..)`, `ToolContent::resource_link_parts`) and match them with `..`, so a later field is not a breaking change.
 - **Breaking:** the `Unknown` variant of every string enum (`HookEvent`, `PermissionMode`, and the others) holds an `UnknownValue` that only the crate builds, from a spelling no known variant has. Two values are now equal exactly when their wire spellings are: `HookEvent::from("PreToolUse")` is `HookEvent::PreToolUse`, never an `Unknown` that compares unequal to it. Read the text with `as_str()`.
 - **Breaking:** `McpSdkServerInstance` can no longer be built from an arbitrary value, and `downcast_ref` is gone: only `create_sdk_mcp_server` and `McpServerConfig::sdk_rmcp` make one, so an in-process server a session cannot serve is no longer representable instead of failing at connection.
+- **Breaking:** `HookSpecificOutput::hook_event_name` returns `&str` instead of `&'static str`, since an `Unknown` output carries its own name.
+- An MCP server status whose configuration carries a key the crate does not model is now read as its typed configuration, with the key in `extra`, instead of as `McpServerStatusConfig::Unknown`.
 
 ### Removed
 

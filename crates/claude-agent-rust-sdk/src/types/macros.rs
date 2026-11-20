@@ -112,5 +112,28 @@ macro_rules! setters {
     };
 }
 
+/// Adds `extra_field`, which sets one key of the flattened `extra` map of
+/// each listed type.
+macro_rules! extra_field {
+    ($($name:ty),+ $(,)?) => {
+        $(
+            impl $name {
+                /// Sets a key this version of the crate does not model; it is
+                /// sent to the CLI as given, next to the modeled keys.
+                #[must_use]
+                pub fn extra_field(
+                    mut self,
+                    key: impl Into<String>,
+                    value: impl Into<serde_json::Value>,
+                ) -> Self {
+                    self.extra.insert(key.into(), value.into());
+                    self
+                }
+            }
+        )+
+    };
+}
+
+pub(crate) use extra_field;
 pub(crate) use setters;
 pub(crate) use wire_enum;

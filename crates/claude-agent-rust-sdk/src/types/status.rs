@@ -6,11 +6,10 @@
 //!
 //! The Python SDK returns these responses as the dictionaries the CLI sent.
 //! To keep every key reachable, each struct holds the keys it does not
-//! model in a flattened `extra` map, written back on serialization. A
-//! server configuration of a known type is the one exception to typing:
-//! the configuration types are shared with the options and have no
-//! `extra`, so a configuration carrying a key they do not model is kept
-//! whole as [`McpServerStatusConfig::Unknown`].
+//! model in a flattened `extra` map, written back on serialization; the
+//! server configuration types, shared with the options, do too. A
+//! configuration of a type this crate does not know, or that does not read
+//! as its type, is kept whole as [`McpServerStatusConfig::Unknown`].
 
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -79,26 +78,21 @@ impl McpServerStatusConfig {
         }
     }
 
+    /// Reads a configuration. The `type` key names the variant, so it is
+    /// left out of the fields, and out of their `extra`; a configuration
+    /// that does not read as its type is kept whole as `Unknown`.
     fn from_wire(raw: Value) -> Self {
-        let modeled: &[&str] = match raw.get("type").and_then(Value::as_str) {
-            None | Some("stdio") => &["type", "command", "args", "env"],
-            Some("sse" | "http") => &["type", "url", "headers"],
-            _ => &[],
-        };
-        if !modeled.is_empty()
-            && raw
-                .as_object()
-                .is_some_and(|object| object.keys().any(|key| !modeled.contains(&key.as_str())))
-        {
-            return Self::Unknown(raw);
+        let mut fields = raw.clone();
+        if let Some(object) = fields.as_object_mut() {
+            object.shift_remove("type");
         }
         let parsed = match raw.get("type").and_then(Value::as_str) {
-            None | Some("stdio") => McpStdioServerConfig::deserialize(&raw).map(Self::Stdio),
-            Some("sse") => McpSseServerConfig::deserialize(&raw).map(Self::Sse),
-            Some("http") => McpHttpServerConfig::deserialize(&raw).map(Self::Http),
-            Some("sdk") => McpSdkServerConfigStatus::deserialize(&raw).map(Self::Sdk),
+            None | Some("stdio") => McpStdioServerConfig::deserialize(&fields).map(Self::Stdio),
+            Some("sse") => McpSseServerConfig::deserialize(&fields).map(Self::Sse),
+            Some("http") => McpHttpServerConfig::deserialize(&fields).map(Self::Http),
+            Some("sdk") => McpSdkServerConfigStatus::deserialize(&fields).map(Self::Sdk),
             Some("claudeai-proxy") => {
-                McpClaudeAiProxyServerConfig::deserialize(&raw).map(Self::ClaudeAiProxy)
+                McpClaudeAiProxyServerConfig::deserialize(&fields).map(Self::ClaudeAiProxy)
             }
             Some(_) => return Self::Unknown(raw),
         };
