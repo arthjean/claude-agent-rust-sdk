@@ -408,7 +408,7 @@ async fn cancel_request_aborts_the_handler_which_writes_no_response() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn full_queue_of_one_hundred_messages_blocks_the_reader() {
+async fn a_hook_is_answered_while_unread_messages_wait_for_the_application() {
     let transport = cli();
     let client = connected(&transport, options_with_hook()).await;
     for index in 0..150 {
@@ -417,8 +417,11 @@ async fn full_queue_of_one_hundred_messages_blocks_the_reader() {
     transport.push_frame(hook_request("hook-1", "hook_0"));
     settle().await;
 
-    assert_eq!(transport.pending_frames(), 50);
-    assert!(response_to(&transport, "hook-1").is_none());
+    assert_eq!(transport.pending_frames(), 0);
+    assert_eq!(
+        response_to(&transport, "hook-1").unwrap()["subtype"],
+        "success"
+    );
 
     let mut messages = client.receive_messages();
     for index in 0..150 {
@@ -426,6 +429,55 @@ async fn full_queue_of_one_hundred_messages_blocks_the_reader() {
             panic!("expected a system message");
         };
         assert_eq!(system.data()["index"], index);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn interrupt_is_answered_while_unread_messages_wait_for_the_application() {
+    let transport = cli();
+    let client = connected(&transport, default_options()).await;
+    for index in 0..150 {
+        transport.push_frame(assistant(&format!("step {index}")));
+    }
+    settle().await;
+
+    let started = tokio::time::Instant::now();
+    client.interrupt().await.unwrap();
+    assert!(started.elapsed() < Duration::from_secs(1));
+
+    let mut messages = client.receive_messages();
+    for index in 0..150 {
+        let Message::Assistant(message) = messages.next().await.unwrap().unwrap() else {
+            panic!("expected an assistant message");
+        };
+        assert_eq!(
+            message.content[0].as_text(),
+            Some(format!("step {index}").as_str())
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn past_sixteen_mebibytes_of_unread_messages_the_reader_waits_for_the_application() {
+    let transport = cli();
+    let client = connected(&transport, options_with_hook()).await;
+    for index in 0..100 {
+        transport.push_frame(json!({"type": "system", "subtype": "status", "index": index}));
+    }
+    let large = "x".repeat(1024 * 1024);
+    for index in 0..17 {
+        transport.push_frame(json!({"type": "system", "subtype": "large", "index": index,
+                                    "text": large}));
+    }
+    transport.push_frame(hook_request("hook-1", "hook_0"));
+    settle().await;
+
+    assert_eq!(transport.pending_frames(), 2);
+    assert!(response_to(&transport, "hook-1").is_none());
+
+    let mut messages = client.receive_messages();
+    for _ in 0..117 {
+        messages.next().await.unwrap().unwrap();
     }
     settle().await;
     assert_eq!(transport.pending_frames(), 0);

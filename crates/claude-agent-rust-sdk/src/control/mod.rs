@@ -4,11 +4,41 @@
 //! reaches the application: responses complete the pending request with the
 //! same id, requests each start a handler task, cancel requests abort the
 //! matching handler, and transcript mirror frames go to the mirror. Every
-//! other frame enters a bounded queue, and a full queue blocks the reader.
+//! other frame is meant for the application.
+//!
+//! # Back-pressure
+//!
+//! The application reads its frames from a queue of 100. The control
+//! traffic must keep flowing while the application is not reading, since
+//! the application may be waiting on that very traffic: an `interrupt`
+//! sent from the loop that reads the messages waits for its response, and
+//! the CLI waits for the answers of hooks and permission callbacks before
+//! it goes on. So a full queue never stops the reader at once. Frames for
+//! the application that do not fit are held by the reader, in order,
+//! while it goes on reading and routing control traffic, and are handed
+//! over as the application frees room.
+//!
+//! Memory stays bounded: once the held frames reach 16 MiB, counted as
+//! their JSON text, the reader stops reading the CLI output until the
+//! application catches up. The CLI then blocks on its full output pipe,
+//! which is the back-pressure upstream applies at once, after 100 frames.
+//! Control traffic stalls again only past that budget, the point at which
+//! an application that never reads cannot be served without unbounded
+//! memory.
+//!
+//! The flush of the transcript mirror that a `result` frame waits for runs
+//! the same way: the reader goes on routing control traffic during the
+//! flush, and holds the `result` frame, and every application frame after
+//! it, until the flush is done, so the application still sees a result
+//! only once its transcript is in the store.
 //!
 //! The session differs from the upstream Python SDK in deliberate ways,
 //! each recorded in `parity/differences.toml`:
 //!
+//! - control responses and requests are routed while up to 16 MiB of
+//!   frames wait for the application, where upstream stops reading the
+//!   output after 100 unread frames, so that an `interrupt` or a hook does
+//!   not time out behind messages the application has not read yet;
 //! - when the output of the CLI ends, pending control requests fail at once
 //!   instead of waiting for their timeout;
 //! - a control request without a request id and a malformed transcript
@@ -36,7 +66,7 @@ mod run_end;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -57,6 +87,9 @@ pub(crate) use initialize::SessionConfig;
 use run_end::RunEndTracker;
 
 const MESSAGE_QUEUE_CAPACITY: usize = 100;
+/// Bytes of JSON text the reader holds for the application beyond the
+/// queue before it stops reading the CLI output.
+const HELD_FRAMES_BUDGET: usize = 16 * 1024 * 1024;
 const REQUEST_ID_RANDOM_CHARS: usize = 8;
 
 /// Time a control request waits for its response.
@@ -361,6 +394,68 @@ fn reader_lost() -> Error {
     Error::connection_closed("The session stopped reading the CLI output because of a panic")
 }
 
+/// Frames for the application that did not fit in its queue, in order,
+/// with the size of their JSON text.
+#[derive(Default)]
+struct Held {
+    frames: VecDeque<Value>,
+    bytes: usize,
+}
+
+impl Held {
+    fn push(&mut self, frame: Value) {
+        self.bytes += json_size(&frame);
+        self.frames.push_back(frame);
+    }
+
+    fn pop(&mut self) -> Option<Value> {
+        let frame = self.frames.pop_front()?;
+        self.bytes = self.bytes.saturating_sub(json_size(&frame));
+        Some(frame)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    fn is_full(&self) -> bool {
+        self.bytes >= HELD_FRAMES_BUDGET
+    }
+}
+
+/// Length of the JSON text of a frame, counted without building it.
+fn json_size(frame: &Value) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    let _ = serde_json::to_writer(&mut count, frame);
+    count.0
+}
+
+/// Waits for the flush in progress, if any, and clears it.
+async fn finish_flush(flushing: &mut Option<BoxFuture<'static, ()>>) {
+    if let Some(flush) = flushing.as_mut() {
+        flush.await;
+    }
+    *flushing = None;
+}
+
+/// Why the routing loop stopped.
+enum Stop {
+    /// The output ended, cleanly or with an error.
+    Ended(Option<Error>),
+    /// The application dropped its queue, or the session closed.
+    Abandoned,
+}
+
 async fn read_messages(shared: Arc<Shared>, outbox: mpsc::Sender<Result<Value>>) {
     let _finish = ReaderFinish {
         shared: Arc::clone(&shared),
@@ -368,53 +463,104 @@ async fn read_messages(shared: Arc<Shared>, outbox: mpsc::Sender<Result<Value>>)
     };
     let mut frames = shared.transport.read_messages();
     let mut last_error_result: Option<Value> = None;
-    let mut failure = None;
-    while let Some(frame) = frames.next().await {
-        if shared.is_closed() {
-            break;
-        }
-        let frame = match frame {
-            Ok(frame) => frame,
-            Err(error) => {
-                failure = Some(error);
-                break;
+    let mut held = Held::default();
+    let mut flushing: Option<BoxFuture<'static, ()>> = None;
+    let stop = loop {
+        let deliverable = flushing.is_none() && !held.is_empty();
+        tokio::select! {
+            biased;
+            () = finish_flush(&mut flushing), if flushing.is_some() => {}
+            permit = outbox.reserve(), if deliverable => {
+                let Ok(permit) = permit else {
+                    break Stop::Abandoned;
+                };
+                if let Some(frame) = held.pop() {
+                    permit.send(Ok(frame));
+                }
             }
-        };
-        let Some(frame) = route(&shared, frame, &mut last_error_result).await else {
-            continue;
-        };
-        if outbox.send(Ok(frame)).await.is_err() {
-            break;
+            frame = frames.next(), if !held.is_full() => {
+                let Some(frame) = frame else {
+                    break Stop::Ended(None);
+                };
+                if shared.is_closed() {
+                    break Stop::Abandoned;
+                }
+                let frame = match frame {
+                    Ok(frame) => frame,
+                    Err(error) => break Stop::Ended(Some(error)),
+                };
+                let Some(frame) = route(&shared, frame, &mut last_error_result, &mut flushing)
+                else {
+                    continue;
+                };
+                if flushing.is_some() || !held.is_empty() {
+                    held.push(frame);
+                    continue;
+                }
+                match outbox.try_send(Ok(frame)) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(Ok(frame))) => held.push(frame),
+                    Err(mpsc::error::TrySendError::Full(Err(_))) => {}
+                    Err(mpsc::error::TrySendError::Closed(_)) => break Stop::Abandoned,
+                }
+            }
         }
-    }
-
-    match failure {
-        Some(error) => {
-            let error = exit_error(error, last_error_result);
-            {
-                let mut state = shared.state();
+    };
+    let (failure, deliver) = match stop {
+        Stop::Ended(failure) => (
+            failure.map(|error| exit_error(error, last_error_result)),
+            true,
+        ),
+        Stop::Abandoned => (None, false),
+    };
+    {
+        let mut state = shared.state();
+        match &failure {
+            Some(error) => {
                 state.fail_pending(|| error.clone());
                 state.reader_end = Some(ReaderEnd::Failed(error.clone()));
             }
-            let _ = outbox.send(Err(error)).await;
+            None => {
+                state.fail_pending(output_ended);
+                state.reader_end = Some(ReaderEnd::Clean);
+            }
         }
-        None => {
-            let mut state = shared.state();
-            state.fail_pending(output_ended);
-            state.reader_end = Some(ReaderEnd::Clean);
-        }
+    }
+    finish_flush(&mut flushing).await;
+    if deliver {
+        deliver_the_rest(&outbox, held, failure).await;
     }
     if let Some(mirror) = &shared.config.mirror {
         mirror.flush().await;
     }
 }
 
+/// Hands the held frames to the application once the output has ended,
+/// then the error that ended it, if any. Nothing is left to route, so
+/// waiting for the application blocks nothing.
+async fn deliver_the_rest(
+    outbox: &mpsc::Sender<Result<Value>>,
+    mut held: Held,
+    failure: Option<Error>,
+) {
+    while let Some(frame) = held.pop() {
+        if outbox.send(Ok(frame)).await.is_err() {
+            return;
+        }
+    }
+    if let Some(error) = failure {
+        let _ = outbox.send(Err(error)).await;
+    }
+}
+
 /// Routes one frame. Returns the frame when it is meant for the
-/// application.
-async fn route(
+/// application. A `result` frame starts the flush of the transcript
+/// mirror, which the frame then waits for.
+fn route(
     shared: &Arc<Shared>,
     frame: Value,
     last_error_result: &mut Option<Value>,
+    flushing: &mut Option<BoxFuture<'static, ()>>,
 ) -> Option<Value> {
     let is_session_state = |frame: &Value| {
         frame.get("subtype").and_then(Value::as_str) == Some("session_state_changed")
@@ -447,7 +593,14 @@ async fn route(
         }
         Some("result") => {
             if let Some(mirror) = &shared.config.mirror {
-                mirror.flush().await;
+                let mirror = Arc::clone(mirror);
+                let previous = flushing.take();
+                *flushing = Some(Box::pin(async move {
+                    if let Some(previous) = previous {
+                        previous.await;
+                    }
+                    mirror.flush().await;
+                }));
             }
             shared.run.observe_result();
             let is_error = frame.get("is_error").and_then(Value::as_bool) == Some(true);

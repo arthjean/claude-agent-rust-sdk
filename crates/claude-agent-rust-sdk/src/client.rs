@@ -38,6 +38,13 @@ const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 /// [`connect`](Self::connect) and [`disconnect`](Self::disconnect) fails
 /// with [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) before the client is connected.
 ///
+/// Messages wait in a queue until they are read. While they wait, the
+/// control methods, hooks, and permission callbacks keep working, so an
+/// [`interrupt`](Self::interrupt) can be sent from the loop that reads the
+/// messages. Past 16 MiB of unread messages the session stops reading the
+/// CLI output until the application reads again, and control traffic
+/// waits with it.
+///
 /// Dropping a connected client ends the CLI process through the bounded
 /// shutdown of the transport, on a detached task. Call
 /// [`disconnect`](Self::disconnect) to wait for it.

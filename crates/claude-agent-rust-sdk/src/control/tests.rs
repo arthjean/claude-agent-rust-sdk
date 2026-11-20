@@ -362,3 +362,69 @@ async fn mirror_error_is_delivered_without_blocking_and_dropped_when_the_queue_i
     session.close().await.unwrap();
     session.report_mirror_error(Some(&key), "after close");
 }
+
+/// A mirror whose flush waits until the test releases it.
+#[derive(Default)]
+struct GatedMirror {
+    release: Notify,
+    flushes: AtomicUsize,
+}
+
+impl TranscriptMirror for GatedMirror {
+    fn enqueue(&self, _file_path: String, _entries: Vec<Value>) {}
+
+    fn flush(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {
+            self.release.notified().await;
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        })
+    }
+
+    fn close(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn control_traffic_is_routed_while_a_result_waits_for_the_mirror_flush() {
+    let mirror = Arc::new(GatedMirror::default());
+    let options = ClaudeAgentOptions::builder()
+        .hook(
+            "PreToolUse",
+            HookMatcher::new().hook(HookCallback::new(async |_input, _tool_use_id, _context| {
+                Ok(HookOutput::default())
+            })),
+        )
+        .build()
+        .unwrap();
+    let transport = answering_control_requests();
+    let (session, mut inbox) = ControlSession::with_mirror(
+        SharedTransport::new(transport.clone()),
+        SessionConfig::from_options(&options).unwrap(),
+        Arc::clone(&mirror) as Arc<dyn TranscriptMirror>,
+    );
+    session.open().await.unwrap();
+
+    transport.push_frame(result("first"));
+    transport.push_frame(json!({"type": "system", "subtype": "status"}));
+    transport.push_frame(hook_request("hook-1", "hook_0"));
+    settle().await;
+
+    let answered: Vec<Value> = transport
+        .written_frames()
+        .into_iter()
+        .filter(|frame| frame["type"] == "control_response")
+        .map(|frame| frame["response"]["request_id"].clone())
+        .collect();
+    assert_eq!(answered, [json!("hook-1")]);
+    assert!(
+        inbox.try_recv().is_err(),
+        "the result came before its flush"
+    );
+
+    mirror.release.notify_one();
+    assert_eq!(inbox.recv().await.unwrap().unwrap()["result"], "first");
+    assert_eq!(mirror.flushes.load(Ordering::SeqCst), 1);
+    assert_eq!(inbox.recv().await.unwrap().unwrap()["subtype"], "status");
+    session.close().await.unwrap();
+}

@@ -283,8 +283,8 @@ async fn text_prompt_with_a_hook_delivers_more_messages_than_the_queue_holds_bef
     };
     assert_eq!(first.content[0].as_text(), Some("step 0"));
     settle().await;
-    assert_eq!(transport.pending_frames(), 49);
-    assert!(!transport.input_ended());
+    assert_eq!(transport.pending_frames(), 0);
+    assert!(transport.input_ended());
 
     let rest = drain(stream).await;
     assert_eq!(rest.len(), 150);
