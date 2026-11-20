@@ -910,33 +910,76 @@ async fn cancelled_notification_ends_the_running_tool_call() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn control_cancel_request_stops_the_tool_and_writes_no_response() {
+async fn control_cancel_request_lets_the_tool_finish_and_keeps_its_id_reserved_until_then() {
     let started = Arc::new(Notify::new());
-    let dropped = Arc::new(AtomicUsize::new(0));
-    let client = SdkMcpClient::connected(server([blocked("slow", &started, &dropped)])).await;
+    let release = Arc::new(Notify::new());
+    let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let two_writes = {
+        let started = Arc::clone(&started);
+        let release = Arc::clone(&release);
+        let writes = Arc::clone(&writes);
+        SdkMcpTool::raw("two_writes", "Writes twice", json!({}), move |_| {
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            let writes = Arc::clone(&writes);
+            async move {
+                writes.lock().unwrap().push("first");
+                started.notify_one();
+                release.notified().await;
+                writes.lock().unwrap().push("second");
+                Ok(ToolResult::text("late"))
+            }
+        })
+        .unwrap()
+    };
+    let client = SdkMcpClient::connected(server([two_writes, noop("fast")])).await;
     let call = json!({
         "jsonrpc": "2.0",
-        "id": 9,
+        "id": 7,
         "method": "tools/call",
-        "params": {"name": "slow", "arguments": {}},
+        "params": {"name": "two_writes", "arguments": {}},
     });
-    let request_id = client.post("srv", call.clone());
+    let abandoned = client.post("srv", call.clone());
     started.notified().await;
     client.transport.push_frame(json!({
         "type": "control_cancel_request",
-        "request_id": request_id,
+        "request_id": abandoned,
     }));
     for _ in 0..10 {
         settle().await;
     }
-    assert_eq!(dropped.load(Ordering::SeqCst), 1);
-    assert!(client.answered(&request_id).is_none());
 
-    let retry = client.post("srv", call);
+    let reused = client.send("srv", call.clone()).await;
+    assert_eq!(reused["id"], 7);
+    assert_eq!(
+        reused["error"]["message"],
+        "Request id 7 is already in flight"
+    );
+    assert_eq!(*writes.lock().unwrap(), ["first"]);
+
+    release.notify_one();
+    for _ in 0..10 {
+        settle().await;
+    }
+    assert_eq!(*writes.lock().unwrap(), ["first", "second"]);
+    assert!(client.answered(&abandoned).is_none());
+    let fast = client
+        .request(
+            "srv",
+            "tools/call",
+            json!({"name": "fast", "arguments": {}}),
+        )
+        .await;
+    assert_eq!(fast["result"]["isError"], false);
+
+    let again = client.post("srv", call);
     started.notified().await;
-    assert!(client.answered(&retry).is_none());
-    client.close().await;
-    assert_eq!(dropped.load(Ordering::SeqCst), 2);
+    release.notify_one();
+    assert_eq!(texts(&client.answer(&again).await["result"]), ["late"]);
+    assert_eq!(
+        *writes.lock().unwrap(),
+        ["first", "second", "first", "second"]
+    );
 }
 
 #[tokio::test(start_paused = true)]

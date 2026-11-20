@@ -8,11 +8,13 @@
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use futures_util::FutureExt;
 use serde_json::{Value, json};
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
+use tokio::time::Instant;
 
 use super::tool::{SdkMcpTool, ToolFailure, ToolResult};
 use crate::error::{Error, Result};
@@ -27,8 +29,12 @@ const SUPPORTED_PROTOCOL_VERSIONS: [&str; 4] = [
     LATEST_PROTOCOL_VERSION,
 ];
 
+/// Time the end of a session waits for the requests still running to stop.
+pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+const INTERNAL_ERROR: i64 = -32603;
 const REQUEST_CANCELLED: i64 = -32800;
 
 /// Creates an MCP server that runs inside this process and serves these
@@ -235,34 +241,53 @@ pub(crate) fn request_id(message: &Value) -> Option<&Value> {
         .filter(|id| id.is_string() || id.is_i64() || id.is_u64())
 }
 
-type InFlight = Mutex<HashMap<String, Option<oneshot::Sender<()>>>>;
+/// The requests of one session still running, keyed by JSON-RPC id, each
+/// with the signal that cancels it while `notifications/cancelled` can.
+#[derive(Default)]
+struct InFlight {
+    calls: Mutex<HashMap<String, Option<oneshot::Sender<()>>>>,
+    idle: Notify,
+}
 
-struct Reservation<'a> {
-    in_flight: &'a InFlight,
+impl InFlight {
+    fn calls(&self) -> MutexGuard<'_, HashMap<String, Option<oneshot::Sender<()>>>> {
+        self.calls.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The id of a running request, released when the request is done.
+struct Reservation {
+    in_flight: Arc<InFlight>,
     key: String,
 }
 
-impl Drop for Reservation<'_> {
+impl Drop for Reservation {
     fn drop(&mut self) {
-        self.in_flight
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&self.key);
+        self.in_flight.calls().remove(&self.key);
+        self.in_flight.idle.notify_waiters();
     }
 }
 
 /// The connection of one session to a native server: the server and the
 /// requests of this session that are still running.
+///
+/// Each request runs in a task of its own, which holds its id until the
+/// server has answered. A `control_cancel_request` from the CLI drops only
+/// the wait for the answer, as in the Python SDK: the tool runs to its end,
+/// so a handler is never stopped between two side effects, and a request
+/// that reuses the id meanwhile is refused as already in flight. Only
+/// `notifications/cancelled`, and the end of the session, stop a running
+/// tool.
 pub(crate) struct NativeSession {
     server: Arc<SdkMcpServer>,
-    in_flight: InFlight,
+    in_flight: Arc<InFlight>,
 }
 
 impl NativeSession {
     pub(crate) fn new(server: Arc<SdkMcpServer>) -> Self {
         Self {
             server,
-            in_flight: Mutex::new(HashMap::new()),
+            in_flight: Arc::default(),
         }
     }
 
@@ -289,30 +314,40 @@ impl NativeSession {
         let key = id.to_string();
         let (cancel, cancelled) = oneshot::channel();
         {
-            let mut in_flight = self
-                .in_flight
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            if in_flight.contains_key(&key) {
+            let mut calls = self.in_flight.calls();
+            if calls.contains_key(&key) {
                 return Err(format!(
                     "Request id {} is already in flight",
                     display_id(id)
                 ));
             }
-            in_flight.insert(key.clone(), Some(cancel));
+            calls.insert(key.clone(), Some(cancel));
         }
-        let _reservation = Reservation {
-            in_flight: &self.in_flight,
+        let reservation = Reservation {
+            in_flight: Arc::clone(&self.in_flight),
             key,
         };
-        let outcome = tokio::select! {
-            biased;
-            Ok(()) = cancelled => Err(RpcError {
-                code: REQUEST_CANCELLED,
-                message: "Request cancelled".to_owned(),
-            }),
-            outcome = self.server.dispatch(method, params) => outcome,
-        };
+        let server = Arc::clone(&self.server);
+        let method = method.to_owned();
+        let params = params.clone();
+        let call = tokio::spawn(async move {
+            let outcome = tokio::select! {
+                biased;
+                Ok(()) = cancelled => Err(RpcError {
+                    code: REQUEST_CANCELLED,
+                    message: "Request cancelled".to_owned(),
+                }),
+                outcome = server.dispatch(&method, &params) => outcome,
+            };
+            drop(reservation);
+            outcome
+        });
+        let outcome = call.await.unwrap_or_else(|_| {
+            Err(RpcError {
+                code: INTERNAL_ERROR,
+                message: "The request was stopped before it was answered".to_owned(),
+            })
+        });
         Ok(Some(response(id, outcome)))
     }
 
@@ -322,12 +357,43 @@ impl NativeSession {
         };
         let cancel = self
             .in_flight
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .calls()
             .get_mut(&id.to_string())
             .and_then(Option::take);
         if let Some(cancel) = cancel {
             let _ = cancel.send(());
+        }
+    }
+
+    /// Ends the session: cancels every request still running and waits for
+    /// them to stop, for at most [`SHUTDOWN_GRACE`].
+    pub(crate) async fn close(&self) {
+        let deadline = Instant::now() + SHUTDOWN_GRACE;
+        let cancels: Vec<_> = self
+            .in_flight
+            .calls()
+            .values_mut()
+            .filter_map(Option::take)
+            .collect();
+        for cancel in cancels {
+            let _ = cancel.send(());
+        }
+        loop {
+            let idle = self.in_flight.idle.notified();
+            tokio::pin!(idle);
+            idle.as_mut().enable();
+            if self.in_flight.calls().is_empty() {
+                return;
+            }
+            if tokio::time::timeout_at(deadline, idle).await.is_err() {
+                tracing::warn!(
+                    "SDK MCP server '{}' still had a tool running {} s after being closed; no \
+                     longer waiting for it",
+                    self.server.name,
+                    SHUTDOWN_GRACE.as_secs()
+                );
+                return;
+            }
         }
     }
 }

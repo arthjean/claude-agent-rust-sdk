@@ -85,10 +85,11 @@ impl McpBridges {
 
     /// Stops every server session. Calling it again does nothing.
     pub(crate) async fn close(&self) {
-        #[cfg(feature = "rmcp")]
         futures_util::future::join_all(self.servers.values().map(|bridge| async move {
-            if let Bridge::Rmcp(bridge) = bridge {
-                bridge.close().await;
+            match bridge {
+                Bridge::Native(session) => session.close().await,
+                #[cfg(feature = "rmcp")]
+                Bridge::Rmcp(bridge) => bridge.close().await,
             }
         }))
         .await;

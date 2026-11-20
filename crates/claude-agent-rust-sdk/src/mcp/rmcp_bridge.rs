@@ -19,7 +19,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
 
 use rmcp::model::{ClientJsonRpcMessage, JsonRpcMessage, ServerJsonRpcMessage};
 use rmcp::service::{QuitReason, RoleServer};
@@ -33,7 +32,7 @@ use super::server::display_id;
 use crate::types::BoxFuture;
 
 /// Time the end of a session waits for the server to stop.
-pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+pub(crate) use super::server::SHUTDOWN_GRACE;
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const REQUEST_CANCELLED: i64 = -32800;

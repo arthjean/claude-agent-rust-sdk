@@ -20,7 +20,9 @@ const MISSING_PERMISSION_CALLBACK: &str = "canUseTool callback is not provided";
 ///
 /// A cancelled handler writes no response: the CLI has already abandoned
 /// the request. Cancellation stops the application callback only; once the
-/// callback has answered, the response is written in full.
+/// callback has answered, the response is written in full. For an
+/// `mcp_message`, it stops only the wait: an in-process server keeps running
+/// the tool to its end, as the Python SDK does.
 pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
     let Some(request_id) = frame
         .get("request_id")
