@@ -39,8 +39,8 @@ key in `ANTHROPIC_API_KEY`.
 One path handles that login, as the Python SDK does: resuming a session from a
 session store runs the CLI under a temporary configuration directory, and the
 crate copies the login of the installed CLI into it. It copies the access token
-without the refresh token, into a directory only the user can read, removed
-when the session ends.
+without the refresh token, into a directory that on Unix only the user can
+read, removed when the session ends.
 
 **End users authenticate with their own credentials.** An application built on
 this crate must not offer a claude.ai login on behalf of its users, and the

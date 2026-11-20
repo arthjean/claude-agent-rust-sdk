@@ -49,7 +49,7 @@
 ### Removed
 
 - **Breaking:** `cli::managed_install_dir` is private. The crate installs no CLI, so the directory is only searched, before `PATH`, as before.
-- **Breaking:** the public constructors `Error::cli_connection`, `Error::config`, `Error::control`, and `Error::session_not_found` are gone: an error of the crate is built by the crate, and a custom transport or store reports its failures with `Error::io`, `Error::process`, or `Error::session_store`.
+- **Breaking:** the public constructors `Error::cli_connection`, `Error::config`, `Error::control`, and `Error::session_not_found` are gone: build the same error with `Error::new` and its `ErrorKind` (`Error::new(ErrorKind::Config, "..")`), or, for a custom transport or store, with `Error::io`, `Error::process`, or `Error::session_store`.
 
 ### Fixed
 
