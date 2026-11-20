@@ -89,6 +89,12 @@ fn describes_an_object(schema: &Map<String, Value>) -> bool {
 /// when every object alternative of an `anyOf` or `oneOf` does.
 /// Alternatives that are not objects are left out: the arguments of a tool
 /// are always an object.
+///
+/// The tags of a tagged enum, properties that every alternative stating
+/// them fixes with a `const`, come first; the others keep the order in
+/// which the alternatives state them. The order schemars gives the tag
+/// differs between its releases, and the tag is what tells the model
+/// which fields go together.
 fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
     let definitions = root.get("$defs").cloned().unwrap_or(Value::Null);
     let mut properties: Vec<(String, Vec<Value>)> = Vec::new();
@@ -146,8 +152,12 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
     if !found_an_object {
         return false;
     }
-    let merged: Map<String, Value> = properties
+    let (tags, fields): (Vec<_>, Vec<_>) = properties
         .into_iter()
+        .partition(|(_, schemas)| schemas.iter().all(|schema| schema.get("const").is_some()));
+    let merged: Map<String, Value> = tags
+        .into_iter()
+        .chain(fields)
         .map(|(name, schemas)| {
             let mut schema = union_of(schemas);
             describe_variants(&mut schema, &name, &variant_docs);

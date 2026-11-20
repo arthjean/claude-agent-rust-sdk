@@ -93,6 +93,7 @@
 - `file_path_to_session_key` resolves `.` and `..` segments and, on Windows, compares the projects directory without regard to case, as Python's `os.path.relpath` does.
 - The conformance suite counts a summary a store lists twice once, as upstream does, instead of failing contract 14.
 - An unknown hook callback id that is not a string is named in the error answer (`No hook callback found for ID: 7`), as upstream does, and a line of CLI output is stripped of what Python's `str.strip()` strips, U+001C to U+001F included.
+- The schema of a typed tool whose arguments are a tagged enum lists the tag first, whatever the schemars release: with schemars 1.2.0 the tag came after the fields of the first variant.
 
 ## 0.1.0 - 2026-11-18
 
