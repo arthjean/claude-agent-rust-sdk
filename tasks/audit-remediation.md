@@ -88,8 +88,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `e02cdda`, after the counter-audit fixes (a first attempt with a stray `--` filtered every test out and ran nothing) | about 0.80 (the documented cost of a run) | 54 of 55 pass; the one failure is again `a_store_resume_applies_the_user_settings`, which needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (the owner agreed to supply a token). |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `c4f364b`, with `CLAUDE_CODE_OAUTH_TOKEN` from a token the owner created with `claude setup-token` (read from a file outside the repository, never printed; the log holds no token) | about 0.80 (the documented cost of a run) | **55 of 55 pass**, `a_store_resume_applies_the_user_settings` included. |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on `c921140`, the final code after the confirmation recheck and the parity minors, with the same token | about 0.80 (the documented cost of a run) | **55 of 55 pass** in 53 s; the log holds no token. |
+| 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on `fbf42ea`, after the last review's fix, with the same token | about 0.80 (the documented cost of a run) | **55 of 55 pass** in 51 s; the log holds no token. |
 
-Total spent: about 3.24 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 4.04 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
@@ -277,7 +278,7 @@ CI on pull request #7 (draft, opened with the owner's approval). The first run f
 
 Before the PR, left to CI with no macOS or Windows machine here: the parity job on three systems, the MSRV check on macOS and Windows, the macOS Keychain test of A25, and coverage measured by CI. The end-to-end workflow is Linux-only by design.
 
-CI on pull request #8 (the confirmation recheck, draft): every job passes on `113891c` but `API compatibility`, which reports the same five intended breaking changes. Merged into `main` by fast-forward. Before it, on `113891c` here: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.59%, `package-check`, the docs.rs-style build, `cargo deny check licenses advisories`, and `cargo +1.88.0 check` pass. On `c921140` (branch `parity-minors`), after the parity minors: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.86%, `cargo +1.88.0 check`, and a full `cargo xtask e2e` (55 of 55) pass.
+CI on pull request #8 (the confirmation recheck, draft): every job passes on `113891c` but `API compatibility`, which reports the same five intended breaking changes. Merged into `main` by fast-forward. Before it, on `113891c` here: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.59%, `package-check`, the docs.rs-style build, `cargo deny check licenses advisories`, and `cargo +1.88.0 check` pass. On `c921140` (branch `parity-minors`), after the parity minors: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` (43 cases), `parity-diff --coverage`, line coverage 92.86%, `cargo +1.88.0 check`, and a full `cargo xtask e2e` (55 of 55) pass. On `fbf42ea`, after the last review: `cargo xtask gates`, `parity-check --deny-pending`, `parity-diff` and `--coverage`, line coverage 92.56%, `package-check`, the docs.rs-style build, clippy for `x86_64-pc-windows-msvc` and `aarch64-apple-darwin`, `cargo +1.88.0 check`, and a full `cargo xtask e2e` (55 of 55) pass. These ten commits on local `main` are not pushed and no CI has run them.
 
 ## Upstream releases during the run
 
