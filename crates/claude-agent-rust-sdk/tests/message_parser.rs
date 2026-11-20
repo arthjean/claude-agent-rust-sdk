@@ -5,8 +5,8 @@ use claude_agent_rust_sdk::{
     AssistantMessage, AssistantMessageError, ContentBlock, Message, MessageOriginKind,
     RateLimitEvent, RateLimitStatus, RateLimitType, ResultMessage, ServerToolName, SessionKey,
     StreamEvent, SystemMessage, TERMINAL_TASK_STATUSES, TaskNotificationOriginSubkind,
-    TaskNotificationStatus, TaskUpdatedMessage, TaskUpdatedStatus, TaskUsage, ToolResultContent,
-    UserContent, UserMessage, is_terminal_task_status, parse_message,
+    TaskNotificationStatus, TaskUpdatedMessage, TaskUpdatedStatus, TaskUsage, TextBlock,
+    ToolResultContent, UserContent, UserMessage, is_terminal_task_status, parse_message,
 };
 use serde_json::{Value, json};
 
@@ -1468,6 +1468,44 @@ fn content_block_missing_required_field_is_an_error() {
             format!("Missing required field in assistant message: '{field}'")
         );
     }
+}
+
+#[test]
+fn a_user_message_reads_only_the_blocks_upstream_reads_and_keeps_the_rest_raw() {
+    let blocks = [
+        json!({"type": "thinking", "thinking": "x"}),
+        json!({"type": "server_tool_use", "name": "advisor"}),
+        json!({"type": "advisor_tool_result"}),
+    ];
+    let message = user(json!({
+        "type": "user",
+        "message": {"content": [
+            blocks[0].clone(),
+            {"type": "text", "text": "hi"},
+            blocks[1].clone(),
+            blocks[2].clone(),
+        ]},
+    }));
+    let UserContent::Blocks(content) = &message.content else {
+        panic!("expected blocks, got {:?}", message.content);
+    };
+    assert_eq!(
+        content,
+        &[
+            ContentBlock::Unknown(blocks[0].clone()),
+            ContentBlock::Text(TextBlock::new("hi")),
+            ContentBlock::Unknown(blocks[1].clone()),
+            ContentBlock::Unknown(blocks[2].clone()),
+        ]
+    );
+    let (missing, _) = parse_error(json!({
+        "type": "user",
+        "message": {"content": [{"type": "tool_result"}]},
+    }));
+    assert_eq!(
+        missing,
+        "Missing required field in user message: 'tool_use_id'"
+    );
 }
 
 #[test]

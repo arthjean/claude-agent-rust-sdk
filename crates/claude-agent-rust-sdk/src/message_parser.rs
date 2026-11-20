@@ -8,7 +8,11 @@
 //! - a message whose `type` is unknown becomes [`Message::Unknown`] with
 //!   its raw JSON instead of being skipped;
 //! - a content block whose `type` is unknown becomes
-//!   [`ContentBlock::Unknown`] with its raw JSON instead of being dropped;
+//!   [`ContentBlock::Unknown`] with its raw JSON instead of being dropped.
+//!   In a user message only `text`, `tool_use`, and `tool_result` blocks
+//!   are read, as upstream reads them; any other block, `thinking`
+//!   included, is kept as [`ContentBlock::Unknown`], where upstream drops
+//!   it, so its fields are never required;
 //! - a required field of the wrong JSON type is an error, and an optional
 //!   field of the wrong JSON type reads as absent. An integer field accepts
 //!   any JSON number: a fraction is truncated and a value out of range
@@ -231,7 +235,17 @@ fn parse_hook_event(object: &Map<String, Value>, subtype: &str) -> SystemMessage
     })
 }
 
-fn parse_block(block: &Value, family: &'static str) -> Parsed<ContentBlock> {
+/// The content blocks a message of one kind reads into typed variants.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Turn {
+    /// A user message: `text`, `tool_use`, and `tool_result`, as upstream
+    /// reads them.
+    User,
+    /// An assistant message: every block type the crate models.
+    Assistant,
+}
+
+fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<ContentBlock> {
     let Some(object) = block.as_object() else {
         return Err(format!(
             "Invalid content block (expected dict, got {})",
@@ -239,7 +253,11 @@ fn parse_block(block: &Value, family: &'static str) -> Parsed<ContentBlock> {
         ));
     };
     let fields = Fields::new(object, family);
-    let parsed = match fields.required("type")?.as_str() {
+    let kind = fields.required("type")?.as_str();
+    if turn == Turn::User && !matches!(kind, Some("text" | "tool_use" | "tool_result")) {
+        return Ok(ContentBlock::Unknown(block.clone()));
+    }
+    let parsed = match kind {
         Some("text") => ContentBlock::Text(TextBlock {
             text: fields.required_str("text")?,
         }),
@@ -273,16 +291,18 @@ fn parse_block(block: &Value, family: &'static str) -> Parsed<ContentBlock> {
     Ok(parsed)
 }
 
-fn parse_blocks(blocks: &[Value], family: &'static str) -> Parsed<Vec<ContentBlock>> {
+fn parse_blocks(blocks: &[Value], family: &'static str, turn: Turn) -> Parsed<Vec<ContentBlock>> {
     blocks
         .iter()
-        .map(|block| parse_block(block, family))
+        .map(|block| parse_block(block, family, turn))
         .collect()
 }
 
 fn parse_user(fields: &Fields<'_>) -> Parsed<UserMessage> {
     let content = match fields.required_object("message")?.required("content")? {
-        Value::Array(blocks) => UserContent::Blocks(parse_blocks(blocks, fields.family)?),
+        Value::Array(blocks) => {
+            UserContent::Blocks(parse_blocks(blocks, fields.family, Turn::User)?)
+        }
         Value::String(text) => UserContent::Text(text.clone()),
         other => {
             return Err(format!(
@@ -303,7 +323,7 @@ fn parse_user(fields: &Fields<'_>) -> Parsed<UserMessage> {
 fn parse_assistant(fields: &Fields<'_>) -> Parsed<AssistantMessage> {
     let message = fields.required_object("message")?;
     let content = match message.required("content")? {
-        Value::Array(blocks) => parse_blocks(blocks, fields.family)?,
+        Value::Array(blocks) => parse_blocks(blocks, fields.family, Turn::Assistant)?,
         other => {
             return Err(format!(
                 "Invalid assistant content (expected list, got {})",

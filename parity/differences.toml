@@ -126,7 +126,7 @@ test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::a_callba
 [behavior.unknown-messages-kept]
 summary = "An unknown message type"
 python = "The parser returns `None` and the message is skipped."
-rust = "Kept as `Message::Unknown` with its raw JSON, as is an unknown content block (`ContentBlock::Unknown`)."
+rust = "Kept as `Message::Unknown` with its raw JSON, as is an unknown content block (`ContentBlock::Unknown`). In a user message, where Python reads only `text`, `tool_use`, and `tool_result` blocks and drops the others, every other block is kept as `ContentBlock::Unknown` too, with none of its fields required."
 ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
 anchor = "logger.debug(\"Skipping unknown message type: %s\", message_type)"
 category = "rust-more-robust"
