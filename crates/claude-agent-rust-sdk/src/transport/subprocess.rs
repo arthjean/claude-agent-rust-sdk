@@ -73,8 +73,12 @@ type SharedClose = Shared<BoxFuture<'static, ()>>;
 ///
 /// # Cancellation
 ///
-/// [`write`](Self::write) must run to completion: dropping its future
-/// midway can leave a partial message on the standard input of the CLI.
+/// Called directly, [`write`](Self::write) must run to completion:
+/// dropping its future midway can leave a partial message on the standard
+/// input of the CLI. [`query`](crate::query) and
+/// [`ClaudeSdkClient`](crate::ClaudeSdkClient) never do that: they write
+/// through one task that finishes every frame it starts, so their own
+/// futures can be dropped at any point.
 ///
 /// A transport serves one connection: it cannot connect again once closed.
 pub struct SubprocessTransport {

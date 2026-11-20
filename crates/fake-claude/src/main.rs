@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Map, Value, json};
 
 use record::{RECORD_VARIABLE, Recorder};
-use scenario::{DEFAULT_VERSION, Scenario, Step, matches};
+use scenario::{DEFAULT_VERSION, Scenario, StdinPause, Step, matches};
 
 const SCENARIO_VARIABLE: &str = "FAKE_CLAUDE_SCENARIO";
 const DESCENDANT_SLEEP_VARIABLE: &str = "FAKE_CLAUDE_DESCENDANT_SLEEP_MS";
@@ -133,7 +133,10 @@ impl Player {
         if scenario.read_stdin {
             let reader_output = Arc::clone(&output);
             let auto_reply = scenario.auto_reply;
-            std::thread::spawn(move || read_input(&reader_output, &sender, auto_reply, &recorder));
+            let pause = scenario.stdin_pause;
+            std::thread::spawn(move || {
+                read_input(&reader_output, &sender, auto_reply, pause, &recorder);
+            });
         }
         Self {
             output,
@@ -336,39 +339,58 @@ fn read_input(
     output: &SharedOutput,
     sender: &Sender<Input>,
     auto_reply: bool,
+    pause: Option<StdinPause>,
     recorder: &Recorder,
 ) {
-    for line in std::io::stdin().lock().lines() {
+    for (index, line) in std::io::stdin().lock().lines().enumerate() {
         let Ok(line) = line else {
             break;
         };
-        let parsed = serde_json::from_str::<Value>(line.trim()).ok();
-        recorder.stdin_line(&line, parsed.as_ref());
-        let Some(frame) = parsed else {
-            continue;
-        };
-        if frame.get("type").and_then(Value::as_str) == Some("control_request") {
-            remember_hook_callback(output, &frame);
-            if auto_reply {
-                emit(
-                    output,
-                    &json!({
-                        "type": "control_response",
-                        "response": {
-                            "subtype": "success",
-                            "request_id": frame.get("request_id").cloned().unwrap_or(Value::Null),
-                            "response": {},
-                        },
-                    }),
-                );
-            }
+        let delivered = read_line(output, sender, auto_reply, recorder, &line);
+        if let Some(pause) = pause
+            && index + 1 == pause.after_lines
+        {
+            std::thread::sleep(pause.duration);
         }
-        if sender.send(Input::Frame(frame)).is_err() {
+        if !delivered {
             return;
         }
     }
     recorder.stdin_eof();
     let _ = sender.send(Input::Closed);
+}
+
+/// Records and handles one stdin line. Returns `false` once the player no
+/// longer listens.
+fn read_line(
+    output: &SharedOutput,
+    sender: &Sender<Input>,
+    auto_reply: bool,
+    recorder: &Recorder,
+    line: &str,
+) -> bool {
+    let parsed = serde_json::from_str::<Value>(line.trim()).ok();
+    recorder.stdin_line(line, parsed.as_ref());
+    let Some(frame) = parsed else {
+        return true;
+    };
+    if frame.get("type").and_then(Value::as_str) == Some("control_request") {
+        remember_hook_callback(output, &frame);
+        if auto_reply {
+            emit(
+                output,
+                &json!({
+                    "type": "control_response",
+                    "response": {
+                        "subtype": "success",
+                        "request_id": frame.get("request_id").cloned().unwrap_or(Value::Null),
+                        "response": {},
+                    },
+                }),
+            );
+        }
+    }
+    sender.send(Input::Frame(frame)).is_ok()
 }
 
 fn remember_hook_callback(output: &SharedOutput, frame: &Value) {

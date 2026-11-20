@@ -916,3 +916,69 @@ async fn a_run_of_spaces_spanning_several_reads_is_delivered_intact() {
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].as_ref().unwrap()["data"], content.as_str());
 }
+
+#[tokio::test]
+async fn a_dropped_write_never_cuts_a_frame_the_cli_reads() {
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "stdin_pause": {"after_lines": 1, "ms": 1500},
+        "steps": [
+            {"expect": {"type": "user", "message": {"content": "next"}}, "timeout_ms": 20_000},
+            {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+                      "is_error": false, "num_turns": 1, "session_id": "s", "result": "done"}},
+        ],
+    }));
+    let record = fake.directory.path().join("record.jsonl");
+    let options = fake
+        .options()
+        .env_var("FAKE_CLAUDE_RECORD", record.to_string_lossy())
+        .build()
+        .unwrap();
+    let client = ClaudeSdkClient::new(options);
+    client.connect().await.unwrap();
+
+    let big = "x".repeat(1_000_000);
+    let cut_short =
+        tokio::time::timeout(Duration::from_millis(300), client.query(big.as_str())).await;
+    assert!(cut_short.is_err(), "the pipe was expected to be full");
+    client.query("next").await.unwrap();
+    let mut messages = client.receive_response();
+    let mut last = None;
+    while let Some(message) = tokio::time::timeout(common::STEP_LIMIT, messages.next())
+        .await
+        .unwrap()
+    {
+        last = Some(message.unwrap());
+    }
+    drop(messages);
+    client.disconnect().await.unwrap();
+
+    assert!(matches!(
+        last,
+        Some(claude_agent_rust_sdk::Message::Result(_))
+    ));
+    let records: Vec<Value> = std::fs::read_to_string(&record)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(
+        records.iter().all(|record| record["record"] != "stdin_raw"),
+        "the CLI read a line that is not JSON"
+    );
+    let prompts: Vec<usize> = records
+        .iter()
+        .filter(|record| record["frame"]["type"] == "user")
+        .map(|record| {
+            record["frame"]["message"]["content"]
+                .as_str()
+                .unwrap()
+                .len()
+        })
+        .collect();
+    assert_eq!(
+        prompts,
+        [1_000_000, 4],
+        "both prompts arrive whole and in order"
+    );
+}

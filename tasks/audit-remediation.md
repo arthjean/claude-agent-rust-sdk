@@ -15,8 +15,8 @@ difference, recorded), `blocked` (waiting on the owner).
 
 | Id | Impact | Title | Status | Proof / note |
 |---|---|---|---|---|
-| A01 | blocker | Port upstream #1502 (permission updates), sync to v0.2.186 | todo | |
-| A02 | blocker | Keep JSON key order (`preserve_order`) | todo | |
+| A01 | blocker | Port upstream #1502 (permission updates), sync to v0.2.186 | done | Pin at v0.2.186 (`upstream-sync`); `to_wire` returns `Result`, 8 upstream tests ported (`tests/types.rs`, `tests/control_protocol.rs`); parity-check and parity-diff pass. Real-CLI proof: pending. |
+| A02 | blocker | Keep JSON key order (`preserve_order`) | done | `preserve_order` in the library, `shift_remove` (clippy `disallowed-methods` on `Map::remove`), fork/resume lines keep entry order; harness compares key order (`compare.rs` tests), case `key-order`; tests `fork_keeps_the_key_order_of_each_entry_as_upstream_does`, `json_values_reach_the_cli_with_their_keys_in_the_order_written`. Hook output order recorded as `wire.hook-output-key-order*`. |
 | A03 | blocker | Cancellation-safe writes to the CLI | todo | |
 | A04 | blocker | Survive a lone UTF-16 surrogate escape or deep nesting | todo | |
 | A05 | major | Differential harness measures what the SDK returns to the app | todo | |
@@ -57,7 +57,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A40 | cosmetic | Size measures, Unicode version, subpaths | todo | |
 | A41 | cosmetic | Ledger inconsistencies | todo | |
 | A42 | cosmetic | Idiomatic naming | todo | |
-| A43 | cosmetic | Cargo warning on every build (`homepage`) | todo | |
+| A43 | cosmetic | Cargo warning on every build (`homepage`) | done | `homepage` removed from the manifests; `published_manifests_carry_the_registry_metadata` now forbids it. |
 
 ## Product choices taken without the owner
 

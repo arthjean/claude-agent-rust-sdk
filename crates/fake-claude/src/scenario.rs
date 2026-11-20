@@ -27,6 +27,9 @@
 //!   success response, as soon as it arrives. Defaults to `false`.
 //! - `read_stdin`: whether stdin is read at all. Defaults to `true`. When
 //!   `false`, nothing drains stdin, so a writer eventually blocks.
+//! - `stdin_pause`: `{"after_lines": k, "ms": n}` stops reading stdin for
+//!   `n` milliseconds once `k` lines are read, so the pipe fills and a
+//!   writer blocks part-way through a long line. Absent by default.
 //! - `steps`: actions played in order. After the last one the process waits
 //!   for stdin to close and exits with code 0.
 //!
@@ -59,8 +62,16 @@ pub(crate) struct Scenario {
     pub(crate) init: bool,
     pub(crate) auto_reply: bool,
     pub(crate) read_stdin: bool,
+    pub(crate) stdin_pause: Option<StdinPause>,
     pub(crate) report_env: Vec<String>,
     pub(crate) steps: Vec<Step>,
+}
+
+/// A pause in the reading of stdin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StdinPause {
+    pub(crate) after_lines: usize,
+    pub(crate) duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,6 +96,7 @@ impl Scenario {
             init: true,
             auto_reply: true,
             read_stdin: true,
+            stdin_pause: None,
             report_env: Vec::new(),
             steps: Vec::new(),
         }
@@ -129,9 +141,25 @@ impl Scenario {
             init: flag(&scenario, "init", true)?,
             auto_reply: flag(&scenario, "auto_reply", false)?,
             read_stdin: flag(&scenario, "read_stdin", true)?,
+            stdin_pause: stdin_pause(scenario.get("stdin_pause"))?,
             report_env,
             steps,
         })
+    }
+}
+
+fn stdin_pause(value: Option<&Value>) -> Result<Option<StdinPause>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let number = |name: &str| value.get(name).and_then(Value::as_u64);
+    match (number("after_lines"), number("ms")) {
+        (Some(after_lines), Some(ms)) => Ok(Some(StdinPause {
+            after_lines: usize::try_from(after_lines)
+                .map_err(|_| "`stdin_pause.after_lines` is too large".to_owned())?,
+            duration: Duration::from_millis(ms),
+        })),
+        _ => Err("`stdin_pause` must be {\"after_lines\": k, \"ms\": n}".to_owned()),
     }
 }
 
@@ -219,7 +247,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{DEFAULT_EXPECT_TIMEOUT, Scenario, Step, matches};
+    use super::{DEFAULT_EXPECT_TIMEOUT, Scenario, StdinPause, Step, matches};
 
     #[test]
     fn defaults_follow_the_documented_format() {
@@ -228,8 +256,23 @@ mod tests {
         assert!(scenario.init);
         assert!(!scenario.auto_reply);
         assert!(scenario.read_stdin);
+        assert_eq!(scenario.stdin_pause, None);
         assert!(scenario.steps.is_empty());
         assert_eq!(DEFAULT_EXPECT_TIMEOUT, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn a_stdin_pause_needs_both_numbers() {
+        let scenario =
+            Scenario::parse(r#"{"stdin_pause": {"after_lines": 1, "ms": 250}}"#).unwrap();
+        assert_eq!(
+            scenario.stdin_pause,
+            Some(StdinPause {
+                after_lines: 1,
+                duration: Duration::from_millis(250),
+            })
+        );
+        assert!(Scenario::parse(r#"{"stdin_pause": {"after_lines": 1}}"#).is_err());
     }
 
     #[test]

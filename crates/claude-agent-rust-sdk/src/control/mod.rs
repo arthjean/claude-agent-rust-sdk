@@ -12,6 +12,12 @@
 //!   instead of waiting for their timeout;
 //! - a cancel request stops the application callback but never a response
 //!   that is being written, so the CLI never reads a partial message;
+//! - every frame goes to the CLI through one writer task, fed whole frames
+//!   by a queue: a caller that drops its future (under a `timeout` or a
+//!   `select!`) after its frame was queued still gets the frame written in
+//!   full, and a caller dropped before cannot leave half a frame behind.
+//!   Upstream gets the same guarantee from anyio, which buffers a whole
+//!   frame in one synchronous call before it awaits the drain;
 //! - a callback that panics is answered with an error response;
 //! - a control request without a request id and a malformed transcript
 //!   mirror frame are ignored instead of stopping the reader.
@@ -108,6 +114,7 @@ pub(crate) struct ControlSession {
 
 struct Shared {
     transport: SharedTransport,
+    writer: mpsc::UnboundedSender<WriteJob>,
     config: SessionConfig,
     run: RunEndTracker,
     state: Mutex<State>,
@@ -126,6 +133,34 @@ struct State {
     request_counter: u64,
     closed: bool,
     initialization: Option<Value>,
+    writer_jobs: Option<mpsc::UnboundedReceiver<WriteJob>>,
+}
+
+/// One write to the CLI, run by the writer task.
+enum Outgoing {
+    /// A whole frame, with its line feed.
+    Frame(String),
+    /// The end of the input stream.
+    EndInput,
+}
+
+struct WriteJob {
+    what: Outgoing,
+    done: oneshot::Sender<Result<()>>,
+}
+
+/// Runs every write to the transport, one at a time, in the order queued.
+///
+/// The loop owns a handle to the transport, not the session, so it ends
+/// when the session and every sender are gone.
+async fn write_jobs(transport: SharedTransport, mut jobs: mpsc::UnboundedReceiver<WriteJob>) {
+    while let Some(job) = jobs.recv().await {
+        let result = match job.what {
+            Outgoing::Frame(text) => transport.write(&text).await,
+            Outgoing::EndInput => transport.end_input().await,
+        };
+        let _ = job.done.send(result);
+    }
 }
 
 enum ReaderEnd {
@@ -173,8 +208,28 @@ impl Shared {
         self.state().closed
     }
 
+    /// Writes a frame through the writer task. Dropping the returned
+    /// future never cuts the frame: once queued, it is written in full.
     async fn write_frame(&self, frame: &Value) -> Result<()> {
-        self.transport.write(&format!("{frame}\n")).await
+        self.submit(Outgoing::Frame(format!("{frame}\n"))).await
+    }
+
+    async fn submit(&self, what: Outgoing) -> Result<()> {
+        let jobs = self.state().writer_jobs.take();
+        if let Some(jobs) = jobs {
+            let task = tokio::spawn(write_jobs(self.transport.clone(), jobs));
+            let mut state = self.state();
+            if state.closed {
+                task.abort();
+            } else {
+                state.tasks.push(task.abort_handle());
+            }
+        }
+        let (done, written) = oneshot::channel();
+        self.writer
+            .send(WriteJob { what, done })
+            .map_err(|_| session_closed())?;
+        written.await.unwrap_or_else(|_| Err(session_closed()))
     }
 
     fn complete_request(&self, frame: &Value) {
@@ -226,7 +281,7 @@ impl Shared {
 
     async fn end_input(&self) {
         self.run.seal();
-        if let Err(error) = self.transport.end_input().await {
+        if let Err(error) = self.submit(Outgoing::EndInput).await {
             tracing::debug!("Error closing the input stream: {error}");
         }
     }
@@ -403,7 +458,9 @@ impl ControlSession {
     /// reads. Nothing runs until [`open`](Self::open).
     pub(crate) fn new(transport: SharedTransport, config: SessionConfig) -> (Self, Inbox) {
         let (outbox, inbox) = mpsc::channel(MESSAGE_QUEUE_CAPACITY);
+        let (writer, writer_jobs) = mpsc::unbounded_channel();
         let shared = Arc::new(Shared {
+            writer,
             run: RunEndTracker::new(config.run_end_ceiling_ms, config.bidirectional),
             transport,
             config,
@@ -418,6 +475,7 @@ impl ControlSession {
                 request_counter: 0,
                 closed: false,
                 initialization: None,
+                writer_jobs: Some(writer_jobs),
             }),
             closing: tokio::sync::Mutex::new(false),
             resume: Mutex::new(None),

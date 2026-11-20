@@ -42,6 +42,10 @@ pub trait Transport: Send + Sync + 'static {
     fn connect(&self) -> impl Future<Output = Result<()>> + Send;
 
     /// Writes raw data, usually one JSON message followed by a line feed.
+    ///
+    /// A session of this crate calls `write` and
+    /// [`end_input`](Self::end_input) from one task, one call at a time and
+    /// in order, and drops a pending write only when the session closes.
     fn write(&self, data: &str) -> impl Future<Output = Result<()>> + Send;
 
     /// Returns the stream of parsed messages. It is meant to be called once
