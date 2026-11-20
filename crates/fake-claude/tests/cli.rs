@@ -404,7 +404,9 @@ fn a_recorded_run_writes_the_spawn_and_every_stdin_line_in_order() {
             ("TRACEPARENT", "00-a-b-01"),
             ("TRACESTATE", "k=v"),
             ("PWD", "/somewhere"),
-            ("UNRELATED_VARIABLE", "hidden"),
+            ("UNRELATED_VARIABLE", "kept"),
+            ("PYTHONPATH", "/harness"),
+            ("PARITY_JOURNAL", "/harness/journal.jsonl"),
         ],
         &["--output-format", "stream-json", "--verbose"],
         &input,
@@ -430,13 +432,11 @@ fn a_recorded_run_writes_the_spawn_and_every_stdin_line_in_order() {
     assert_eq!(env["TRACEPARENT"], "00-a-b-01");
     assert_eq!(env["TRACESTATE"], "k=v");
     assert_eq!(env["PWD"], "/somewhere");
-    assert!(!env.contains_key("UNRELATED_VARIABLE"));
+    assert_eq!(env["UNRELATED_VARIABLE"], "kept");
     assert!(!env.contains_key(RECORD_VARIABLE));
-    assert!(env.keys().all(|name| {
-        name.starts_with("CLAUDE_")
-            || name.starts_with("ANTHROPIC_")
-            || ["PWD", "MAX_THINKING_TOKENS", "TRACEPARENT", "TRACESTATE"].contains(&name.as_str())
-    }));
+    for name in ["PATH", "HOME", "PYTHONPATH", "PARITY_JOURNAL"] {
+        assert!(!env.contains_key(name), "{name}");
+    }
 
     assert_eq!(
         without_pid(&records[1..]),

@@ -18,11 +18,17 @@
 //! wrote it, so that the records of two processes sharing one file can be
 //! told apart.
 //!
-//! The recording rule selects every variable whose name starts with
-//! `CLAUDE_` or `ANTHROPIC_`, plus `PWD`, `MAX_THINKING_TOKENS`,
-//! `TRACEPARENT`, and `TRACESTATE`. Names are matched as written, with no
-//! change of case. A scenario that does not read stdin records only the
-//! spawn.
+//! The recording rule keeps every variable except those of
+//! [`UNRECORDED_VARIABLES`] and those whose name starts with
+//! `FAKE_CLAUDE_`, the variables that drive this program. The list names
+//! what the operating system or the harness puts in every process (`PATH`,
+//! the home and temporary directories, the locale, the Windows system
+//! variables) and what the harness gives one driver only (`PYTHONPATH`,
+//! `PYTHONDONTWRITEBYTECODE`, `PARITY_JOURNAL`): a variable an SDK adds,
+//! removes, or passes on from its own process is recorded, whatever its
+//! name. Names are matched as written, with no change of case, except on
+//! Windows, where names are case-insensitive and are matched ignoring
+//! case. A scenario that does not read stdin records only the spawn.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -34,8 +40,30 @@ use serde_json::{Map, Value, json};
 /// Environment variable naming the record file.
 pub(crate) const RECORD_VARIABLE: &str = "FAKE_CLAUDE_RECORD";
 
-const RECORDED_PREFIXES: [&str; 2] = ["CLAUDE_", "ANTHROPIC_"];
-const RECORDED_NAMES: [&str; 4] = ["PWD", "MAX_THINKING_TOKENS", "TRACEPARENT", "TRACESTATE"];
+/// Variables the recording leaves out: those of the operating system and
+/// of the harness, which no SDK chooses.
+pub(crate) const UNRECORDED_VARIABLES: [&str; 17] = [
+    "PATH",
+    "HOME",
+    "USERPROFILE",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "LANG",
+    "LC_ALL",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PARITY_JOURNAL",
+    "__CF_USER_TEXT_ENCODING",
+];
+
+/// Prefix of the variables that drive this program.
+const OWN_PREFIX: &str = "FAKE_CLAUDE_";
 
 /// Writer of the record file; a recorder with no file writes nothing.
 #[derive(Clone, Default)]
@@ -98,40 +126,44 @@ impl Recorder {
     }
 }
 
-/// Whether the recording rule selects the variable.
+/// Whether the recording rule keeps the variable.
 pub(crate) fn is_recorded(name: &str) -> bool {
-    RECORDED_PREFIXES
-        .iter()
-        .any(|prefix| name.starts_with(prefix))
-        || RECORDED_NAMES.contains(&name)
+    let same = |known: &str| {
+        if cfg!(windows) {
+            known.eq_ignore_ascii_case(name)
+        } else {
+            known == name
+        }
+    };
+    !name.starts_with(OWN_PREFIX) && !UNRECORDED_VARIABLES.iter().any(|known| same(known))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_recorded;
+    use super::{UNRECORDED_VARIABLES, is_recorded};
 
     #[test]
-    fn rule_selects_the_documented_variables_only() {
+    fn rule_keeps_every_variable_but_the_system_and_harness_ones() {
         for name in [
             "CLAUDE_CODE_ENTRYPOINT",
             "CLAUDE_AGENT_SDK_VERSION",
             "ANTHROPIC_API_KEY",
+            "CLAUDECODE",
+            "claude_code_entrypoint",
             "PWD",
+            "OLDPWD",
             "MAX_THINKING_TOKENS",
             "TRACEPARENT",
             "TRACESTATE",
+            "NODE_OPTIONS",
+            "HTTPS_PROXY",
         ] {
             assert!(is_recorded(name), "{name}");
         }
-        for name in [
-            "CLAUDECODE",
-            "claude_code_entrypoint",
-            "PATH",
-            "HOME",
-            "FAKE_CLAUDE_RECORD",
-            "FAKE_CLAUDE_SCENARIO",
-            "OLDPWD",
-        ] {
+        for name in UNRECORDED_VARIABLES
+            .into_iter()
+            .chain(["FAKE_CLAUDE_RECORD", "FAKE_CLAUDE_SCENARIO"])
+        {
             assert!(!is_recorded(name), "{name}");
         }
     }

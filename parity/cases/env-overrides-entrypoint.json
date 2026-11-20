@@ -1,11 +1,13 @@
 {
   "name": "env-overrides-entrypoint",
-  "description": "An entrypoint given in the env option overrides the SDK's own.",
+  "description": "An entrypoint given in the env option overrides the SDK's own, and every other variable of the option reaches the CLI, CLAUDECODE included.",
   "scenario": "one-shot",
   "options": {
     "env": {
       "CLAUDE_CODE_ENTRYPOINT": "my-app",
-      "CLAUDE_CODE_SDK_READS_SESSION_STATE": "1"
+      "CLAUDE_CODE_SDK_READS_SESSION_STATE": "1",
+      "CLAUDECODE": "1",
+      "MY_APP_SETTING": "on"
     }
   },
   "prompt": "Say hello"

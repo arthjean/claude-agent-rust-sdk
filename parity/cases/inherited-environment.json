@@ -1,13 +1,15 @@
 {
   "name": "inherited-environment",
-  "description": "Variables the SDK inherits from its own process: the SDK's entrypoint wins over an inherited one, and the caller's session-state choice is kept.",
+  "description": "Variables the SDK inherits from its own process: the SDK's entrypoint wins over an inherited one, CLAUDECODE is removed, any other variable is passed on, and the caller's session-state choice is kept.",
   "scenario": "one-shot",
   "process_env": {
     "CLAUDE_CODE_ENTRYPOINT": "outer-app",
     "ANTHROPIC_API_KEY": "sk-parity-not-a-real-key",
     "CLAUDE_CODE_SDK_READS_SESSION_STATE": "0",
     "TRACEPARENT": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-    "MAX_THINKING_TOKENS": "77"
+    "MAX_THINKING_TOKENS": "77",
+    "CLAUDECODE": "1",
+    "HTTPS_PROXY": "http://proxy.invalid:3128"
   },
   "prompt": "Say hello"
 }
