@@ -183,6 +183,18 @@ mod tests {
     }
 
     #[test]
+    fn a_timestamp_without_a_zone_is_read_as_utc() {
+        assert_eq!(
+            parse_iso_millis("2026-01-15T10:30:00"),
+            parse_iso_millis("2026-01-15T10:30:00Z")
+        );
+        assert_eq!(
+            parse_iso_millis("2026-01-15T10:30:00.123"),
+            Some(1_768_473_000_123)
+        );
+    }
+
+    #[test]
     fn rejects_malformed_timestamps() {
         for text in [
             "not-a-date",

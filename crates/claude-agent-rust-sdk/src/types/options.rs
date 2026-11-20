@@ -652,6 +652,40 @@ mod tests {
     }
 
     #[test]
+    fn a_callback_next_to_the_stdio_prompt_tool_is_accepted_only_when_the_fields_are_set_directly()
+    {
+        let mut direct = ClaudeAgentOptions {
+            can_use_tool: Some(allow_everything()),
+            permission_prompt_tool_name: Some("stdio".to_owned()),
+            ..ClaudeAgentOptions::default()
+        };
+        assert_eq!(
+            direct
+                .for_session()
+                .unwrap()
+                .permission_prompt_tool_name
+                .as_deref(),
+            Some("stdio")
+        );
+
+        direct.permission_prompt_tool_name = Some("mcp__approver__ask".to_owned());
+        assert_eq!(
+            direct.for_session().as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config)
+        );
+
+        let built = ClaudeAgentOptions::builder()
+            .can_use_tool(allow_everything())
+            .permission_prompt_tool_name("stdio")
+            .build();
+        assert_eq!(
+            built.as_ref().err().map(Error::kind),
+            Some(ErrorKind::Config),
+            "the builder refuses any prompt tool next to the callback, as upstream"
+        );
+    }
+
+    #[test]
     fn whole_tool_allowed_mirrors_the_cli_rule_parser() {
         let cases: [(&str, Option<&str>); 15] = [
             ("Read", Some("Read")),

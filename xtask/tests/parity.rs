@@ -296,10 +296,26 @@ fn a_test_of_another_platform_is_checked_against_the_sources() {
     let declared = Fixture::new(
         &["query"],
         &surface(&[("query", &rust(EXISTING_PATH))]),
-        &tests_ledger(&rust(&format!("{EXISTING_TEST} @{elsewhere}"))),
+        &tests_ledger(&rust(&format!(
+            "xtask/tests/parity.rs::compiled_on_{elsewhere}_only @{elsewhere}"
+        ))),
     );
     let check = declared.run("parity-check", &[]);
     assert!(check.status.success(), "{}", stderr(&check));
+
+    let compiled_here = Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(EXISTING_PATH))]),
+        &tests_ledger(&rust(&format!("{EXISTING_TEST} @{elsewhere}"))),
+    );
+    let check = compiled_here.run("parity-check", &[]);
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check)
+            .contains("which is compiled on this platform too, so its platform suffix is wrong"),
+        "{}",
+        stderr(&check)
+    );
 
     let undeclared = "xtask/tests/parity.rs::declared_on_no_platform";
     let missing = Fixture::new(
@@ -612,6 +628,38 @@ fn a_claim_of_parity_in_the_migration_guide_fails_the_check_too() {
     assert!(!check.status.success());
     assert!(
         stderr(&check).contains("migration.md: the hand-written text claims `at parity with`"),
+        "{}",
+        stderr(&check)
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn compiled_on_windows_only() {}
+
+#[cfg(unix)]
+#[test]
+fn compiled_on_unix_only() {}
+
+#[test]
+#[ignore = "named by a fixture ledger: parity-check refuses an ignored test"]
+fn this_ignored_test_is_named_by_a_fixture() {}
+
+#[test]
+fn a_ledger_naming_an_ignored_test_fails_the_check() {
+    let fixture = Fixture::new(
+        &["query"],
+        &surface(&[("query", &rust(EXISTING_PATH))]),
+        &tests_ledger(&rust(
+            "xtask/tests/parity.rs::this_ignored_test_is_named_by_a_fixture",
+        )),
+    );
+
+    let check = fixture.run("parity-check", &[]);
+
+    assert!(!check.status.success());
+    assert!(
+        stderr(&check).contains("which is `#[ignore]`d, so CI never runs it"),
         "{}",
         stderr(&check)
     );

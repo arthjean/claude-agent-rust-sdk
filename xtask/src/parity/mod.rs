@@ -7,7 +7,7 @@ mod page;
 pub(crate) mod python;
 mod rust;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -355,18 +355,34 @@ fn page_problems(locations: &Locations, loaded: &Loaded) -> Result<Vec<String>, 
     Ok(problems)
 }
 
-fn test_exists(root: &Path, tests: &BTreeSet<String>, path: &str) -> bool {
-    let (path, platform) = ledger::split_platform(path);
-    match platform.map(ledger::compiled_here) {
-        None | Some(Some(true)) => tests.contains(path),
-        Some(Some(false)) => rust::test_is_declared(root, path),
+/// Why a ledger cannot name the test `path`, or `None` when it can.
+fn test_problem(root: &Path, tests: &rust::Tests, path: &str) -> Option<&'static str> {
+    let (bare, platform) = ledger::split_platform(path);
+    let compiled_here = platform.map(ledger::compiled_here);
+    let present = match compiled_here {
+        None | Some(Some(true)) => tests.listed.contains(bare),
+        Some(Some(false)) => {
+            if tests.listed.contains(bare) {
+                return Some(
+                    "which is compiled on this platform too, so its platform suffix is wrong",
+                );
+            }
+            rust::test_is_declared(root, bare)
+        }
         Some(None) => false,
+    };
+    if !present {
+        return Some("which does not exist");
     }
+    tests
+        .ignored
+        .contains(bare)
+        .then_some("which is `#[ignore]`d, so CI never runs it")
 }
 
 fn missing_paths(
     ledger: &Ledger,
-    exists: impl FnOnce(&[&str]) -> Result<Vec<bool>, String>,
+    problems: impl FnOnce(&[&str]) -> Result<Vec<Option<&'static str>>, String>,
 ) -> Result<Vec<String>, String> {
     let pairs = ledger.rust_paths();
     let distinct: Vec<&str> = pairs
@@ -375,21 +391,21 @@ fn missing_paths(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let found = exists(&distinct)?;
-    let missing: BTreeSet<&str> = distinct
+    let found = problems(&distinct)?;
+    let wrong: BTreeMap<&str, &str> = distinct
         .iter()
         .zip(found)
-        .filter(|(_, found)| !found)
-        .map(|(path, _)| *path)
+        .filter_map(|(path, problem)| problem.map(|problem| (*path, problem)))
         .collect();
     Ok(pairs
         .iter()
-        .filter(|pair| missing.contains(pair.1))
-        .map(|(item, path)| {
-            format!(
-                "{}: `{item}` names Rust path `{path}`, which does not exist",
-                ledger.file
-            )
+        .filter_map(|(item, path)| {
+            wrong.get(path).map(|problem| {
+                format!(
+                    "{}: `{item}` names Rust path `{path}`, {problem}",
+                    ledger.file
+                )
+            })
         })
         .collect())
 }
@@ -408,7 +424,11 @@ fn check(arguments: &Arguments) -> Result<Vec<String>, String> {
     problems.extend(missing_paths(&loaded.surface, |paths| {
         let unresolved = rust::unresolved_paths(&locations.root, paths)?;
         Ok((0..paths.len())
-            .map(|index| !unresolved.contains(&index))
+            .map(|index| {
+                unresolved
+                    .contains(&index)
+                    .then_some("which does not exist")
+            })
             .collect())
     })?);
     eprintln!(
@@ -418,13 +438,13 @@ fn check(arguments: &Arguments) -> Result<Vec<String>, String> {
     problems.extend(missing_paths(&loaded.tests, |paths| {
         Ok(paths
             .iter()
-            .map(|path| test_exists(&locations.root, &tests, path))
+            .map(|path| test_problem(&locations.root, &tests, path))
             .collect())
     })?);
     for entry in differences(locations)?.behavior {
-        if !test_exists(&locations.root, &tests, &entry.test) {
+        if let Some(problem) = test_problem(&locations.root, &tests, &entry.test) {
             problems.push(format!(
-                "parity/differences.toml: `behavior.{}` names Rust test `{}`, which does not exist",
+                "parity/differences.toml: `behavior.{}` names Rust test `{}`, {problem}",
                 entry.id, entry.test
             ));
         }
@@ -587,7 +607,7 @@ pub fn run_page(arguments: &[String]) -> ExitCode {
 /// may name.
 pub fn run_tests(arguments: &[String]) -> ExitCode {
     let result = parse(arguments).and_then(|arguments| {
-        for test in rust::tests(&arguments.locations.root)? {
+        for test in rust::tests(&arguments.locations.root)?.listed {
             println!("{test}");
         }
         Ok(Vec::new())
@@ -748,7 +768,10 @@ mod tests {
 
     #[test]
     fn missing_paths_names_the_item_and_the_path() {
-        let problems = missing_paths(&sample(), |paths| Ok(vec![false; paths.len()])).unwrap();
+        let problems = missing_paths(&sample(), |paths| {
+            Ok(vec![Some("which does not exist"); paths.len()])
+        })
+        .unwrap();
         assert_eq!(
             problems,
             [

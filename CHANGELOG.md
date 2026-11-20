@@ -28,6 +28,7 @@
 - A `ResultError` that replaces the process error after a failed run carries that process error as its `source`, as upstream sets `__cause__`.
 - The README, the migration guide, and the parity page state what is measured: a port of 0.2.186, the reviewed differences and the ones not yet classified, and the unit tests the ledger lists (the upstream end-to-end tests are not). `parity-check` now fails on a hand-written claim of parity (`at parity with`, `every known difference`, `full parity`, `100%`) in any of the three.
 - **Breaking:** `ClaudeSdkClient::receive_messages` and `receive_response` end after yielding an error, such as a message that cannot be parsed, as upstream's iterator does; call `receive_messages` again to read the messages after it.
+- `cargo xtask parity-check` fails when a ledger names an `#[ignore]`d test, a test compiled on this platform under another platform's suffix, or, for a test of another platform, a function that is not a test; CI runs it on Linux, macOS, and Windows.
 
 ### Removed
 

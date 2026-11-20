@@ -48,7 +48,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A31 | minor | Dependency weight, third-party types in the API | todo | |
 | A32 | minor | Tests that pass silently or cannot fail | todo | |
 | A33 | minor | Wrong or partial test-ledger mappings | todo | |
-| A34 | minor | Harden parity-check | todo | |
+| A34 | minor | Harden parity-check | done | `rust::Tests { listed, ignored }` (`--list --ignored`); an ignored test, a wrong platform suffix, and a non-test function in the textual fallback fail (`xtask/tests/parity.rs::a_ledger_naming_an_ignored_test_fails_the_check`, `a_test_of_another_platform_is_checked_against_the_sources`, `rust::tests::a_declaration_counts_only_under_a_test_attribute`). Parity job is a 3-OS matrix (CI only; not run here). New tests for `can-use-tool-with-stdio` and `timestamp-without-zone`; `user-option-group` handed to the A32 agent with the uid test. |
 | A35 | cosmetic | Parse `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` like `int()` | todo | |
 | A36 | cosmetic | Error texts and product name | todo | |
 | A37 | cosmetic | MCP wire and macro details | todo | |

@@ -78,16 +78,45 @@ fn relative(root: &Path, path: &str) -> String {
         .replace('\\', "/")
 }
 
-/// Every test the workspace builds with all features, as
-/// `<target source file>::<test name>`, the source file being relative to
-/// the workspace root.
-pub fn tests(root: &Path) -> Result<BTreeSet<String>, String> {
+/// The tests the workspace builds with all features.
+#[derive(Debug, Default)]
+pub struct Tests {
+    /// Every test, as `<target source file>::<test name>`, the source file
+    /// being relative to the workspace root.
+    pub listed: BTreeSet<String>,
+    /// The tests among them marked `#[ignore]`, which CI never runs.
+    pub ignored: BTreeSet<String>,
+}
+
+fn list(executable: &Path, ignored: bool) -> Result<String, String> {
+    let mut command = Command::new(executable);
+    command.args(["--list", "--format", "terse"]);
+    if ignored {
+        command.arg("--ignored");
+    }
+    let output = command
+        .env(library_search_variable(), library_search_path(executable)?)
+        .output()
+        .map_err(|error| format!("cannot run {}: {error}", executable.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{} --list failed: {}",
+            executable.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Every test the workspace builds with all features, and which of them
+/// are ignored.
+pub fn tests(root: &Path) -> Result<Tests, String> {
     let arguments = ["test", "--workspace", "--all-features", "--no-run"].map(OsStr::new);
     let (built, messages) = cargo_messages(root, &arguments, Stdio::inherit())?;
     if !built {
         return Err("`cargo test --workspace --all-features --no-run` failed".to_owned());
     }
-    let mut tests = BTreeSet::new();
+    let mut tests = Tests::default();
     for artifact in messages {
         let (Some(executable), Some(source)) = (
             artifact["executable"].as_str(),
@@ -99,30 +128,38 @@ pub fn tests(root: &Path) -> Result<BTreeSet<String>, String> {
             continue;
         }
         let executable = Path::new(executable);
-        let output = Command::new(executable)
-            .args(["--list", "--format", "terse"])
-            .env(library_search_variable(), library_search_path(executable)?)
-            .output()
-            .map_err(|error| format!("cannot run {}: {error}", executable.display()))?;
-        if !output.status.success() {
-            return Err(format!(
-                "{} --list failed: {}",
-                executable.display(),
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
         let target = relative(root, source);
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            if let Some(name) = line.strip_suffix(": test") {
-                tests.insert(format!("{target}::{name}"));
+        for (ignored, set) in [(false, &mut tests.listed), (true, &mut tests.ignored)] {
+            for line in list(executable, ignored)?.lines() {
+                if let Some(name) = line.strip_suffix(": test") {
+                    set.insert(format!("{target}::{name}"));
+                }
             }
         }
     }
     Ok(tests)
 }
 
+/// Whether `text` declares `declaration` (`fn name(`) under a test
+/// attribute, such as `#[test]` or `#[tokio::test(...)]`, among the
+/// attribute and comment lines right above it.
+fn declares_test(text: &str, declaration: &str) -> bool {
+    let lines: Vec<&str> = text.lines().collect();
+    lines.iter().enumerate().any(|(index, line)| {
+        line.contains(declaration)
+            && lines[..index]
+                .iter()
+                .rev()
+                .map(|line| line.trim())
+                .take_while(|line| {
+                    line.starts_with("#[") || line.starts_with("//") || line.ends_with(")]")
+                })
+                .any(|line| line.starts_with("#[") && line.contains("test"))
+    })
+}
+
 fn declares(source: &Path, declaration: &str) -> bool {
-    std::fs::read_to_string(source).is_ok_and(|text| text.contains(declaration))
+    std::fs::read_to_string(source).is_ok_and(|text| declares_test(&text, declaration))
 }
 
 fn any_source_declares(directory: &Path, declaration: &str) -> bool {
@@ -140,8 +177,8 @@ fn any_source_declares(directory: &Path, declaration: &str) -> bool {
     })
 }
 
-/// Whether the sources of the target a test path names declare a function
-/// with the name of the test.
+/// Whether the sources of the target a test path names declare a test
+/// function with the name of the test.
 ///
 /// This stands in for [`tests`] when the test is compiled on another
 /// platform only, so the toolchain of this host cannot list it. A test at
@@ -424,5 +461,16 @@ fn only_in_the_other_target() {}
             "src/lib.rs::cli::tests::no_such_test"
         ));
         assert!(!test_is_declared(root, "tests/transport.rs"));
+    }
+
+    #[test]
+    fn a_declaration_counts_only_under_a_test_attribute() {
+        let text = "#[test]\nfn listed() {}\n\n\
+            #[cfg(windows)]\n#[tokio::test(start_paused = true)]\n/// Doc.\nasync fn tokio_one() {}\n\n\
+            fn helper() {}\n\n#[cfg(windows)]\nfn not_a_test() {}\n";
+        assert!(declares_test(text, "fn listed("));
+        assert!(declares_test(text, "fn tokio_one("));
+        assert!(!declares_test(text, "fn helper("));
+        assert!(!declares_test(text, "fn not_a_test("));
     }
 }

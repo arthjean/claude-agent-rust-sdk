@@ -121,7 +121,7 @@ ref = "src/claude_agent_sdk/types.py:2400-2404"
 anchor = "if options.permission_prompt_tool_name:"
 category = "deliberate"
 reason = "`stdio` is the value the SDK itself sets for the callback, so refusing it would reject options the SDK produced."
-test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::session_options_force_the_stdio_prompt_tool_for_a_callback_set_after_the_build"
+test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::a_callback_next_to_the_stdio_prompt_tool_is_accepted_only_when_the_fields_are_set_directly"
 
 [behavior.unknown-messages-kept]
 summary = "An unknown message type"
@@ -331,7 +331,7 @@ ref = "src/claude_agent_sdk/_internal/session_summary.py:45-46"
 anchor = "return int(datetime.fromisoformat(norm).timestamp() * 1000)"
 category = "deliberate"
 reason = "The result does not depend on the zone of the machine that reads the file."
-test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::parses_the_formats_the_cli_writes"
+test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::a_timestamp_without_a_zone_is_read_as_utc"
 
 [behavior.user-option-group]
 summary = "The `user` option"

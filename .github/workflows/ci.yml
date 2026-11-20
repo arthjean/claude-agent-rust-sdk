@@ -168,10 +168,17 @@ jobs:
         with:
           command: check licenses
 
+  # Each platform lists the tests it compiles and checks the ones the
+  # ledgers mark for another platform against the sources, so every
+  # platform suffix is checked where it is compiled.
   parity:
-    name: Parity ledgers
-    runs-on: ubuntu-latest
+    name: Parity ledgers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7.0.1
         with:

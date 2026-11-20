@@ -1001,6 +1001,7 @@ fn ci_checks_the_parity_ledgers_on_every_pull_request() {
     let job = ci_job(&workflow, "parity");
     assert!(job.contains("run: cargo xtask parity-check --deny-pending"));
     assert!(job.contains("submodules: true"));
+    assert!(job.contains("os: [ubuntu-latest, macos-latest, windows-latest]"));
     assert!(!job.contains("if:"), "{job}");
 }
 
