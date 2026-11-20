@@ -36,6 +36,7 @@
 - **Breaking:** `ClaudeSdkClient::get_server_info`, `get_mcp_status`, and `get_context_usage` are renamed `server_info`, `mcp_status`, and `context_usage`, and `ToolResult::is_error(bool)` is renamed `with_error_flag(bool)`.
 - The product is named Claude Code throughout the docs, logs, and package descriptions, and the errors about hooks set to block on failure use upstream's words (`remove on_failure="block" from your hooks`).
 - **Breaking:** `AssistantMessage::usage` and `ResultMessage::usage` are a `Usage`, which keeps the JSON the CLI sent and reads `input_tokens`, `output_tokens`, the two cache counts, and `service_tier`; `Usage::into_value` gives the JSON back.
+- **Breaking:** `list_sessions`, `list_sessions_from_store`, `get_session_messages`, `get_subagent_messages`, `get_session_messages_from_store`, `get_subagent_messages_from_store`, `fork_session`, `fork_session_via_store`, and `import_session_to_store` take an options struct (`ListSessionsOptions`, `SessionMessagesOptions`, `ForkSessionOptions`, `ImportSessionOptions`) built with `new()` and chainable setters, in place of their positional optional parameters; the defaults are upstream's keyword defaults.
 
 ### Removed
 

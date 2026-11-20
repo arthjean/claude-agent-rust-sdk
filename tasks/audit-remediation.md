@@ -56,7 +56,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A39 | cosmetic | Empty `cwd` | done | Empty `cwd` is unset; empty path canonicalizes to `.`. Tests red before. |
 | A40 | cosmetic | Size measures, Unicode version, subpaths | done | Trailing-separator subkey fixed (red before); sizes in UTF-8 bytes, lite serialization, and Unicode version recorded as four `[behavior]` entries with tests. |
 | A41 | cosmetic | Ledger inconsistencies | done | Case `budget-as-integer` and `[wire.budget-integer-spelling]` (replaces the unclassified entry that said no case could show it); exponent entry reworded; `test_option_is_captured_at_connect` moved to `python-aliasing`; the Rust driver builds agents with the setters a program calls; the tools-object translation is kept and explained (Python writes `--tools default` for any object). 43 cases match. |
-| A42 | cosmetic | Idiomatic naming | doing | `get_` prefix dropped (`server_info`, `mcp_status`, `context_usage`, with `doc(alias)`), `ToolResult::with_error_flag`. Left: option structs for the session functions with positional arguments. |
+| A42 | cosmetic | Idiomatic naming | done | `get_` prefix dropped (`server_info`, `mcp_status`, `context_usage`, with `doc(alias)`), `ToolResult::with_error_flag`; option structs `ListSessionsOptions`, `SessionMessagesOptions`, `ForkSessionOptions`, `ImportSessionOptions` for the nine session functions with optional parameters, defaults tested against upstream keyword defaults; migration guide maps keyword arguments to setters. |
 | A43 | cosmetic | Cargo warning on every build (`homepage`) | done | `homepage` removed from the manifests; `published_manifests_carry_the_registry_metadata` now forbids it. |
 
 ## Product choices taken without the owner
