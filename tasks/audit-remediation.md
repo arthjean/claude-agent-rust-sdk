@@ -63,6 +63,13 @@ difference, recorded), `blocked` (waiting on the owner).
 
 Each choice the audit did not settle, with the cautious option taken.
 
+- A14: names in `OTEL_PROPAGATORS` other than `tracecontext`, `baggage`, and `none` (b3, jaeger) are ignored when no global propagator is installed (`[behavior.otel-propagators-names]`).
+- A20: the variants of an enum are merged into one object schema instead of a top-level `oneOf`, which the Claude API refuses; the schemars shape (nullable types, bounds, title) is kept (`[behavior.typed-tool-schema-shape]`).
+- A21: no form of `#[tool]` on an `impl` block; state is passed as the first argument instead.
+- A22: a store that implements `list_sessions` without declaring it is still refused for `continue_conversation`, the one check that runs before the store can be called (`[behavior.store-declaration-for-continue]`).
+- A28: up to 16 MiB of unread messages are buffered while control traffic keeps flowing; past it the reader stops, as upstream's pipe does (`[behavior.control-routed-past-unread-messages]`).
+- A35: a `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that Python's `int()` rejects keeps 60 s with a warning, where upstream fails the connect (`[behavior.malformed-stream-close-timeout]`).
+- A40: sizes stay in UTF-8 bytes and the tag sanitizer uses the Unicode version of the Rust crates, matching what the CLI writes (four `[behavior]` entries).
 - A10: `managed_install_dir` is private as asked, and its directory is still searched before `PATH`, so a CLI placed there by hand keeps working. Removing the lookup would be the other option; it changes behavior for no measured gain.
 
 ## Real-CLI runs (budget: 10 USD)
@@ -76,8 +83,9 @@ Each choice the audit did not settle, with the cautious option taken.
 | 2026-11-20 | A01: the same test on `cb286bc~1`, before the fix, in a separate worktree | 0.0038 | Fails: the callback runs for both writes, so the CLI did not apply the `Write` rule sent with `ruleContent: null`. |
 | 2026-11-20 | `e2e` `a_raw_tool_with_an_empty_schema_is_listed_next_to_the_others`, fixed code then the previous `tool.rs` (handshake and `mcp_status` only) | 0.00 | Passes with the fix; with the previous code the CLI lists `tools: []` for the server. |
 | 2026-11-20 | Full `cargo xtask e2e` against CLI 2.1.329 on HEAD `9036340` (55 tests, `--test-threads=4`) | about 0.80 (the documented cost of a run; the suite does not print its total) | 54 pass. `session_store_resume_settings::a_store_resume_applies_the_user_settings` fails by design here: it runs the CLI under an empty config directory and needs `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, which a claude.ai login does not provide (before A32 it returned early and passed without checking anything). |
+| 2026-11-20 | A04 probe: a `user` frame whose text holds the escape `\ud800`, with `--replay-user-messages` and `--model haiku`, process killed after the echo | under 0.01 (killed before the answer) | The CLI echoes the escape as written (`"content":"Reply with one word: \\ud800 ok"`): a lone surrogate escape does reach the SDK, which before A04 failed the whole session on it. |
 
-Total spent: about 0.82 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
+Total spent: about 0.83 USD (the CLI runs on a claude.ai login; the amounts are the `total_cost_usd` the CLI reports).
 
 ## A11 proposal (error design, approved by the owner on 2026-11-20: opaque `Error` with `kind()`)
 
