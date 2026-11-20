@@ -402,6 +402,69 @@ category = "deliberate"
 reason = "Rust cannot see whether a trait method is overridden, and building options is synchronous, so the declaration is the only answer available before the child starts."
 test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_reads_the_declaration_of_list_sessions"
 
+[behavior.transcript-invalid-utf8]
+summary = "A transcript that is not valid UTF-8"
+python = "Reading the session or a subagent from disk, and importing it into a store, decode it strictly: one byte such as `0xff` raises `UnicodeDecodeError`. Credentials that are not UTF-8 fail a resume the same way."
+rust = "Each invalid sequence becomes U+FFFD: the messages are returned and the import succeeds with the replaced text. Credentials are decoded the same way before the refresh token is removed."
+ref = "src/claude_agent_sdk/_internal/sessions.py:839"
+category = "rust-more-robust"
+reason = "One corrupt byte, as a write cut at a crash can leave, must not make a whole session unreadable; the parsers that read the head and tail of a transcript already replace them in both SDKs."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::transcripts_that_are_not_utf8_are_read_and_imported_with_replacement_characters"
+
+[behavior.fork-line-separators]
+summary = "A transcript line holding U+2028, U+2029, or U+0085 when a session is forked"
+python = "`str.splitlines()` also cuts on those characters, which JSON allows unescaped in a string, so the halves fail to parse and the entry is missing from the fork."
+rust = "Lines are cut on `\\n` only, as the CLI writes them, and the entry is kept."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:601"
+category = "python-defect"
+reason = "The CLI ends each JSONL line with `\\n`; any other line break is part of a value."
+test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_splits_lines_on_newlines_only_and_keeps_an_entry_holding_a_line_separator"
+
+[behavior.import-non-object-lines]
+summary = "A transcript line that is valid JSON but not an object, on import"
+python = "The value is appended to the batch as is, and the import fails in the store (`AttributeError` in `InMemorySessionStore`)."
+rust = "The line is skipped with a warning and the rest of the transcript is imported. Invalid JSON still fails the import with `ErrorKind::JsonDecode`."
+ref = "src/claude_agent_sdk/_internal/session_import.py:138"
+category = "rust-more-robust"
+reason = "`SessionStoreEntry` is a JSON object; a line that cannot be one has nothing to store."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_skips_a_transcript_line_that_is_not_a_json_object"
+
+[behavior.store-agent-id-segment]
+summary = "An agent id that is not one path segment, read from a store without `list_subkeys`"
+python = "Only an empty id is refused; `x/../../secret` becomes part of the subpath the store loads."
+rust = "An id that is `.`, `..`, or holds `/`, `\\`, or NUL returns no message, and the store is not called."
+ref = "src/claude_agent_sdk/_internal/sessions.py:2206"
+category = "rust-stricter"
+reason = "An adapter that maps subpaths to files would otherwise read outside the subagents of the session; no agent id the CLI writes has a separator."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::an_agent_id_that_is_not_one_segment_loads_nothing"
+
+[behavior.mirror-canonical-projects-dir]
+summary = "A mirror frame whose path goes through the real path of a linked projects directory"
+python = "The path is compared with the projects directory lexically (`os.path.relpath`), so a frame under its real path (`/private/var` for `/var` on macOS) is dropped."
+rust = "The frame is matched against the projects directory, then against its real path, and mirrored under the same key."
+ref = "src/claude_agent_sdk/_internal/session_store.py:159"
+category = "rust-more-robust"
+reason = "The CLI may report the transcript under the resolved path of its config directory; the transcript is the same file."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::a_frame_under_the_real_path_of_a_linked_projects_directory_is_mirrored @unix"
+
+[behavior.import-bare-jsonl-name]
+summary = "A file named `.jsonl` among the subagent transcripts, on import"
+python = "It is imported under the subpath `subagents/`, which ends with a separator."
+rust = "It is left out: its name has no stem, so it has no subagent id and no subpath."
+ref = "src/claude_agent_sdk/_internal/session_import.py:161"
+category = "rust-stricter"
+reason = "The CLI never writes such a file, and a subpath ending with `/` names no transcript a resume could recreate."
+test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_leaves_out_a_subagent_file_named_only_jsonl"
+
+[behavior.mirror-timeout-message]
+summary = "The `mirror_error` message of an append that timed out"
+python = "The error text is `str(TimeoutError())`, which is empty."
+rust = "The error text is `Session store append timed out after <n> ms`."
+ref = "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py:219"
+category = "deliberate"
+reason = "An empty error tells the application nothing about why the batch was dropped."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::mirror::tests::a_timed_out_append_is_not_retried"
+
 [unclassified.conformance-duplicate-summaries]
 source = "4.1, stricter conformance check"
 summary = "Contract 14 of the session store conformance suite also fails when a store returns the same summary twice; Python compares sets. No test shows it yet."

@@ -1173,6 +1173,90 @@ async fn import_skips_the_blank_lines_of_a_transcript() {
 }
 
 #[tokio::test]
+async fn import_skips_a_transcript_line_that_is_not_a_json_object() {
+    let project = Project::new();
+    let id = new_id();
+    std::fs::write(
+        project.transcript(&id),
+        format!("{}\n[1,2]\n\"text\"\n{}\n", plain(0), plain(1)),
+    )
+    .unwrap();
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_entries(&SessionKey::new(project_key(&project), id.as_str())),
+        plain_entries([0, 1])
+    );
+}
+
+#[tokio::test]
+async fn import_leaves_out_a_subagent_file_named_only_jsonl() {
+    let project = Project::new();
+    let id = new_id();
+    project.write(&id, &[plain(0)]);
+    let subagents = project.dir.join(&id).join("subagents");
+    write_lines(&subagents.join(".jsonl"), &[plain(5)]);
+    write_lines(&subagents.join("agent-a.jsonl"), &[plain(6)]);
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_subkeys(&SessionListSubkeysKey::new(
+                project_key(&project),
+                id.as_str()
+            ))
+            .await
+            .unwrap(),
+        ["subagents/agent-a"]
+    );
+}
+
+/// The bytes of a transcript line whose prompt holds `ab`, the byte 0xff,
+/// which is not UTF-8, and `cd`.
+fn line_with_invalid_utf8(line: &Value) -> Vec<u8> {
+    let text = line.to_string();
+    let (before, after) = text.split_once("MARK").unwrap();
+    [before.as_bytes(), b"ab\xffcd", after.as_bytes(), b"\n"].concat()
+}
+
+#[tokio::test]
+async fn transcripts_that_are_not_utf8_are_read_and_imported_with_replacement_characters() {
+    let project = Project::new();
+    let id = new_id();
+    let prompt = user("u1", None, &id, Value::from("MARK"));
+    std::fs::write(project.transcript(&id), line_with_invalid_utf8(&prompt)).unwrap();
+    let subagent = project
+        .dir
+        .join(&id)
+        .join("subagents")
+        .join("agent-a.jsonl");
+    std::fs::create_dir_all(subagent.parent().unwrap()).unwrap();
+    std::fs::write(
+        &subagent,
+        line_with_invalid_utf8(&user("s1", None, &id, Value::from("MARK"))),
+    )
+    .unwrap();
+
+    let messages = get_session_messages(&id, Some(project.path()), None, 0);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message["content"], "ab\u{fffd}cd");
+    let messages = get_subagent_messages(&id, "a", Some(project.path()), None, 0);
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message["content"], "ab\u{fffd}cd");
+
+    let store = InMemorySessionStore::new();
+    import_session_to_store(&id, &store, Some(project.path()), true, 500)
+        .await
+        .unwrap();
+    let imported = store.get_entries(&SessionKey::new(project_key(&project), id.as_str()));
+    assert_eq!(imported[0]["message"]["content"], "ab\u{fffd}cd");
+}
+
+#[tokio::test]
 async fn a_batch_size_of_zero_imports_in_batches_of_500_entries() {
     let project = Project::new();
     let small = new_id();

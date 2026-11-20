@@ -464,6 +464,25 @@ fn fork_keeps_the_key_order_of_each_entry_as_upstream_does() {
 }
 
 #[test]
+fn fork_splits_lines_on_newlines_only_and_keeps_an_entry_holding_a_line_separator() {
+    let project = Project::new();
+    let id = new_id();
+    let mut source = transcript(&project, &id);
+    source[3]["message"]["content"] = Value::from("before\u{2028}after\u{85}end");
+    project.write(&id, &source);
+    let raw = std::fs::read_to_string(project.transcript(&id)).unwrap();
+    assert!(raw.contains('\u{2028}'), "the separator is written raw");
+
+    let fork = fork_session(&id, Some(project.path()), None, None).unwrap();
+    let messages = get_session_messages(&fork.session_id, Some(project.path()), None, 0);
+    assert_eq!(messages.len(), 3);
+    assert_eq!(
+        messages[2].message["content"],
+        "before\u{2028}after\u{85}end"
+    );
+}
+
+#[test]
 fn fork_cuts_inclusively_and_honors_titles() {
     let project = Project::new();
     let id = new_id();

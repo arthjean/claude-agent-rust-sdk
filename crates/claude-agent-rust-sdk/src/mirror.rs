@@ -9,6 +9,16 @@
 //! store panics, is retried; a batch dropped for good is reported as a
 //! `mirror_error` system message. The local transcript is already durable,
 //! so mirroring never stops the session.
+//!
+//! The mirror differs from upstream in deliberate ways:
+//!
+//! - A frame is matched against the projects directory and then against
+//!   its real path, so a frame the CLI reports under the resolved path of
+//!   a linked config directory (`/private/var` for `/var` on macOS) is
+//!   mirrored; Python compares the paths lexically and drops it.
+//! - The `mirror_error` of an append that timed out says so, with the
+//!   limit in milliseconds; Python reports the empty text of its
+//!   `TimeoutError`.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -515,6 +525,27 @@ mod tests {
         batcher.enqueue(path("s"), Vec::new());
         batcher.flush().await;
         assert_eq!(store.size(), 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_frame_under_the_real_path_of_a_linked_projects_directory_is_mirrored() {
+        let root = tempfile::tempdir().unwrap();
+        let real = root.path().join("real");
+        std::fs::create_dir_all(real.join("projects")).unwrap();
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let store = InMemorySessionStore::new();
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(store.clone()),
+            link.join("projects"),
+            &SessionStoreFlushMode::Batched,
+        );
+        let canonical = PathBuf::from(crate::sessions::canonicalize_path(&real));
+        let file = canonical.join("projects").join("proj").join("s.jsonl");
+        batcher.enqueue(file.to_string_lossy().into_owned(), entries(1, "r"));
+        batcher.flush().await;
+        assert_eq!(store.get_entries(&SessionKey::new("proj", "s")).len(), 1);
     }
 
     fn counting() -> (Arc<FlakyStore>, Arc<TranscriptMirrorBatcher>) {

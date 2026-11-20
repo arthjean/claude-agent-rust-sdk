@@ -9,6 +9,24 @@
 //! the upstream Python SDK, and block on filesystem calls: from async code,
 //! run them inside `tokio::task::spawn_blocking`. Their counterparts
 //! working against a [`SessionStore`](crate::SessionStore) are async.
+//!
+//! Reading and importing transcripts differ from upstream in deliberate
+//! ways:
+//!
+//! - A transcript that is not valid UTF-8 is read with each invalid
+//!   sequence replaced by U+FFFD, on disk, on import, and for the
+//!   credentials of a resume; Python decodes strictly and raises
+//!   `UnicodeDecodeError`.
+//! - A fork cuts the transcript on `\n` only. Python's `splitlines` also
+//!   cuts on U+2028, U+2029, and U+0085, which a JSON string may hold
+//!   unescaped, and loses the entry.
+//! - An import skips a line that is valid JSON but not an object, where
+//!   Python hands it to the store, and leaves out a subagent file named
+//!   only `.jsonl`, which Python imports under the subpath `subagents/`.
+//! - Reading a subagent from a store without `list_subkeys` returns
+//!   nothing for an agent id that is not one path segment (`.`, `..`, or
+//!   one holding `/`, `\`, or NUL); Python refuses only the empty id and
+//!   lets the id reach the subpath the store loads.
 
 mod chain;
 mod disk;
