@@ -15,7 +15,6 @@ rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["Arthur Jean"]
 repository = "https://github.com/arthjean/claude-agent-rust-sdk"
-homepage = "https://github.com/arthjean/claude-agent-rust-sdk"
 
 [workspace.dependencies]
 futures-core = "0.3.31"
