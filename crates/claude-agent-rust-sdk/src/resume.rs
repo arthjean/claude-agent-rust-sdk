@@ -551,6 +551,19 @@ pub(crate) fn is_safe_subpath(subpath: &str) -> bool {
         .any(|segment| matches!(segment, "." | ".."))
 }
 
+/// The transcript file of a subpath: its last segment with `.jsonl`
+/// appended, as upstream names it with `Path.with_name`, so a trailing
+/// separator (`subagents/agent-x/`) names the same file as the subpath
+/// without it. `None` for a path that would leave the session directory.
+fn subkey_transcript_path(session_dir: &Path, subpath: &str) -> Option<PathBuf> {
+    let relative = Path::new(subpath);
+    let name = relative.file_name()?;
+    let mut file_name = name.to_os_string();
+    file_name.push(".jsonl");
+    let file = session_dir.join(relative).with_file_name(file_name);
+    file.starts_with(session_dir).then_some(file)
+}
+
 /// Writes the subagent transcripts the store lists under the session. A
 /// store without `list_subkeys` gets the main transcript only.
 async fn materialize_subkeys(
@@ -603,10 +616,9 @@ async fn materialize_subkeys(
                 _ => None,
             })
             .collect();
-        let file = session_dir.join(format!("{subpath}.jsonl"));
-        if !file.starts_with(&session_dir) {
+        let Some(file) = subkey_transcript_path(&session_dir, &subpath) else {
             continue;
-        }
+        };
         if !transcript.is_empty() {
             write_jsonl(&file, &transcript)?;
         }

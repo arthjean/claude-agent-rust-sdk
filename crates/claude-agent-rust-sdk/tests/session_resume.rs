@@ -1094,6 +1094,37 @@ async fn a_store_that_implements_list_subkeys_without_declaring_it_gets_its_suba
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_subpath_with_a_trailing_separator_is_materialized_as_the_subpath_without_it() {
+    let _serial = SERIAL.lock().await;
+    let setup = Setup::new();
+    let store = InMemorySessionStore::new();
+    let id = uuid::Uuid::new_v4().to_string();
+    store
+        .append(&setup.key(&id), &transcript(&id))
+        .await
+        .unwrap();
+    store
+        .append(
+            &setup.key(&id).with_subpath("subagents/agent-t/"),
+            &[entry(json!({"type": "user", "uuid": "t1"}))],
+        )
+        .await
+        .unwrap();
+    let options = setup.options(store).resume(id.as_str()).build().unwrap();
+    let mut messages = query("continue", options);
+    let config = child_config_dir(&until_init(&mut messages).await);
+    let subagents = config
+        .join("projects")
+        .join(&setup.project_key)
+        .join(&id)
+        .join("subagents");
+    assert!(subagents.join("agent-t.jsonl").is_file());
+    assert!(!subagents.join("agent-t").exists());
+    let rest: Vec<_> = messages.collect().await;
+    assert!(rest.iter().all(Result::is_ok), "{rest:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_slow_list_sessions_fails_continue_with_a_timeout_that_names_it() {
     let _serial = SERIAL.lock().await;
     let setup = Setup::new();
