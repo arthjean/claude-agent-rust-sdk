@@ -427,7 +427,7 @@ impl Error {
     /// |---|---|
     /// | [`ControlTimeout`](ErrorKind::ControlTimeout), [`ConnectionClosed`](ErrorKind::ConnectionClosed) | always |
     /// | [`ResultError`](ErrorKind::ResultError) | when the failing API call answered 429, 529, or a 5xx status |
-    /// | [`Process`](ErrorKind::Process) | when the process ended without an exit code (killed by a signal) |
+    /// | [`Process`](ErrorKind::Process) | when the process was killed by a signal (on Unix a negative exit code, `-signal`), or ended without an exit code |
     /// | [`Io`](ErrorKind::Io), [`Spawn`](ErrorKind::Spawn) | when the I/O error is `Interrupted`, `TimedOut`, or `WouldBlock` |
     /// | [`SessionStore`](ErrorKind::SessionStore) | when the store took too long |
     /// | every other kind | never |
@@ -441,7 +441,11 @@ impl Error {
                 .is_some_and(|status| {
                     RETRYABLE_HTTP_STATUSES.contains(&status) || (500..600).contains(&status)
                 }),
-            ErrorKind::Process => self.0.detail.exit_code.is_none(),
+            ErrorKind::Process => self
+                .0
+                .detail
+                .exit_code
+                .is_none_or(|code| cfg!(unix) && code < 0),
             ErrorKind::Io | ErrorKind::Spawn => self.io_kind().is_some_and(|kind| {
                 matches!(
                     kind,
@@ -850,6 +854,11 @@ mod tests {
             assert!(!error.is_retryable(), "{status}");
         }
         assert!(Error::process("killed", None, None).is_retryable());
+        assert_eq!(
+            Error::process("killed", Some(-9), None).is_retryable(),
+            cfg!(unix)
+        );
+        assert!(!Error::process("failed", Some(1), None).is_retryable());
         let interrupted = std::io::Error::from(std::io::ErrorKind::Interrupted);
         assert!(Error::io("read", interrupted).is_retryable());
         let missing = std::io::Error::from(std::io::ErrorKind::NotFound);

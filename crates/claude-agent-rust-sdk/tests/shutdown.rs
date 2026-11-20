@@ -364,3 +364,32 @@ fn dropping_the_runtime_lets_the_process_handle_termination() {
     );
     drop(transport);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_cli_killed_by_a_signal_gives_a_retryable_process_error() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let script = directory.path().join("claude-killed");
+    std::fs::write(&script, "#!/bin/sh\nkill -9 $$\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let options = ClaudeAgentOptions::builder()
+        .cli_path(&script)
+        .build()
+        .unwrap();
+    let transport = SubprocessTransport::new(options);
+    transport.connect().await.unwrap();
+    let mut stream = transport.read_messages();
+    let error = loop {
+        match common::next(&mut stream).await {
+            Some(Err(error)) => break error,
+            Some(Ok(_)) => {}
+            None => panic!("the stream ended without the process error"),
+        }
+    };
+    assert_eq!(error.kind(), claude_agent_rust_sdk::ErrorKind::Process);
+    assert_eq!(error.exit_code(), Some(-9));
+    assert!(error.is_retryable(), "{error}");
+    transport.close().await.unwrap();
+}

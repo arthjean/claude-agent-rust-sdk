@@ -73,6 +73,7 @@
 - Control responses, hooks, and permission requests keep flowing while up to 16 MiB of messages wait unread, so `interrupt()` called from the loop that reads the messages no longer times out after 60 s; past that budget the session stops reading the CLI output until the application catches up.
 - The temporary config directory of a store-backed resume is created readable by its owner only (0700) on Unix, as upstream, since it holds the credentials.
 - Two control requests that share an id are both answered, as upstream; before, neither was.
+- `Error::is_retryable()` is true for a CLI killed by a signal, as documented: the exit code the SDK records for it is negative on Unix (`-9` for `SIGKILL`), which the check now reads.
 
 ## 0.1.0 - 2026-11-18
 
