@@ -1,10 +1,11 @@
 //! `cargo xtask parity-diff`: the differential parity harness.
 //!
 //! Every case of `parity/cases` is played by two drivers, one per SDK,
-//! against `fake-claude`, which records what it received. The two
-//! recordings are compared after normalization (`compare`), and every
-//! difference must be excused by an entry of `parity/differences.toml`
-//! (`ledger`). The run fails on a difference no entry covers, on an entry
+//! against `fake-claude`, which records what it received, while each
+//! driver journals what the application observed. The two recordings
+//! (`compare`) and the two journals (`journal`) are compared after
+//! normalization, and every difference must be excused by an entry of
+//! `parity/differences.toml` (`ledger`). The run fails on a difference no entry covers, on an entry
 //! that covers nothing, on a case a driver does not support, on a driver
 //! that fails or times out, and when Python or a dependency of the Python
 //! driver is missing; it never reports a match for a side that did not
@@ -20,6 +21,7 @@
 pub(crate) mod case;
 mod compare;
 pub(crate) mod coverage;
+mod journal;
 pub(crate) mod ledger;
 mod requirements;
 mod runner;
@@ -293,12 +295,17 @@ struct Corpus<'a> {
     timeout: Duration,
 }
 
-fn side_outcome(
-    verdict_side: &'static str,
-    outcome: Outcome,
-) -> Result<(compare::Recording, Vec<String>), Verdict> {
+/// What one side produced for a case: the recording, the journal, and the
+/// spellings of its working directory.
+type Side = (compare::Recording, journal::Journal, Vec<String>);
+
+fn side_outcome(verdict_side: &'static str, outcome: Outcome) -> Result<Side, Verdict> {
     match outcome {
-        Outcome::Ran { recording, work } => Ok((recording, work)),
+        Outcome::Ran {
+            recording,
+            journal,
+            work,
+        } => Ok((recording, journal, work)),
         Outcome::Unsupported(item) => Err(Verdict::Unsupported {
             side: verdict_side,
             item,
@@ -312,12 +319,7 @@ fn side_outcome(
 }
 
 impl Corpus<'_> {
-    fn run_side(
-        &self,
-        driver: &Driver,
-        case: &Case,
-        directory: &Path,
-    ) -> Result<(compare::Recording, Vec<String>), Verdict> {
+    fn run_side(&self, driver: &Driver, case: &Case, directory: &Path) -> Result<Side, Verdict> {
         let side_directory = directory.join(&case.name).join(driver.side);
         if let Err(error) = std::fs::create_dir_all(&side_directory) {
             return Err(Verdict::Failed {
@@ -333,20 +335,27 @@ impl Corpus<'_> {
 
     fn run_case(&self, case: &Case, directory: &Path, used: &mut BTreeSet<String>) -> Verdict {
         let [python_driver, rust_driver] = &self.drivers;
-        let (python, python_work) = match self.run_side(python_driver, case, directory) {
-            Ok(side) => side,
-            Err(verdict) => return verdict,
-        };
-        let (rust, rust_work) = match self.run_side(rust_driver, case, directory) {
+        let (python, python_journal, python_work) =
+            match self.run_side(python_driver, case, directory) {
+                Ok(side) => side,
+                Err(verdict) => return verdict,
+            };
+        let (rust, rust_journal, rust_work) = match self.run_side(rust_driver, case, directory) {
             Ok(side) => side,
             Err(verdict) => return verdict,
         };
         let cli = vec![self.cli.to_string_lossy().into_owned()];
-        let differences = compare::compare(
-            (&python, &Normalizer::new(&python_work, &cli)),
-            (&rust, &Normalizer::new(&rust_work, &cli)),
+        let python_normalizer = Normalizer::new(&python_work, &cli);
+        let rust_normalizer = Normalizer::new(&rust_work, &cli);
+        let mut differences = compare::compare(
+            (&python, &python_normalizer),
+            (&rust, &rust_normalizer),
             &case.unordered,
         );
+        differences.extend(journal::compare(
+            (&python_journal, &python_normalizer),
+            (&rust_journal, &rust_normalizer),
+        ));
         let mut unexplained = Vec::new();
         let mut known = 0;
         for difference in differences {
@@ -360,7 +369,7 @@ impl Corpus<'_> {
                 unexplained.push(difference);
             } else {
                 known += 1;
-                used.extend(matching.iter().map(|entry| entry.id.clone()));
+                used.extend(matching.iter().map(|entry| entry.key()));
             }
         }
         if unexplained.is_empty() {
@@ -392,12 +401,7 @@ fn prepare_directory(root: &Path) -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-fn run_corpus(settings: &Settings) -> Result<bool, String> {
-    let ledger = ledger::load(
-        &settings.parity.join("differences.toml"),
-        &settings.upstream,
-        &settings.root,
-    )?;
+fn load_cases(settings: &Settings) -> Result<Vec<Case>, String> {
     let all = case::load_all(
         &settings.parity.join("cases"),
         &settings.parity.join("scenarios"),
@@ -421,7 +425,11 @@ fn run_corpus(settings: &Settings) -> Result<bool, String> {
             settings.parity.join("cases").display()
         ));
     }
+    Ok(cases)
+}
 
+/// The two drivers, Python then Rust, and the `fake-claude` binary, built.
+fn drivers(settings: &Settings) -> Result<([Driver; 2], PathBuf), String> {
     let python = python_driver(settings, find_python(settings)?);
     check_python_imports(&python)?;
     let (cli, rust_program) = build(&settings.root)?;
@@ -431,9 +439,20 @@ fn run_corpus(settings: &Settings) -> Result<bool, String> {
         arguments: Vec::new(),
         env: Vec::new(),
     };
+    Ok(([python, rust], cli))
+}
+
+fn run_corpus(settings: &Settings) -> Result<bool, String> {
+    let ledger = ledger::load(
+        &settings.parity.join("differences.toml"),
+        &settings.upstream,
+        &settings.root,
+    )?;
+    let cases = load_cases(settings)?;
+    let (drivers, cli) = drivers(settings)?;
     let corpus = Corpus {
         cases: &cases,
-        drivers: [python, rust],
+        drivers,
         cli,
         ledger: &ledger,
         timeout: settings.timeout,
@@ -459,11 +478,11 @@ fn run_corpus(settings: &Settings) -> Result<bool, String> {
             for entry in ledger
                 .entries
                 .iter()
-                .filter(|entry| !used.contains(&entry.id))
+                .filter(|entry| !used.contains(&entry.key()))
             {
                 println!(
-                    "stale       wire.{}: {} matched no difference ({}: {})",
-                    entry.id, entry.location, entry.category, entry.reason
+                    "stale       {}.{}: {} matched no difference ({}: {})",
+                    entry.table, entry.id, entry.location, entry.category, entry.reason
                 );
                 passed = false;
             }

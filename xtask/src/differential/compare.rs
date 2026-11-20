@@ -303,7 +303,7 @@ fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
 
-fn diff_values(
+pub(super) fn diff_values(
     location: &dyn Fn(&str) -> String,
     pointer: &str,
     python: &Value,
@@ -345,7 +345,7 @@ fn diff_values(
     }
 }
 
-fn with_pointer(base: &str, pointer: &str) -> String {
+pub(super) fn with_pointer(base: &str, pointer: &str) -> String {
     if pointer.is_empty() {
         base.to_owned()
     } else {

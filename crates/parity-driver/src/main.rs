@@ -9,14 +9,22 @@
 //! options is documented in the `options` module.
 //!
 //! A case without `steps` runs the one-shot `query` with the case's prompt
-//! and succeeds when the stream ends with a result. A case with `steps`
+//! and succeeds when the stream holds a result. A case with `steps`
 //! drives a `ClaudeSdkClient` through them in order.
+//!
+//! When `PARITY_JOURNAL` names a file, the driver writes there what the
+//! application observed: each message, the outcome of each call, and the
+//! arguments of each callback (see the `journal` module). An error of the
+//! SDK is journaled and ends the case, which then fails unless it sets
+//! `"expect_error": true`.
 //!
 //! Exit status: 0 when the case ran, 1 when it failed, 2 on a usage error,
 //! and 3 when the case uses an option, a step, or a value this driver does
 //! not support; the unsupported item is printed on stderr.
 
+mod journal;
 mod options;
+mod store;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -35,11 +43,13 @@ pub(crate) enum Failure {
     Unsupported(String),
     /// The case ran and failed.
     Failed(String),
+    /// A call of the SDK failed; the error is journaled.
+    Sdk(claude_agent_rust_sdk::Error),
 }
 
 impl From<claude_agent_rust_sdk::Error> for Failure {
     fn from(error: claude_agent_rust_sdk::Error) -> Self {
-        Self::Failed(error.to_string())
+        Self::Sdk(error)
     }
 }
 
@@ -92,14 +102,22 @@ fn main() -> ExitCode {
             eprintln!("parity-driver: {reason}");
             ExitCode::from(EXIT_FAILED)
         }
+        Err(Failure::Sdk(error)) => {
+            eprintln!("parity-driver: {error}");
+            ExitCode::from(EXIT_FAILED)
+        }
     }
 }
 
 async fn run(case: &Map<String, Value>, text: &str, cli: PathBuf) -> Result<(), Failure> {
     let options = options::build(text, cli)?;
+    let expect_error = case
+        .get("expect_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     match case.get("steps") {
-        None => one_shot(case.get("prompt"), options).await,
-        Some(Value::Array(steps)) => client(steps, options).await,
+        None => one_shot(case.get("prompt"), options, expect_error).await,
+        Some(Value::Array(steps)) => client(steps, options, expect_error).await,
         Some(_) => Err(Failure::Failed("`steps` must be a list".to_owned())),
     }
 }
@@ -116,26 +134,88 @@ fn prompt(value: Option<&Value>) -> Result<Prompt, Failure> {
     }
 }
 
+/// Journals the outcome of one call: `step` is its index among the steps
+/// of the case, or `null` for the one-shot query. An error of the SDK ends
+/// the case: it passes when the case expects an error, and fails
+/// otherwise.
+fn journal_call(
+    step: Value,
+    method: &str,
+    outcome: Result<Value, Failure>,
+    expect_error: bool,
+) -> Result<bool, Failure> {
+    match outcome {
+        Ok(result) => {
+            journal::write(
+                "call",
+                journal::fields([
+                    ("step", step),
+                    ("method", Value::String(method.to_owned())),
+                    ("result", result),
+                ]),
+            );
+            Ok(true)
+        }
+        Err(Failure::Sdk(error)) => {
+            journal::write(
+                "call",
+                journal::fields([
+                    ("step", step),
+                    ("method", Value::String(method.to_owned())),
+                    ("error", journal::error(&error)),
+                ]),
+            );
+            if expect_error {
+                Ok(false)
+            } else {
+                Err(Failure::Failed(error.to_string()))
+            }
+        }
+        Err(failure) => Err(failure),
+    }
+}
+
+/// Reads messages until the stream ends, journaling each one, and requires
+/// a result among them (a session state message may follow it).
+async fn messages<S>(mut stream: S, what: &str) -> Result<Value, Failure>
+where
+    S: futures_util::Stream<Item = claude_agent_rust_sdk::Result<Message>> + Unpin,
+{
+    let mut result = false;
+    while let Some(message) = stream.next().await {
+        let message = message?;
+        let is_result = matches!(message, Message::Result(_));
+        let appends = is_result.then(store::appends).flatten();
+        journal::write(
+            "message",
+            journal::fields([
+                ("message", journal::message(&message)),
+                ("store_appends", appends.map_or(Value::Null, Value::from)),
+            ]),
+        );
+        result |= is_result;
+    }
+    if result {
+        Ok(Value::Null)
+    } else {
+        Err(Failure::Failed(format!("{what} held no result")))
+    }
+}
+
 async fn one_shot(
     value: Option<&Value>,
     options: claude_agent_rust_sdk::ClaudeAgentOptions,
+    expect_error: bool,
 ) -> Result<(), Failure> {
-    let mut stream = query(prompt(value)?, options);
-    let mut last = None;
-    while let Some(message) = stream.next().await {
-        last = Some(message?);
-    }
-    match last {
-        Some(Message::Result(_)) => Ok(()),
-        _ => Err(Failure::Failed(
-            "the stream did not end with a result".to_owned(),
-        )),
-    }
+    let stream = query(prompt(value)?, options);
+    let outcome = messages(stream, "the stream").await;
+    journal_call(Value::Null, "query", outcome, expect_error).map(|_| ())
 }
 
 async fn client(
     steps: &[Value],
     options: claude_agent_rust_sdk::ClaudeAgentOptions,
+    expect_error: bool,
 ) -> Result<(), Failure> {
     let client = ClaudeSdkClient::new(options);
     for (index, step) in steps.iter().enumerate() {
@@ -150,14 +230,20 @@ async fn client(
                 "step {index} must hold exactly one action"
             )));
         };
-        play(&client, action, argument)
-            .await
-            .map_err(|failure| match failure {
-                Failure::Failed(reason) => {
-                    Failure::Failed(format!("step {index} ({action}): {reason}"))
+        let outcome = play(&client, action, argument).await;
+        let go_on =
+            journal_call(Value::from(index), action, outcome, expect_error).map_err(|failure| {
+                match failure {
+                    Failure::Failed(reason) => {
+                        Failure::Failed(format!("step {index} ({action}): {reason}"))
+                    }
+                    other => other,
                 }
-                unsupported @ Failure::Unsupported(_) => unsupported,
             })?;
+        if !go_on {
+            let _ = client.disconnect().await;
+            break;
+        }
     }
     Ok(())
 }
@@ -168,7 +254,9 @@ fn text(argument: &Value) -> Result<&str, Failure> {
         .ok_or_else(|| Failure::Failed(format!("expected a string, got {argument}")))
 }
 
-async fn play(client: &ClaudeSdkClient, action: &str, argument: &Value) -> Result<(), Failure> {
+/// Plays one step and returns the canonical form of what the method
+/// returned, `null` for a method that returns nothing.
+async fn play(client: &ClaudeSdkClient, action: &str, argument: &Value) -> Result<Value, Failure> {
     match action {
         "connect" => match argument.get("prompt") {
             Some(value) => client.connect_with_prompt(prompt(Some(value))?).await?,
@@ -185,18 +273,7 @@ async fn play(client: &ClaudeSdkClient, action: &str, argument: &Value) -> Resul
                 None => client.query(prompt(value)?).await?,
             }
         }
-        "receive_response" => {
-            let mut messages = client.receive_response();
-            let mut last = None;
-            while let Some(message) = messages.next().await {
-                last = Some(message?);
-            }
-            if !matches!(last, Some(Message::Result(_))) {
-                return Err(Failure::Failed(
-                    "the response did not end with a result".to_owned(),
-                ));
-            }
-        }
+        "receive_response" => return messages(client.receive_response(), "the response").await,
         "interrupt" => client.interrupt().await?,
         "set_permission_mode" => {
             client
@@ -218,14 +295,13 @@ async fn play(client: &ClaudeSdkClient, action: &str, argument: &Value) -> Resul
             client.toggle_mcp_server(name, enabled).await?;
         }
         "stop_task" => client.stop_task(text(argument)?).await?,
-        "get_mcp_status" => {
-            client.mcp_status().await?;
-        }
+        "get_mcp_status" => return Ok(journal::response(&client.mcp_status().await?)),
         "get_context_usage" => {
-            client.context_usage().await?;
+            return Ok(journal::response(&client.context_usage().await?));
         }
+        "get_server_info" => return Ok(client.server_info()?.unwrap_or(Value::Null)),
         "disconnect" => client.disconnect().await?,
         other => return Err(Failure::Unsupported(format!("step {other}"))),
     }
-    Ok(())
+    Ok(Value::Null)
 }

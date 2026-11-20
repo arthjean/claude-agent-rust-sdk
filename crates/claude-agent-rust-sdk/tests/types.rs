@@ -1512,6 +1512,19 @@ fn context_usage_response_reads_the_wire_names() {
 }
 
 #[test]
+fn a_context_usage_answer_without_its_required_fields_reads_them_as_empty_values() {
+    let response: ContextUsageResponse = serde_json::from_value(json!({})).unwrap();
+    assert!(response.categories.is_empty());
+    assert_eq!(response.total_tokens, 0);
+    assert_eq!(response.max_tokens, 0);
+    assert_eq!(response.model, "");
+    assert!(!response.is_auto_compact_enabled);
+    let written = serde_json::to_value(&response).unwrap();
+    assert_eq!(written["totalTokens"], 0);
+    assert_eq!(written["categories"], json!([]));
+}
+
+#[test]
 fn agent_definition_minimal_omits_unset_fields() {
     let agent = AgentDefinition::new("test", "You are a test");
     assert_eq!(

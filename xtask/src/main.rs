@@ -55,8 +55,9 @@ usage: cargo xtask <command>
                         `default` and `testing`)
   parity-diff [cases]   play every case of parity/cases through both SDKs
                         against fake-claude and fail on any difference not
-                        in parity/differences.toml (--coverage lists the
-                        option fields the cases set; --check-requirements
+                        in parity/differences.toml, in what the CLI receives
+                        or in what the application observes (--coverage
+                        lists the option fields the cases set; --check-requirements
                         checks parity/requirements.txt against upstream)
   e2e [test arguments]  run the end-to-end suite against the real CLI";
 

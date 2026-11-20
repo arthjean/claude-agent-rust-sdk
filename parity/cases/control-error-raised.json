@@ -1,0 +1,69 @@
+{
+  "name": "control-error-raised",
+  "description": "The CLI answers a control request with an error: each SDK raises it from the call, as a control error.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "done"
+        }
+      },
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "set_model"
+          }
+        }
+      },
+      {
+        "control_error": "Model claude-unknown is not available."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "connect": {}
+    },
+    {
+      "query": {
+        "prompt": "Go"
+      }
+    },
+    {
+      "receive_response": true
+    },
+    {
+      "set_model": "claude-unknown"
+    },
+    {
+      "disconnect": true
+    }
+  ],
+  "expect_error": true
+}

@@ -1,8 +1,9 @@
 //! Running one driver on one case.
 //!
 //! Each run gets its own directory: the resolved case, the scenario, the
-//! record file, the driver's output, and `work`, the working directory of
-//! the driver, which holds its home and temporary directories. The driver
+//! record file, the journal of the driver (`PARITY_JOURNAL`), the driver's
+//! output, and `work`, the working directory of the driver, which holds its
+//! home and temporary directories. The driver
 //! starts with an environment built from scratch, so nothing of the
 //! caller's environment (a `CLAUDE_*` variable of an enclosing session, an
 //! API key) reaches the recording: only what the operating system needs,
@@ -20,6 +21,10 @@ use std::time::{Duration, Instant};
 
 use super::case::Case;
 use super::compare::Recording;
+use super::journal::Journal;
+
+/// Environment variable naming the journal a driver writes.
+pub const JOURNAL_VARIABLE: &str = "PARITY_JOURNAL";
 
 /// Exit status a driver uses for an unsupported option, step, or value.
 pub const EXIT_UNSUPPORTED: i32 = 3;
@@ -51,11 +56,13 @@ pub struct Driver {
 /// What a run produced.
 #[derive(Debug, Clone)]
 pub enum Outcome {
-    /// The driver ran the case; the recording and the spellings of its
-    /// working directory.
+    /// The driver ran the case; the recording, the journal, and the
+    /// spellings of its working directory.
     Ran {
         /// What `fake-claude` received.
         recording: Recording,
+        /// What the application observed.
+        journal: Journal,
         /// The working directory, as created and canonical.
         work: Vec<String>,
     },
@@ -120,7 +127,8 @@ fn command(driver: &Driver, directory: &Path, work: &Path, case: &Case, cli: &Pa
         .env("TMP", &temporary)
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("FAKE_CLAUDE_SCENARIO", directory.join("scenario.json"))
-        .env("FAKE_CLAUDE_RECORD", directory.join("record.jsonl"));
+        .env("FAKE_CLAUDE_RECORD", directory.join("record.jsonl"))
+        .env(JOURNAL_VARIABLE, directory.join("journal.jsonl"));
     for (name, value) in &driver.env {
         command.env(name, value);
     }
@@ -229,6 +237,14 @@ pub fn run(driver: &Driver, case: &Case, cli: &Path, directory: &Path, limit: Du
             return Outcome::Failed(format!("no recording at {}: {error}", record.display()));
         }
     };
+    let journal_path = directory.join("journal.jsonl");
+    let journal = match std::fs::read_to_string(&journal_path)
+        .map_err(|error| format!("no journal at {}: {error}", journal_path.display()))
+        .and_then(|text| Journal::parse(&text))
+    {
+        Ok(journal) => journal,
+        Err(error) => return Outcome::Failed(error),
+    };
     match Recording::parse(&text) {
         Ok(recording) if recording.processes.is_empty() => {
             Outcome::Failed("the driver exited 0, but fake-claude was never started".to_owned())
@@ -245,6 +261,7 @@ pub fn run(driver: &Driver, case: &Case, cli: &Path, directory: &Path, limit: Du
             }
             Outcome::Ran {
                 recording,
+                journal,
                 work: spellings,
             }
         }

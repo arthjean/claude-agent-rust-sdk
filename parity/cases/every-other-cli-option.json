@@ -1,7 +1,62 @@
 {
   "name": "every-other-cli-option",
-  "description": "A one-shot query with the remaining options that reach the command line or the environment, and the options that reach neither, to show they change nothing on the wire.",
-  "scenario": "one-shot",
+  "description": "A one-shot query with the remaining options that reach the command line or the environment, and the options that reach neither, to show they change nothing on the wire. The CLI writes lines to its error output, which reach the stderr callback.",
+  "scenario": {
+    "steps": [
+      {
+        "expect": {
+          "type": "control_request",
+          "request": {
+            "subtype": "initialize"
+          }
+        }
+      },
+      {
+        "control_response": {
+          "commands": []
+        }
+      },
+      {
+        "stderr": "Loading plugins\nwarning: plugin x is outdated  \n\n"
+      },
+      {
+        "sleep_ms": 300
+      },
+      {
+        "expect": {
+          "type": "user"
+        }
+      },
+      {
+        "emit": {
+          "type": "assistant",
+          "message": {
+            "role": "assistant",
+            "model": "m",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          },
+          "session_id": "s"
+        }
+      },
+      {
+        "emit": {
+          "type": "result",
+          "subtype": "success",
+          "duration_ms": 1,
+          "duration_api_ms": 1,
+          "is_error": false,
+          "num_turns": 1,
+          "session_id": "s",
+          "result": "hello"
+        }
+      }
+    ]
+  },
   "options": {
     "strict_mcp_config": true,
     "betas": [

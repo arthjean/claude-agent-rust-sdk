@@ -7,16 +7,26 @@
 //! field names. Callbacks cannot travel as data, so a case declares canned
 //! ones:
 //!
-//! - `can_use_tool`: `{"behavior": "allow", "updated_input": {...}}` or
-//!   `{"behavior": "deny", "message": "...", "interrupt": false}`.
+//! - `can_use_tool`: `{"behavior": "allow", "updated_input": {...},
+//!   "updated_permissions": ...}`, where `updated_permissions` is absent,
+//!   a list of updates in their wire form, or `"suggestions"` to send back
+//!   the suggestions the callback received;
+//!   `{"behavior": "deny", "message": "...", "interrupt": false}`; or
+//!   `{"behavior": "wait"}`, which never answers, so that the CLI can
+//!   cancel the request.
 //! - `hooks`: `{"PreToolUse": [{"matcher": "Bash", "timeout": 5,
 //!   "hooks": [output, ...]}]}`, where each output is the hook output in
 //!   its wire form (`continue`, `hookSpecificOutput`, `async`, ...).
 //! - `mcp_servers` entries with `"type": "sdk"`: `{"type": "sdk",
 //!   "version": "1.0.0", "tools": [{"name", "description", "input_schema",
 //!   "annotations", "result": {"content": [...], "is_error": false}}]}`.
-//! - `stderr`: `true` registers a callback that discards each line.
-//! - `session_store`: `"memory"` uses an in-memory store.
+//! - `stderr`: `true` registers a callback that journals each line.
+//! - `session_store`: `"memory"` uses an in-memory store that journals
+//!   each append.
+//!
+//! Every callback journals the arguments it received before it answers
+//! (see the `journal` module): a hook callback names itself
+//! `<event>/<matcher index>/<hook index>`.
 //!
 //! `cli_path` is set by the driver, so a case cannot set it.
 //!
@@ -28,17 +38,16 @@ use std::path::PathBuf;
 
 use claude_agent_rust_sdk::{
     AgentDefinition, AsyncHookOutput, CanUseTool, ClaudeAgentOptions, ClaudeAgentOptionsBuilder,
-    HookCallback, HookMatcher, HookOutput, InMemorySessionStore, McpRemoteServerConfig,
-    McpServerConfig, McpServers, McpStdioServerConfig, PermissionResult, SandboxSettings, SdkBeta,
-    SdkMcpTool, SdkPluginConfig, SettingSource, Skills, StderrCallback, SyncHookOutput,
-    SystemPrompt, SystemPromptCustom, SystemPromptFile, SystemPromptPreset, TaskBudget,
-    ThinkingConfig, ToolAnnotations, ToolContent, ToolResult, Tools, ToolsPreset,
-    create_sdk_mcp_server,
+    HookCallback, HookMatcher, HookOutput, McpRemoteServerConfig, McpServerConfig, McpServers,
+    McpStdioServerConfig, PermissionResult, PermissionUpdate, SandboxSettings, SdkBeta, SdkMcpTool,
+    SdkPluginConfig, SettingSource, Skills, StderrCallback, SyncHookOutput, SystemPrompt,
+    SystemPromptCustom, SystemPromptFile, SystemPromptPreset, TaskBudget, ThinkingConfig,
+    ToolAnnotations, ToolContent, ToolResult, Tools, ToolsPreset, create_sdk_mcp_server,
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
-use crate::Failure;
+use crate::{Failure, journal, store};
 
 /// Builds the options of a case. `cli` is the path of the CLI to run.
 pub(crate) fn build(text: &str, cli: PathBuf) -> Result<ClaudeAgentOptions, Failure> {
@@ -101,7 +110,12 @@ fn apply(
         "max_buffer_size" => builder.max_buffer_size(field.integer()?),
         "stderr" => {
             if field.flag()? {
-                builder.stderr(StderrCallback::from_sync(|_| {}))
+                builder.stderr(StderrCallback::from_sync(|line| {
+                    journal::write(
+                        "stderr",
+                        journal::fields([("line", Value::String(line.to_owned()))]),
+                    );
+                }))
             } else {
                 builder
             }
@@ -135,7 +149,7 @@ fn apply(
         "output_format" => builder.output_format(value.clone()),
         "enable_file_checkpointing" => builder.enable_file_checkpointing(field.flag()?),
         "session_store" => match value.as_str() {
-            Some("memory") => builder.session_store(InMemorySessionStore::new()),
+            Some("memory") => builder.session_store(store::JournaledStore::new()),
             _ => return Err(field.malformed()),
         },
         "session_store_flush" => builder.session_store_flush(field.text()?.into()),
@@ -293,13 +307,13 @@ fn sdk_server(
         .into_iter()
         .flatten()
     {
-        tools.push(sdk_tool(field, tool)?);
+        tools.push(sdk_tool(field, name, tool)?);
     }
     create_sdk_mcp_server(name, version, tools)
         .map_err(|error| Failure::Failed(format!("in-process server {name}: {error}")))
 }
 
-fn sdk_tool(field: &Field<'_>, tool: &Value) -> Result<SdkMcpTool, Failure> {
+fn sdk_tool(field: &Field<'_>, server: &str, tool: &Value) -> Result<SdkMcpTool, Failure> {
     let text = |key: &str| tool.get(key).and_then(Value::as_str).map(str::to_owned);
     let name = text("name").ok_or_else(|| field.malformed())?;
     let description = text("description").unwrap_or_default();
@@ -308,7 +322,16 @@ fn sdk_tool(field: &Field<'_>, tool: &Value) -> Result<SdkMcpTool, Failure> {
         .cloned()
         .ok_or_else(|| field.malformed())?;
     let result = tool_result(field, tool.get("result"))?;
-    let mut definition = SdkMcpTool::raw(name, description, schema, move |_| {
+    let (server, tool_name) = (server.to_owned(), name.clone());
+    let mut definition = SdkMcpTool::raw(name, description, schema, move |arguments| {
+        journal::write(
+            "tool",
+            journal::fields([
+                ("server", Value::String(server.clone())),
+                ("tool", Value::String(tool_name.clone())),
+                ("arguments", arguments),
+            ]),
+        );
         let result = result.clone();
         async move { Ok(result) }
     })
@@ -373,13 +396,42 @@ fn tool_result(field: &Field<'_>, result: Option<&Value>) -> Result<ToolResult, 
     Ok(ToolResult::new(content).with_error_flag(is_error))
 }
 
+/// What the canned permission callback answers.
+#[derive(Clone)]
+enum Decision {
+    /// A fixed result.
+    Fixed(PermissionResult),
+    /// An allow that sends back the suggestions the callback received.
+    AllowSuggestions(Option<Value>),
+    /// Never answers, so that the request can be cancelled.
+    Wait,
+}
+
 fn can_use_tool(field: &Field<'_>) -> Result<CanUseTool, Failure> {
     let decision = field.value;
-    let result = match decision.get("behavior").and_then(Value::as_str) {
-        Some("allow") => match decision.get("updated_input") {
-            Some(input) => PermissionResult::allow_with_input(input.clone()),
-            None => PermissionResult::allow(),
-        },
+    let decision = match decision.get("behavior").and_then(Value::as_str) {
+        Some("allow") => {
+            let input = decision.get("updated_input").cloned();
+            match decision.get("updated_permissions") {
+                None => Decision::Fixed(
+                    input.map_or_else(PermissionResult::allow, PermissionResult::allow_with_input),
+                ),
+                Some(Value::String(source)) if source == "suggestions" => {
+                    Decision::AllowSuggestions(input)
+                }
+                Some(Value::Array(updates)) => {
+                    let updates = updates
+                        .iter()
+                        .map(PermissionUpdate::from_wire)
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| field.malformed())?;
+                    let allow = input
+                        .map_or_else(PermissionResult::allow, PermissionResult::allow_with_input);
+                    Decision::Fixed(allow.updated_permissions(updates))
+                }
+                Some(_) => return Err(field.malformed()),
+            }
+        }
         Some("deny") => {
             let message = decision
                 .get("message")
@@ -389,17 +441,34 @@ fn can_use_tool(field: &Field<'_>) -> Result<CanUseTool, Failure> {
                 .get("interrupt")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            if interrupt {
+            Decision::Fixed(if interrupt {
                 PermissionResult::deny_and_interrupt(message)
             } else {
                 PermissionResult::deny(message)
-            }
+            })
         }
+        Some("wait") => Decision::Wait,
         _ => return Err(field.malformed()),
     };
-    Ok(CanUseTool::new(move |_, _, _| {
-        let result = result.clone();
-        async move { Ok(result) }
+    Ok(CanUseTool::new(move |tool_name, input, context| {
+        journal::write(
+            "can_use_tool",
+            journal::fields([
+                ("tool_name", Value::String(tool_name)),
+                ("input", input),
+                ("context", journal::permission_context(&context)),
+            ]),
+        );
+        let decision = decision.clone();
+        async move {
+            match decision {
+                Decision::Fixed(result) => Ok(result),
+                Decision::AllowSuggestions(input) => Ok(input
+                    .map_or_else(PermissionResult::allow, PermissionResult::allow_with_input)
+                    .updated_permissions(context.suggestions)),
+                Decision::Wait => std::future::pending().await,
+            }
+        }
     }))
 }
 
@@ -413,14 +482,15 @@ fn hooks(
         value,
     };
     for (event, matchers) in events {
-        for matcher in matchers {
-            builder = builder.hook(event.as_str(), hook_matcher(&field, matcher)?);
+        for (index, matcher) in matchers.iter().enumerate() {
+            let name = format!("{event}/{index}");
+            builder = builder.hook(event.as_str(), hook_matcher(&field, &name, matcher)?);
         }
     }
     Ok(builder)
 }
 
-fn hook_matcher(field: &Field<'_>, matcher: &Value) -> Result<HookMatcher, Failure> {
+fn hook_matcher(field: &Field<'_>, name: &str, matcher: &Value) -> Result<HookMatcher, Failure> {
     let mut built = HookMatcher::new();
     if let Some(pattern) = matcher.get("matcher").and_then(Value::as_str) {
         built = built.matcher(pattern);
@@ -431,14 +501,28 @@ fn hook_matcher(field: &Field<'_>, matcher: &Value) -> Result<HookMatcher, Failu
     if let Some(mode) = matcher.get("on_failure").and_then(Value::as_str) {
         built = built.on_failure(mode);
     }
-    for output in matcher
+    for (index, output) in matcher
         .get("hooks")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
+        .enumerate()
     {
         let output = hook_output(field, output)?;
-        built = built.hook(HookCallback::new(move |_, _, _| {
+        let callback = format!("{name}/{index}");
+        built = built.hook(HookCallback::new(move |input, tool_use_id, _context| {
+            journal::write(
+                "hook",
+                journal::fields([
+                    ("callback", Value::String(callback.clone())),
+                    ("input", journal::hook_input(&input)),
+                    (
+                        "tool_use_id",
+                        tool_use_id.map_or(Value::Null, Value::String),
+                    ),
+                    ("context", Value::Object(Map::new())),
+                ]),
+            );
             let output = output.clone();
             async move { Ok(output) }
         }));

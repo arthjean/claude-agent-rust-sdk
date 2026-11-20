@@ -218,7 +218,7 @@ cargo xtask release prepare <bump> move the crate version and write the changelo
 cargo xtask release tag            run the checks, then create the release commit and tag
 cargo xtask changelog-section <v>  print the changelog section of a version
 cargo xtask semver-check           compare the public API with the newest release on crates.io
-cargo xtask parity-diff            compare what both SDKs send the CLI, case by case
+cargo xtask parity-diff            compare what both SDKs send the CLI and return, case by case
 cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
 
@@ -230,8 +230,10 @@ ported. The upstream end-to-end tests (under `e2e-tests/`) are not listed;
 
 `cargo xtask parity-diff` measures parity instead of stating it: it plays every
 case of `parity/cases` through both SDKs against the scripted stand-in CLI and
-fails on any difference in the command line, the environment, or the frames
-that `parity/differences.toml` does not list with its reason. It needs Python
+fails on any difference that `parity/differences.toml` does not list with its
+reason, both in what the CLI receives (the command line, the environment, the
+frames) and in what the application receives (the messages, the return values,
+the arguments of the callbacks). It needs Python
 3.10 or later with the pinned dependencies of `parity/requirements.txt`; see
 [`parity/README.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/parity/README.md).
 

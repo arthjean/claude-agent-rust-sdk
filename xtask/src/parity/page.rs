@@ -231,14 +231,20 @@ fn wire_value(value: Option<&serde_json::Value>) -> String {
 }
 
 fn render_differences(page: &mut String, ledger: &differences::Ledger) {
-    let wire = ledger.entries.len();
+    let observed = ledger
+        .entries
+        .iter()
+        .filter(|entry| entry.table == "observed")
+        .count();
+    let wire = ledger.entries.len() - observed;
     let behavior = ledger.behavior.len();
     let _ = writeln!(
         page,
         "## Deliberately different\n\n{} differences are reviewed and accepted: {wire} on the \
-         wire, found by `cargo xtask parity-diff`, and {behavior} in behavior, each shown by a \
-         Rust test. They are listed in `parity/differences.toml`.\n",
-        wire + behavior
+         wire and {observed} in what the application observes, found by `cargo xtask \
+         parity-diff`, and {behavior} in behavior, each shown by a Rust test. They are listed \
+         in `parity/differences.toml`.\n",
+        wire + observed + behavior
     );
     for category in CATEGORIES {
         let (heading, meaning) = title(category);
@@ -274,9 +280,14 @@ fn render_differences(page: &mut String, ledger: &differences::Ledger) {
             if let Some(reference) = &entry.reference {
                 let _ = write!(python, " (upstream {})", code(reference));
             }
+            let place = if entry.table == "observed" {
+                "observed by the application"
+            } else {
+                "on the wire"
+            };
             let _ = writeln!(
                 page,
-                "| {} on the wire | {} | {} | {} | {} |",
+                "| {} {place} | {} | {} | {} | {} |",
                 cell(&code(&entry.location)),
                 cell(&python),
                 cell(&wire_value(entry.rust.as_ref())),
@@ -393,7 +404,9 @@ pub fn render(facts: &Facts) -> String {
         page,
         "### The differential harness\n\n\
          `cargo xtask parity-diff` plays {} cases through both SDKs against `fake-claude` and \
-         compares what each sent the CLI: the command line, the environment, and every frame. \
+         compares what each sent the CLI (the command line, the environment, and every frame) \
+         and what each handed the application (every message, the outcome of every call, and \
+         the arguments of every callback). \
          The cases set {} of the {} fields of `ClaudeAgentOptions`; {} are excluded with a \
          reason in `parity/cases/coverage.toml`, and {} are neither.\n",
         facts.cases,
@@ -463,6 +476,13 @@ reason = "Python writes a pipe."
 ref = "src/a.py:2"
 anchor = "two"
 
+[observed.unknown]
+case = "two"
+location = "journal message Unknown"
+rust = '{"message":{"$type":"Unknown"}}'
+category = "rust-more-robust"
+reason = "Kept raw."
+
 [behavior.kept]
 summary = "An unknown message"
 python = "Skipped."
@@ -524,7 +544,8 @@ summary = "Budget spelling."
             "plays 7 cases",
             "The cases set 8 of the 10 fields of `ClaudeAgentOptions`; 1 are excluded",
             "and 1 are neither",
-            "3 differences are reviewed and accepted: 2 on the wire",
+            "4 differences are reviewed and accepted: 2 on the wire and 1 in what the application observes",
+            "| `journal message Unknown` observed by the application | nothing | `{\"message\":{\"$type\":\"Unknown\"}}` | Kept raw. | differential case `two` |",
             "### Deliberate choices (1)",
             "| `env CLAUDE_CODE_ENTRYPOINT` on the wire | `\"sdk-py\"` | `\"sdk-rs\"` | Each SDK names itself. | every differential case |",
             "### Rust follows the CLI (0)\n\nRust does what the CLI does where Python does not.\n\nNone.",

@@ -10,18 +10,20 @@ This directory records how `claude-agent-rust-sdk` matches the Python SDK it por
 | `cases/coverage.toml` | Option fields no case can set, with the reason | `cargo xtask parity-diff --coverage` |
 | `scenarios/*.json` | `fake-claude` scenarios shared by several cases | `cargo xtask parity-diff` |
 | `case.schema.json` | JSON Schema of a case | `cargo xtask parity-diff` |
-| `differences.toml` | Reviewed differences on the wire (`[wire]`) and in behavior (`[behavior]`), and the audit's divergences not yet reviewed (`[unclassified]`) | `cargo xtask parity-diff` (wire), `cargo xtask parity-check` (behavior tests, and the page they render into) |
+| `differences.toml` | Reviewed differences on the wire (`[wire]`), in what the application observes (`[observed]`), and in behavior (`[behavior]`), and the audit's divergences not yet reviewed (`[unclassified]`) | `cargo xtask parity-diff` (wire, observed), `cargo xtask parity-check` (behavior tests, and the page they render into) |
 | `drivers/python_driver.py` | The Python driver | `cargo xtask parity-diff` |
 | `requirements.txt` | The Python driver's dependencies, pinned with hashes | `cargo xtask parity-diff --check-requirements` |
 
 ## The differential harness
 
-The ledgers state parity; the harness measures it. `cargo xtask parity-diff` plays every case through both SDKs against `fake-claude`, the scripted stand-in for the CLI, and compares what the stand-in received from each: the command line, the environment, and every frame written to its stdin.
+The ledgers state parity; the harness measures it. `cargo xtask parity-diff` plays every case through both SDKs against `fake-claude`, the scripted stand-in for the CLI, and compares both directions: what the stand-in received from each SDK (the command line, the environment, and every frame written to its stdin), and what each SDK handed the application (every message, the return value or error of every call, and the arguments of every callback).
 
-1. `fake-claude` records, when `FAKE_CLAUDE_RECORD` names a file, one JSON object per line: a `spawn` record (arguments, working directory, and every environment variable except the system and harness variables listed below), then one record per stdin line and one at the end of stdin. The format is documented in `crates/fake-claude/src/record.rs`.
-2. Two drivers read the same case. The Rust driver is the workspace binary `crates/parity-driver` (never published). The Python driver is `drivers/python_driver.py`; it imports the SDK from the submodule through `PYTHONPATH` and uses only its public API.
+1. `fake-claude` records, when `FAKE_CLAUDE_RECORD` names a file, one JSON object per line: a `spawn` record (arguments, working directory, and every environment variable but those of the list below), then one record per stdin line and one at the end of stdin. The format is documented in `crates/fake-claude/src/record.rs`.
+2. Two drivers read the same case. The Rust driver is the workspace binary `crates/parity-driver` (never published). The Python driver is `drivers/python_driver.py`; it imports the SDK from the submodule through `PYTHONPATH` and uses only its public API. Each driver writes a [journal](#the-journal) of what the application observed to the file `PARITY_JOURNAL` names.
 3. The harness runs each driver with an environment it builds from scratch (only what the operating system needs, a fresh home and temporary directory inside the run's working directory, and the case's `process_env`), so nothing of the caller's environment reaches the recording. A driver that does not finish within 30 seconds is killed with its children and the case reports a timeout.
-4. The two recordings are compared after normalization, and every difference must match an entry of `differences.toml`.
+4. The two recordings and the two journals are compared after normalization, and every difference must match an entry of `differences.toml`.
+
+The recording leaves out only these variables, which the operating system or the harness puts in every driver's process and no SDK chooses: `PATH`, `HOME`, `USERPROFILE`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `SYSTEMROOT`, `SYSTEMDRIVE`, `WINDIR`, `COMSPEC`, `PATHEXT`, `__CF_USER_TEXT_ENCODING` (macOS), `PYTHONPATH` and `PYTHONDONTWRITEBYTECODE` (set for the Python driver only), `PARITY_JOURNAL`, and the `FAKE_CLAUDE_*` variables that drive the stand-in. Any other variable an SDK passes on, adds, or fails to remove (such as `CLAUDECODE`) is compared.
 
 Each case prints one line: `match`, `differ` (with each unexplained difference), `unsupported` (a driver does not implement something the case uses), `timeout`, or `failed`. Anything but `match` fails the run, so does a stale ledger entry, and so does a missing Python or Python dependency: the harness never reports a match for a side that did not run. The recordings of the last run stay in `target/parity-diff`.
 
@@ -60,12 +62,19 @@ A case is one JSON file of `cases/`, named after the case, and checked against `
 | `steps` | For the interactive client instead: the steps played in order |
 | `process_env` | Variables of the driver process itself, which the SDK inherits |
 | `unordered` | Groups of frame labels whose order is not compared |
+| `expect_error` | `true` when a call of the SDK is expected to fail: the error is journaled and ends the case, which passes. Without it, an SDK error fails the case |
 
 Every string may hold `${WORK}`, replaced by the run's working directory on each side.
 
-Callbacks cannot travel as data, so a case declares canned ones. `can_use_tool` is a decision (`{"behavior": "allow", "updated_input": {...}}` or `{"behavior": "deny", "message": "...", "interrupt": false}`). `hooks` maps an event to matchers whose `hooks` list holds hook outputs in their wire form (`continue`, `async`, `hookSpecificOutput`). An `mcp_servers` entry of type `sdk` declares an in-process server whose tools return fixed content: `{"type": "sdk", "version": "1.0.0", "tools": [{"name", "description", "input_schema", "annotations", "result": {"content": [...], "is_error": false}}]}`. `stderr: true` registers a callback that discards each line, and `session_store: "memory"` uses an in-memory store. `cli_path` is set by the drivers.
+Callbacks cannot travel as data, so a case declares canned ones, and each journals the arguments it received before it answers.
 
-Steps of the interactive client, one action per step: `connect` (`{}` or `{"prompt": ...}`), `query` (`{"prompt": ..., "session_id": "..."}`), `receive_response` (reads until a result), `interrupt`, `set_permission_mode`, `set_model`, `rewind_files`, `reconnect_mcp_server`, `toggle_mcp_server` (`{"name": ..., "enabled": ...}`), `stop_task`, `get_mcp_status`, `get_context_usage`, and `disconnect`.
+- `can_use_tool` is a decision: `{"behavior": "allow", "updated_input": {...}, "updated_permissions": ...}`, where `updated_permissions` is absent, a list of permission updates in their wire form, or `"suggestions"` to send back as updates the suggestions the callback received (so a case checks both how the SDK parses suggestions and how it writes updates); `{"behavior": "deny", "message": "...", "interrupt": false}`; or `{"behavior": "wait"}`, which never answers, so that the CLI can cancel the request.
+- `hooks` maps an event to matchers whose `hooks` list holds hook outputs in their wire form (`continue`, `async`, `hookSpecificOutput`). A hook callback is named `<event>/<matcher index>/<hook index>` in the journal.
+- An `mcp_servers` entry of type `sdk` declares an in-process server whose tools return fixed content: `{"type": "sdk", "version": "1.0.0", "tools": [{"name", "description", "input_schema", "annotations", "result": {"content": [...], "is_error": false}}]}`.
+- `stderr: true` registers a callback that journals each line, and `session_store: "memory"` uses an in-memory store that journals each append.
+- `cli_path` is set by the drivers.
+
+Steps of the interactive client, one action per step: `connect` (`{}` or `{"prompt": ...}`), `query` (`{"prompt": ..., "session_id": "..."}`), `receive_response` (reads until a result), `interrupt`, `set_permission_mode`, `set_model`, `rewind_files`, `reconnect_mcp_server`, `toggle_mcp_server` (`{"name": ..., "enabled": ...}`), `stop_task`, `get_mcp_status`, `get_context_usage`, `get_server_info`, and `disconnect`. The one-shot query and `receive_response` require a result among the messages they read.
 
 A driver exits with status 3 and names the item when a case uses an option, a step, or a value it does not implement; the case is then reported `unsupported`.
 
@@ -83,7 +92,9 @@ Comparison is done on parsed values, never on raw text.
 - **JSON** is compared the way the CLI reads it, two numbers being equal when their values are (`5` and `5.0`), and then on the order of the keys both sides share, reported at `<pointer> (key order)`: the order of an output schema's properties reaches the model, and the order of MCP servers or subagents reaches the CLI. Stdin frames are read from the recorded line text, which keeps the order.
 - A recording of several processes is compared process by process.
 
-A difference is printed with its location and both values; `<absent>` means that side sent nothing there. Locations are `processes`, `cwd`, `env <NAME>`, `arg <flag>` (with `[i]` for a later occurrence and a JSON pointer into a JSON value), `frame <label>` (with a JSON pointer into the frame), and `frames` for the order; locations of a process after the first start with `process[i] `.
+- **The journal** is compared as described in [The journal](#the-journal).
+
+A difference is printed with its location and both values; `<absent>` means that side sent nothing there. Locations are `processes`, `cwd`, `env <NAME>`, `arg <flag>` (with `[i]` for a later occurrence and a JSON pointer into a JSON value), `frame <label>` (with a JSON pointer into the frame), and `frames` for the order; locations of a process after the first start with `process[i] `. Locations in the journal start with `journal `.
 
 ### Normalization
 
@@ -96,9 +107,52 @@ Before comparison, the harness replaces these values and nothing else.
 | CLI binary | The path of `fake-claude` becomes `<cli>` | The path depends on the build directory. |
 | Path separators | In a string where one of the two replacements above applied, `\` becomes `/` | Windows paths use backslashes; the rule is limited to strings known to be paths. |
 
+The journal has rules of its own, listed in [The journal](#the-journal).
+
+## The journal
+
+Each driver appends one JSON object per line to the file `PARITY_JOURNAL` names, in the order it observes them. The format is the same for both drivers; each object is an event whose `event` key names its kind.
+
+| `event` | Written when | Fields |
+|---|---|---|
+| `message` | The application receives a message, from the one-shot query or `receive_response` | `message`, the message; for a result of a case with a session store, `store_appends`, the number of appends the store had received when the result reached the application |
+| `call` | A call returns or raises | `step`, the index of the step (`null` for the one-shot query); `method`, the step's action or `query`; `result`, the canonical return value (`null` for a method that returns nothing), or `error`, with `kind`, `exit_code` (of a process error), and `message` |
+| `can_use_tool` | The permission callback is called | `tool_name`, `input`, and `context`, the `ToolPermissionContext` with its parsed `suggestions` |
+| `hook` | A hook callback is called | `callback`, its name; `input`, the hook input; `tool_use_id`; `context` |
+| `tool` | A tool of an in-process MCP server is called | `server`, `tool`, and `arguments` |
+| `stderr` | The stderr callback receives a line | `line` |
+| `store_append` | The SDK appends to the session store | `key` and `entries` |
+
+Values are written in a canonical form that both drivers produce. An instance of an SDK type becomes an object with `"$type"`, the name of the Python class (`AssistantMessage`, `TextBlock`, `PermissionUpdate`, `ToolPermissionContext`, `ResultMessage`, ...), and one key per field of that class, under its Python name. The Python driver walks the dataclass fields; the Rust driver maps each Rust type onto its Python class by hand (`crates/parity-driver/src/journal.rs`), so a field the Rust type drops, renames, or parses differently shows up as a difference. A value the SDK passes on as raw JSON (a hook input, a `data` frame, a tool input, a `TypedDict` such as `McpStatusResponse` or `SessionKey`) is written as the dictionary Python returns, and as the JSON the Rust type serializes back to. A Rust message or content block of a type the crate does not know is `{"$type": "Unknown", "data": ...}`.
+
+An error is named by its kind, the same on both sides:
+
+| `kind` | Python | Rust `ErrorKind` |
+|---|---|---|
+| `cli_not_found` | `CLINotFoundError` | `CliNotFound` |
+| `cli_connection` | `CLIConnectionError` | `Spawn`, `NotConnected`, `ConnectionClosed` |
+| `process` | `ProcessError` | `Process` |
+| `result_error` | `ResultError` | `ResultError` |
+| `json_decode` | `CLIJSONDecodeError` | `JsonDecode` |
+| `message_parse` | `MessageParseError` | `MessageParse` |
+| `control` | `Exception`, which the control protocol raises for an error answer or a timeout | `Control`, `ControlTimeout` |
+
+Any other error is `python:<class>` or `rust:<kind>`, which never match each other.
+
+Events are grouped by kind, and kinds are not ordered against each other, since a callback runs while messages are read. Messages are paired like stdin frames: each gets a label, its `$type` followed by `:<subtype>` when it has one (`SystemMessage:init`, `ResultMessage:success`), with `#2`, `#3` for a label seen again; messages are paired by label and compared, and the order of the labels both sides share is compared at `journal messages`. So a message one SDK drops and the other keeps is one difference, at `journal message <label>`. Events of every other kind are compared in the order they were written, at `journal <kind>[<index>]`. A JSON pointer into the event follows the location.
+
+Before comparison, each journal event goes through the normalization of the recording, then these rules, and nothing else:
+
+| Rule | Replacement | Reason |
+|---|---|---|
+| Null and absent | A key whose value is `null` is removed, at any depth; a `null` inside an array stays | Python gives every field of a dataclass a value, `None` when unset, where Rust leaves an absent `Option` out. The two mean the same to the application. |
+| Key order | Keys are sorted | The Rust driver builds each canonical object from typed fields, in an order of its own; key order is compared on the wire, where it reaches the CLI. |
+| Error text | `message` is removed from an `error` | The wording of an error is not matched (a non-goal of `tasks/prd-parity-hardening.md`); its kind and exit code are. |
+| Stand-in keys | `fake_args`, `fake_env`, `fake_pid`, and `fake_console_window` are removed from the `data` of the `init` system message | Only `fake-claude` writes them: the arguments and variables, which the recording compares, and its process id, which changes with every run. |
+
 ## The ledger of differences
 
-`differences.toml` lists the differences that were reviewed and accepted, in the `[wire]` table, one entry per location:
+`differences.toml` lists the differences that were reviewed and accepted, one entry per location: in the `[wire]` table for what the CLI receives, and in the `[observed]` table, with the same shape, for what the application observes, at a location that starts with `journal `.
 
 ```toml
 [wire.entrypoint-label]
@@ -120,25 +174,24 @@ An entry matches a difference when its case, location, and both values agree. A 
 
 ### Differences in behavior
 
-The `[behavior]` table holds the divergences the harness cannot see because they are not on the wire, such as how an inbound message is parsed or where the child process is placed:
+The `[behavior]` table holds the divergences the harness cannot see, because neither the recording nor the journal shows them, such as where the child process is placed or what an SDK does with input no case sends:
 
 ```toml
-[behavior.unknown-messages-kept]
-summary = "An unknown message type"
-python = "The parser returns `None` and the message is skipped."
-rust = "Kept as `Message::Unknown` with its raw JSON."
-ref = "src/claude_agent_sdk/_internal/message_parser.py:397-401"
-anchor = 'logger.debug("Skipping unknown message type: %s", message_type)'
-category = "rust-more-robust"
-reason = "A newer CLI must not make an older program lose data."
-test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::parse_unknown_message_type_is_kept_as_raw_json"
+[behavior.separate-process-group]
+summary = "Where the CLI process is placed"
+python = "The CLI is spawned in the process group of the program."
+rust = "On Unix the CLI leads its own process group."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:828-836"
+category = "deliberate"
+reason = "A group of its own lets the SDK end the CLI and every process it started in one signal."
+test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_own_process_group @unix"
 ```
 
 - `python` and `rust` are prose here: what each SDK does.
 - `ref` and `anchor` are required and checked like those of a `python-defect` entry.
 - `test` is a Rust test as `cargo xtask parity-tests` prints it, with the platform suffix of `tests.toml` (` @unix`, for example) when it is compiled on one platform only. `cargo xtask parity-check` fails when it does not exist.
 
-The `[unclassified]` table names, with `source` (the section of `docs/research/python-sdk-parity.md`) and `summary`, the divergences of the audit that are not reviewed into `[wire]` or `[behavior]` yet. Move an entry out of it once a test or a case shows it.
+The `[unclassified]` table names, with `source` (the section of `docs/research/python-sdk-parity.md`) and `summary`, the divergences of the audit that are not reviewed into `[wire]`, `[observed]`, or `[behavior]` yet. Move an entry out of it once a test or a case shows it, and move a `[behavior]` entry to `[wire]` or `[observed]` once a case shows it.
 
 ## Upstream tests rewritten in place
 

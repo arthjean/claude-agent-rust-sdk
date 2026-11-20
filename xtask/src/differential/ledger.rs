@@ -26,6 +26,11 @@
 //! An entry matches a difference when the case, the location, and both
 //! values agree. An entry that matches nothing in a full run is stale.
 //!
+//! The `[observed]` table has the same shape and excuses a difference in
+//! what the application observed, found by comparing the journals of the
+//! drivers: its `location` starts with `journal `, and `python` and `rust`
+//! are the normalized values of the journal.
+//!
 //! A value that moves with every release is written as a token instead of
 //! a literal, so no release has to edit the ledger: [`CRATE_VERSION`]
 //! stands for the workspace version of the root `Cargo.toml`, and
@@ -83,6 +88,8 @@ const LOCATION_KINDS: [&str; 6] = ["processes", "cwd", "env ", "arg ", "frame ",
 struct RawLedger {
     #[serde(default)]
     wire: BTreeMap<String, RawEntry>,
+    #[serde(default)]
+    observed: BTreeMap<String, RawEntry>,
     #[serde(default)]
     behavior: BTreeMap<String, RawBehavior>,
     #[serde(default)]
@@ -158,7 +165,9 @@ struct RawEntry {
 /// One reviewed difference.
 #[derive(Debug, Clone)]
 pub struct Entry {
-    /// Key of the entry in the `[wire]` table.
+    /// The table of the entry: `wire` or `observed`.
+    pub table: &'static str,
+    /// Key of the entry in its table.
     pub id: String,
     /// Case name, or `*`.
     pub case: String,
@@ -177,6 +186,11 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// The entry as `table.id`, unique across tables.
+    pub fn key(&self) -> String {
+        format!("{}.{}", self.table, self.id)
+    }
+
     /// Whether the entry excuses this difference of this case.
     pub fn matches(&self, case: &str, difference: &Difference) -> bool {
         let value_matches =
@@ -195,7 +209,8 @@ impl Entry {
 /// The entries of the ledger.
 #[derive(Debug, Clone, Default)]
 pub struct Ledger {
-    /// The `[wire]` entries, in key order.
+    /// The `[wire]` entries, then the `[observed]` entries, each in key
+    /// order.
     pub entries: Vec<Entry>,
     /// The `[behavior]` entries, in key order.
     pub behavior: Vec<Behavior>,
@@ -203,12 +218,74 @@ pub struct Ledger {
     pub unclassified: Vec<Unclassified>,
 }
 
-fn json_value(id: &str, side: &str, text: Option<&String>) -> Result<Option<Value>, String> {
+fn json_value(key: &str, side: &str, text: Option<&String>) -> Result<Option<Value>, String> {
     text.map(|text| {
         serde_json::from_str(text)
-            .map_err(|error| format!("wire.{id}: `{side}` is not JSON text ({error}): {text}"))
+            .map_err(|error| format!("{key}: `{side}` is not JSON text ({error}): {text}"))
     })
     .transpose()
+}
+
+/// Whether `location` is a location of the table: one the recording
+/// comparison writes for `wire`, one the journal comparison writes for
+/// `observed`.
+fn is_location(table: &str, location: &str) -> bool {
+    if table == "observed" {
+        return location.starts_with("journal ");
+    }
+    LOCATION_KINDS.iter().any(|kind| {
+        let location = location
+            .split_once("] ")
+            .filter(|(process, _)| process.starts_with("process["))
+            .map_or(location, |(_, rest)| rest);
+        location == kind.trim_end() || (kind.ends_with(' ') && location.starts_with(kind))
+    })
+}
+
+fn difference_entry(
+    table: &'static str,
+    id: String,
+    entry: RawEntry,
+    upstream: &Path,
+) -> Result<Entry, String> {
+    let key = format!("{table}.{id}");
+    check_category(&key, &entry.category)?;
+    if entry.reason.trim().is_empty() {
+        return Err(format!("{key}: `reason` is empty"));
+    }
+    if entry.case.trim().is_empty() {
+        return Err(format!("{key}: `case` is empty"));
+    }
+    if !is_location(table, &entry.location) {
+        return Err(format!("{key}: `{}` is not a location", entry.location));
+    }
+    let python = json_value(&key, "python", entry.python.as_ref())?;
+    let rust = json_value(&key, "rust", entry.rust.as_ref())?;
+    if python.is_none() && rust.is_none() {
+        return Err(format!(
+            "{key}: at least one of `python` and `rust` must be set"
+        ));
+    }
+    if entry.category == "python-defect" && entry.reference.is_none() {
+        return Err(format!(
+            "{key}: a python-defect entry must cite the upstream line at fault as `ref = \"path:line\"`"
+        ));
+    }
+    if let Some(reference) = entry.reference.as_deref() {
+        let anchor = entry.anchor.as_deref().unwrap_or_default();
+        check_reference(&key, reference, anchor, upstream)?;
+    }
+    Ok(Entry {
+        table,
+        id,
+        case: entry.case,
+        location: entry.location,
+        python,
+        rust,
+        category: entry.category,
+        reason: entry.reason,
+        reference: entry.reference,
+    })
 }
 
 /// Checks that `reference`, written `path:line` or `path:first-last`,
@@ -314,51 +391,10 @@ fn behavior_entry(id: String, entry: RawBehavior, upstream: &Path) -> Result<Beh
 pub fn parse(text: &str, upstream: &Path) -> Result<Ledger, String> {
     let raw: RawLedger = toml::from_str(text).map_err(|error| error.to_string())?;
     let mut entries = Vec::new();
-    for (id, entry) in raw.wire {
-        check_category(&format!("wire.{id}"), &entry.category)?;
-        if entry.reason.trim().is_empty() {
-            return Err(format!("wire.{id}: `reason` is empty"));
+    for (table, raw_entries) in [("wire", raw.wire), ("observed", raw.observed)] {
+        for (id, entry) in raw_entries {
+            entries.push(difference_entry(table, id, entry, upstream)?);
         }
-        if entry.case.trim().is_empty() {
-            return Err(format!("wire.{id}: `case` is empty"));
-        }
-        let location_kind = LOCATION_KINDS.iter().any(|kind| {
-            let location = entry
-                .location
-                .split_once("] ")
-                .filter(|(process, _)| process.starts_with("process["))
-                .map_or(entry.location.as_str(), |(_, rest)| rest);
-            location == kind.trim_end() || (kind.ends_with(' ') && location.starts_with(kind))
-        });
-        if !location_kind {
-            return Err(format!("wire.{id}: `{}` is not a location", entry.location));
-        }
-        let python = json_value(&id, "python", entry.python.as_ref())?;
-        let rust = json_value(&id, "rust", entry.rust.as_ref())?;
-        if python.is_none() && rust.is_none() {
-            return Err(format!(
-                "wire.{id}: at least one of `python` and `rust` must be set"
-            ));
-        }
-        if entry.category == "python-defect" {
-            let Some(reference) = entry.reference.as_deref() else {
-                return Err(format!(
-                    "wire.{id}: a python-defect entry must cite the upstream line at fault as `ref = \"path:line\"`"
-                ));
-            };
-            let anchor = entry.anchor.as_deref().unwrap_or_default();
-            check_reference(&format!("wire.{id}"), reference, anchor, upstream)?;
-        }
-        entries.push(Entry {
-            id,
-            case: entry.case,
-            location: entry.location,
-            python,
-            rust,
-            category: entry.category,
-            reason: entry.reason,
-            reference: entry.reference,
-        });
     }
     let behavior = raw
         .behavior
@@ -705,5 +741,34 @@ summary = "Budget spelling."
             let error = parse(&text, upstream.path()).unwrap_err();
             assert!(error.contains(expected), "{expected}: {error}");
         }
+    }
+
+    #[test]
+    fn an_observed_entry_takes_a_journal_location_and_keys_stay_apart_from_wire() {
+        let upstream = upstream();
+        let entry = |table: &str, location: &str| {
+            format!(
+                "[{table}.same]\ncase = \"*\"\nlocation = \"{location}\"\nrust = '1'\n\
+                 category = \"deliberate\"\nreason = \"r\"\n"
+            )
+        };
+        let both = format!(
+            "{}\n{}",
+            entry("wire", "env A"),
+            entry("observed", "journal message Unknown")
+        );
+        let ledger = parse(&both, upstream.path()).unwrap();
+        let keys: Vec<String> = ledger.entries.iter().map(super::Entry::key).collect();
+        assert_eq!(keys, ["wire.same", "observed.same"]);
+        let error = parse(&entry("observed", "env A"), upstream.path()).unwrap_err();
+        assert!(
+            error.contains("observed.same: `env A` is not a location"),
+            "{error}"
+        );
+        let error = parse(&entry("wire", "journal call[0]"), upstream.path()).unwrap_err();
+        assert!(
+            error.contains("wire.same: `journal call[0]` is not a location"),
+            "{error}"
+        );
     }
 }
