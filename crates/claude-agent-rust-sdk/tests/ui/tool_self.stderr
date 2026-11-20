@@ -1,0 +1,5 @@
+error: #[tool] cannot take `self`: `add_one` must be a free function; pass its state as a first argument instead, as in `async fn add_one(state: &State, args: Args)`
+ --> tests/ui/tool_self.rs:6:22
+  |
+6 |     async fn add_one(&self, args: f64) -> Result<claude_agent_rust_sdk::ToolResult, String> {
+  |                      ^^^^^

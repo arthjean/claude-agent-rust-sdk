@@ -400,6 +400,35 @@ async fn typed_tool_reads_an_integral_float_as_an_integer() {
     assert_eq!(fractional["isError"], true, "{fractional}");
 }
 
+#[tokio::test]
+async fn a_tool_is_called_directly_with_the_checks_the_server_applies() {
+    assert_eq!(
+        add().call(json!({"a": 1, "b": 2.5})).await,
+        ToolResult::text("3.5")
+    );
+    let missing = add().call(json!({"a": 1})).await;
+    assert!(missing.is_error);
+    let [ToolContent::Text { text }] = &missing.content[..] else {
+        panic!("expected one text block, got {missing:?}");
+    };
+    assert!(text.starts_with("Input validation error: "), "{text}");
+
+    let failing = SdkMcpTool::raw("fail", "Fails", json!({}), |_| async {
+        Err::<ToolResult, BoxError>("no luck".into())
+    })
+    .unwrap();
+    assert_eq!(failing.call(json!({})).await, ToolResult::error("no luck"));
+
+    let panicking = SdkMcpTool::raw("boom", "Panics", json!({}), |_| async {
+        panic!("boom");
+    })
+    .unwrap();
+    assert_eq!(
+        panicking.call(json!({})).await,
+        ToolResult::error("Tool 'boom' panicked")
+    );
+}
+
 #[test]
 fn raw_schema_that_is_not_a_json_object_is_a_config_error() {
     for schema in [json!("object"), json!(["a"]), json!(true), Value::Null] {

@@ -11,7 +11,8 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, quote};
 use syn::parse::Parser;
 use syn::{
-    Attribute, Error, Expr, FnArg, ItemFn, Lit, LitBool, LitInt, LitStr, Meta, Result, Type,
+    Attribute, Error, Expr, FnArg, Ident, ItemFn, Lit, LitBool, LitInt, LitStr, Meta, Pat, PatType,
+    Result, Type,
 };
 
 /// Turns an async function into a function returning the tool it defines.
@@ -116,36 +117,86 @@ fn doc_comment(attributes: &[Attribute]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn argument_type(function: &ItemFn) -> Result<&Type> {
+/// How the tool function receives the state it was built with.
+enum State<'a> {
+    /// `state: &S`: the generated function takes an `Arc<S>`.
+    Shared { name: Ident, inner: &'a Type },
+    /// `state: T`: the generated function takes a `T` and clones it for each
+    /// call.
+    Owned { name: Ident, ty: &'a Type },
+}
+
+/// The inputs of a tool function: an optional state, then the argument
+/// struct.
+struct Inputs<'a> {
+    state: Option<State<'a>>,
+    argument: &'a Type,
+}
+
+fn typed_input<'a>(function: &'a ItemFn, input: &'a FnArg) -> Result<&'a PatType> {
     let name = &function.sig.ident;
-    let inputs = &function.sig.inputs;
-    let count = inputs.len();
-    let wrong_count = || {
-        let found = match count {
-            0 => "no argument".to_owned(),
-            count => format!("{count} arguments"),
-        };
-        Error::new_spanned(
-            &function.sig,
-            format!(
-                "#[tool] expects exactly one argument struct, but `{name}` takes {found}: \
-                 declare it as `async fn {name}(args: Args) -> Result<ToolResult, E>`"
-            ),
-        )
-    };
-    if count != 1 {
-        return Err(wrong_count());
-    }
-    match inputs.first() {
-        Some(FnArg::Typed(argument)) => Ok(&argument.ty),
-        Some(FnArg::Receiver(receiver)) => Err(Error::new_spanned(
+    match input {
+        FnArg::Typed(argument) => Ok(argument),
+        FnArg::Receiver(receiver) => Err(Error::new_spanned(
             receiver,
             format!(
-                "#[tool] expects exactly one argument struct, but `{name}` takes `self`: a \
-                 tool is a free function"
+                "#[tool] cannot take `self`: `{name}` must be a free function; pass its state \
+                 as a first argument instead, as in `async fn {name}(state: &State, args: Args)`"
             ),
         )),
-        None => Err(wrong_count()),
+    }
+}
+
+fn state_of(input: &PatType) -> Result<State<'_>> {
+    let name = match &*input.pat {
+        Pat::Ident(binding) => binding.ident.clone(),
+        _ => Ident::new("state", proc_macro2::Span::call_site()),
+    };
+    match &*input.ty {
+        Type::Reference(reference) if reference.mutability.is_some() => Err(Error::new_spanned(
+            reference,
+            "#[tool] cannot hand out `&mut` state, since calls may run at the same time: take \
+             `&State` and keep what changes behind a lock",
+        )),
+        Type::Reference(reference) => Ok(State::Shared {
+            name,
+            inner: &reference.elem,
+        }),
+        ty => Ok(State::Owned { name, ty }),
+    }
+}
+
+fn inputs(function: &ItemFn) -> Result<Inputs<'_>> {
+    let name = &function.sig.ident;
+    let inputs: Vec<&FnArg> = function.sig.inputs.iter().collect();
+    match inputs[..] {
+        [argument] => Ok(Inputs {
+            state: None,
+            argument: &typed_input(function, argument)?.ty,
+        }),
+        [state, argument] => {
+            let state = typed_input(function, state)?;
+            let argument = typed_input(function, argument)?;
+            Ok(Inputs {
+                state: Some(state_of(state)?),
+                argument: &argument.ty,
+            })
+        }
+        _ => {
+            let found = match inputs.len() {
+                0 => "no argument".to_owned(),
+                count => format!("{count} arguments"),
+            };
+            Err(Error::new_spanned(
+                &function.sig,
+                format!(
+                    "#[tool] expects an argument struct, after an optional state, but `{name}` \
+                     takes {found}: declare it as `async fn {name}(args: Args) -> \
+                     Result<ToolResult, E>` or `async fn {name}(state: &State, args: Args) -> \
+                     Result<ToolResult, E>`"
+                ),
+            ))
+        }
     }
 }
 
@@ -169,7 +220,7 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
             format!("`{ident}` must not be generic: a tool has one concrete argument type"),
         ));
     }
-    let argument = argument_type(&function)?;
+    let Inputs { state, argument } = inputs(&function)?;
 
     let name = settings
         .name
@@ -194,18 +245,35 @@ fn expand(arguments: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
     let visibility = &function.vis;
     let signature = &function.sig;
     let block = &function.block;
+    let arguments = quote!(__claude_agent_rust_sdk_arguments);
+    let (parameter, prepare, call) = match &state {
+        None => (quote!(), quote!(), quote!(#ident(#arguments))),
+        Some(State::Shared { name, inner }) => (
+            quote!(#name: ::std::sync::Arc<#inner>),
+            quote!(let #name = ::std::sync::Arc::clone(&#name);),
+            quote!(#ident(&#name, #arguments)),
+        ),
+        Some(State::Owned { name, ty }) => (
+            quote!(#name: #ty),
+            quote!(let #name = ::std::clone::Clone::clone(&#name);),
+            quote!(#ident(#name, #arguments)),
+        ),
+    };
     Ok(quote! {
         #(#attributes)*
-        #visibility fn #ident() -> ::claude_agent_rust_sdk::SdkMcpTool {
+        #visibility fn #ident(#parameter) -> ::claude_agent_rust_sdk::SdkMcpTool {
             #signature #block
 
             ::claude_agent_rust_sdk::SdkMcpTool::typed::<#argument>(
                 #name,
                 #description,
-                |__claude_agent_rust_sdk_arguments| async move {
-                    #ident(__claude_agent_rust_sdk_arguments)
-                        .await
-                        .map_err(::claude_agent_rust_sdk::BoxError::from)
+                move |#arguments| {
+                    #prepare
+                    async move {
+                        #call
+                            .await
+                            .map_err(::claude_agent_rust_sdk::BoxError::from)
+                    }
                 },
             )
             #annotations

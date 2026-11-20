@@ -152,11 +152,22 @@ pub use message_parser::parse_message;
 /// Turns an async function into a function returning the [`SdkMcpTool`] it
 /// defines.
 ///
-/// The function takes exactly one argument, whose type gives the input
-/// schema of the tool as in [`SdkMcpTool::typed`], and returns
-/// `Result<ToolResult, E>` where `E` converts into [`BoxError`]. The
-/// attribute replaces it with a function of the same name and visibility
-/// that takes no argument and returns the tool.
+/// The function takes the arguments of the tool as its last parameter,
+/// whose type gives the input schema as in [`SdkMcpTool::typed`], and
+/// returns `Result<ToolResult, E>` where `E` converts into [`BoxError`].
+/// The attribute replaces it with a function of the same name and
+/// visibility that returns the tool. Call the tool with
+/// [`SdkMcpTool::call`] to test it on its own.
+///
+/// A parameter before the arguments is the state of the tool, which the
+/// generated function takes:
+///
+/// - `state: &S`: the generated function takes an `Arc<S>`, shared by every
+///   call (and with the caller, who can keep a clone).
+/// - `state: T`: the generated function takes a `T`, cloned for each call.
+///
+/// Calls may run at the same time, so `&mut` state is refused: keep what
+/// changes behind a lock. A method taking `self` is refused too.
 ///
 /// Arguments of the attribute, all optional:
 ///
@@ -187,11 +198,28 @@ pub use message_parser::parse_message;
 ///     Ok(ToolResult::text((args.dividend / args.divisor).to_string()))
 /// }
 ///
-/// # fn main() -> Result<(), claude_agent_rust_sdk::Error> {
+/// /// Remember a note.
+/// #[tool]
+/// async fn remember(notes: &std::sync::Mutex<Vec<String>>, args: Note) -> Result<ToolResult, String> {
+///     notes.lock().map_err(|_| "notes poisoned")?.push(args.text);
+///     Ok(ToolResult::text("noted"))
+/// }
+///
+/// #[derive(Deserialize, JsonSchema)]
+/// struct Note {
+///     text: String,
+/// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
 /// let tool = divide();
 /// assert_eq!(tool.name(), "divide");
 /// assert_eq!(tool.description(), "Divide one number by another.");
-/// let calculator = create_sdk_mcp_server("calculator", None, [tool])?;
+/// let quotient = tool.call(serde_json::json!({"dividend": 6, "divisor": 3})).await;
+/// assert_eq!(quotient, ToolResult::text("2"));
+///
+/// let notes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+/// let calculator = create_sdk_mcp_server("calculator", None, [tool, remember(notes.clone())])?;
 /// # let _ = calculator;
 /// # Ok(())
 /// # }

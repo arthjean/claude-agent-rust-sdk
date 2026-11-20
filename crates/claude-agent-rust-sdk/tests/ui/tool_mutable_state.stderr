@@ -1,0 +1,5 @@
+error: #[tool] cannot hand out `&mut` state, since calls may run at the same time: take `&State` and keep what changes behind a lock
+ --> tests/ui/tool_mutable_state.rs:3:23
+  |
+3 | async fn count(calls: &mut u32, args: f64) -> Result<claude_agent_rust_sdk::ToolResult, String> {
+  |                       ^^^^^^^^

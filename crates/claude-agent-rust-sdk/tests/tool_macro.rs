@@ -160,6 +160,73 @@ async fn tools_made_by_the_attribute_are_served_and_called() {
     assert!(texts(&invalid)[0].starts_with("Input validation error: "));
 }
 
+#[derive(Default)]
+struct Ledger {
+    entries: std::sync::Mutex<Vec<String>>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Entry {
+    text: String,
+}
+
+/// Record one entry in the shared ledger.
+#[tool]
+async fn record(ledger: &Ledger, args: Entry) -> Result<ToolResult, String> {
+    let mut entries = ledger.entries.lock().unwrap();
+    entries.push(args.text);
+    Ok(ToolResult::text(entries.len().to_string()))
+}
+
+/// Greet with the prefix the tool was built with.
+#[tool]
+async fn greet(prefix: String, args: Entry) -> Result<ToolResult, String> {
+    Ok(ToolResult::text(format!("{prefix} {}", args.text)))
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_tool_with_state_shares_it_across_calls_and_with_its_owner() {
+    let ledger = std::sync::Arc::new(Ledger::default());
+    let tool = record(std::sync::Arc::clone(&ledger));
+    assert_eq!(tool.name(), "record");
+    assert_eq!(tool.input_schema()["required"], json!(["text"]));
+    let server = create_sdk_mcp_server("journal", None, [tool, greet("Hello".to_owned())]).unwrap();
+    let client = SdkMcpClient::connected(server).await;
+
+    let first = client
+        .call_tool("srv", "record", json!({"text": "a"}))
+        .await;
+    let second = client
+        .call_tool("srv", "record", json!({"text": "b"}))
+        .await;
+    assert_eq!(texts(&first), ["1"]);
+    assert_eq!(texts(&second), ["2"]);
+    assert_eq!(*ledger.entries.lock().unwrap(), ["a", "b"]);
+
+    let greeting = client
+        .call_tool("srv", "greet", json!({"text": "Ada"}))
+        .await;
+    assert_eq!(texts(&greeting), ["Hello Ada"]);
+}
+
+#[tokio::test]
+async fn a_tool_made_by_the_attribute_is_called_directly_with_its_arguments() {
+    assert_eq!(
+        divide().call(json!({"dividend": 9, "divisor": 3})).await,
+        ToolResult::text("3")
+    );
+    assert_eq!(
+        divide().call(json!({"dividend": 1, "divisor": 0})).await,
+        ToolResult::error("Division by zero")
+    );
+    let invalid = divide().call(json!({"dividend": 1})).await;
+    assert!(invalid.is_error);
+    assert_eq!(
+        greet("Hi".to_owned()).call(json!({"text": "Bo"})).await,
+        ToolResult::text("Hi Bo")
+    );
+}
+
 #[test]
 fn misuse_of_the_attribute_is_a_compile_error() {
     let cases = trybuild::TestCases::new();

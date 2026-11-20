@@ -7,16 +7,14 @@
 //! from both SDKs.
 
 use std::collections::HashMap;
-use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use futures_util::FutureExt;
 use serde_json::{Value, json};
 use tokio::sync::{Notify, oneshot};
 use tokio::time::Instant;
 
-use super::tool::{SdkMcpTool, ToolFailure, ToolResult};
+use super::tool::{SdkMcpTool, ToolResult};
 use crate::error::{Error, Result};
 use crate::types::{McpSdkServerConfig, McpSdkServerInstance, SdkServer};
 
@@ -93,31 +91,10 @@ pub fn create_sdk_mcp_server(
     ))
 }
 
-#[cfg(feature = "jsonschema")]
-type Validator = std::result::Result<jsonschema::Validator, String>;
-
-struct Tool {
-    definition: SdkMcpTool,
-    #[cfg(feature = "jsonschema")]
-    validator: Validator,
-}
-
-/// Compiles the validator of a tool schema. `format` is never asserted,
-/// whatever the draft: the Python SDK validates with no format checker, so
-/// a `"format": "date-time"` there is an annotation only, while the
-/// `jsonschema` crate checks formats by default for drafts 4, 6, and 7.
-#[cfg(feature = "jsonschema")]
-fn compile(schema: &Value) -> Validator {
-    jsonschema::options()
-        .should_validate_formats(false)
-        .build(schema)
-        .map_err(|error| error.to_string())
-}
-
 pub(crate) struct SdkMcpServer {
     name: String,
     version: String,
-    tools: Vec<Tool>,
+    tools: Vec<SdkMcpTool>,
     index: HashMap<String, usize>,
 }
 
@@ -135,11 +112,7 @@ impl SdkMcpServer {
                     definition.name()
                 )));
             }
-            tools.push(Tool {
-                #[cfg(feature = "jsonschema")]
-                validator: compile(definition.input_schema()),
-                definition,
-            });
+            tools.push(definition);
         }
         Ok(Self {
             name,
@@ -162,11 +135,7 @@ impl SdkMcpServer {
     }
 
     fn list_tools(&self) -> Value {
-        let tools: Vec<Value> = self
-            .tools
-            .iter()
-            .map(|tool| tool.definition.to_wire())
-            .collect();
+        let tools: Vec<Value> = self.tools.iter().map(SdkMcpTool::to_wire).collect();
         json!({"tools": tools})
     }
 
@@ -174,25 +143,7 @@ impl SdkMcpServer {
         let Some(tool) = self.index.get(name).map(|index| &self.tools[*index]) else {
             return ToolResult::error(format!("Tool '{name}' not found")).to_wire();
         };
-        #[cfg(feature = "jsonschema")]
-        match &tool.validator {
-            Err(invalid_schema) => return ToolResult::error(invalid_schema.clone()).to_wire(),
-            Ok(validator) => {
-                if let Err(error) = validator.validate(&arguments) {
-                    return ToolResult::error(format!("Input validation error: {error}")).to_wire();
-                }
-            }
-        }
-        let call =
-            AssertUnwindSafe(async move { tool.definition.call(arguments).await }).catch_unwind();
-        match call.await {
-            Ok(Ok(result)) => result.to_wire(),
-            Ok(Err(ToolFailure::InvalidInput(message))) => {
-                ToolResult::error(format!("Input validation error: {message}")).to_wire()
-            }
-            Ok(Err(ToolFailure::Handler(message))) => ToolResult::error(message).to_wire(),
-            Err(_) => ToolResult::error(format!("Tool '{name}' panicked")).to_wire(),
-        }
+        tool.call(arguments).await.to_wire()
     }
 
     async fn dispatch(&self, method: &str, params: &Value) -> std::result::Result<Value, RpcError> {
@@ -406,43 +357,5 @@ impl NativeSession {
                 return;
             }
         }
-    }
-}
-
-#[cfg(all(test, feature = "jsonschema"))]
-mod tests {
-    use serde_json::json;
-
-    use super::SdkMcpServer;
-    use crate::mcp::tool::{SdkMcpTool, ToolResult};
-
-    #[test]
-    fn each_validator_is_compiled_when_the_server_is_created() {
-        let raw = |name: &str, schema| {
-            SdkMcpTool::raw(name, "", schema, |_| async { Ok(ToolResult::text("")) }).unwrap()
-        };
-        let server = SdkMcpServer::new(
-            "srv".to_owned(),
-            "1.0.0".to_owned(),
-            vec![
-                raw("valid", json!({"type": "object", "required": ["b"]})),
-                raw(
-                    "broken",
-                    json!({"type": "object", "properties": {"x": {"type": "bogus"}}}),
-                ),
-            ],
-        )
-        .unwrap();
-        let compiled: Vec<bool> = server
-            .tools
-            .iter()
-            .map(|tool| tool.validator.is_ok())
-            .collect();
-        assert_eq!(compiled, [true, false]);
-        let Ok(validator) = &server.tools[0].validator else {
-            unreachable!()
-        };
-        assert!(!validator.is_valid(&json!({})));
-        assert!(validator.is_valid(&json!({"b": 1})));
     }
 }

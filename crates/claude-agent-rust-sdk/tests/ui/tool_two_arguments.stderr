@@ -1,5 +1,0 @@
-error: #[tool] expects exactly one argument struct, but `add_numbers` takes 2 arguments: declare it as `async fn add_numbers(args: Args) -> Result<ToolResult, E>`
- --> tests/ui/tool_two_arguments.rs:2:1
-  |
-2 | async fn add_numbers(a: f64, b: f64) -> Result<claude_agent_rust_sdk::ToolResult, String> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

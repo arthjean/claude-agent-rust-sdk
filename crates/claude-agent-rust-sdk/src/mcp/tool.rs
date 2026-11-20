@@ -3,7 +3,10 @@
 
 use std::fmt;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+
+use futures_util::FutureExt;
 
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -336,13 +339,31 @@ where
     type Future = Fut;
 }
 
-pub(crate) enum ToolFailure {
+enum ToolFailure {
     InvalidInput(String),
     Handler(String),
 }
 
 type ErasedHandler =
     dyn Fn(Value) -> BoxFuture<'static, std::result::Result<ToolResult, ToolFailure>> + Send + Sync;
+
+/// The compiled schema of a tool, or the reason it does not compile.
+#[cfg(feature = "jsonschema")]
+type Validator = std::result::Result<jsonschema::Validator, String>;
+
+/// Compiles the validator of a tool schema. `format` is never asserted,
+/// whatever the draft: the Python SDK validates with no format checker, so
+/// a `"format": "date-time"` there is an annotation only, while the
+/// `jsonschema` crate checks formats by default for drafts 4, 6, and 7.
+#[cfg(feature = "jsonschema")]
+fn compile(schema: &Value) -> Arc<Validator> {
+    Arc::new(
+        jsonschema::options()
+            .should_validate_formats(false)
+            .build(schema)
+            .map_err(|error| error.to_string()),
+    )
+}
 
 /// A tool served to the CLI from this process.
 ///
@@ -374,6 +395,8 @@ pub struct SdkMcpTool {
     input_schema: Value,
     annotations: Option<ToolAnnotations>,
     handler: Arc<ErasedHandler>,
+    #[cfg(feature = "jsonschema")]
+    validator: Arc<Validator>,
 }
 
 impl SdkMcpTool {
@@ -424,6 +447,8 @@ impl SdkMcpTool {
         Self {
             name: name.into(),
             description: description.into(),
+            #[cfg(feature = "jsonschema")]
+            validator: compile(&input_schema),
             input_schema,
             annotations: None,
             handler: Arc::new(handler),
@@ -438,7 +463,7 @@ impl SdkMcpTool {
     /// as in the Python SDK: arguments that break the schema, a schema the
     /// validator cannot compile, and a `$ref` to a remote document (never
     /// fetched) all give an error result, and the handler is not called.
-    /// The schema is compiled once, when the server is created.
+    /// The schema is compiled once, when the tool is created.
     ///
     /// In a build with `default-features = false`, arguments are not
     /// validated: the handler receives them as the model sent them.
@@ -475,6 +500,8 @@ impl SdkMcpTool {
         Ok(Self {
             name,
             description: description.into(),
+            #[cfg(feature = "jsonschema")]
+            validator: compile(&input_schema),
             input_schema,
             annotations: None,
             handler: Arc::new(handler),
@@ -533,11 +560,54 @@ impl SdkMcpTool {
         Value::Object(wire)
     }
 
-    pub(crate) fn call(
-        &self,
-        arguments: Value,
-    ) -> BoxFuture<'static, std::result::Result<ToolResult, ToolFailure>> {
-        (self.handler)(arguments)
+    /// Calls the tool as the in-process server does when the model calls
+    /// it, and returns the result the model would see.
+    ///
+    /// The arguments are validated against the schema (with the
+    /// `jsonschema` feature) and, for a [`typed`](Self::typed) tool, read
+    /// into its argument type; arguments that fail either step give an
+    /// error result starting with `Input validation error: `, and the
+    /// handler does not run. An error the handler returns becomes an error
+    /// result holding its text, and a panic of the handler the error result
+    /// `Tool '<name>' panicked`. No session or CLI is involved, so this is
+    /// the way to test a tool on its own.
+    ///
+    /// ```
+    /// use claude_agent_rust_sdk::{SdkMcpTool, ToolResult};
+    /// use serde_json::json;
+    ///
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
+    /// let echo = SdkMcpTool::raw(
+    ///     "echo",
+    ///     "Echoes its text",
+    ///     json!({"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}),
+    ///     |arguments| async move { Ok(ToolResult::text(arguments["text"].as_str().unwrap_or(""))) },
+    /// )?;
+    /// assert_eq!(echo.call(json!({"text": "hi"})).await, ToolResult::text("hi"));
+    /// assert!(echo.call(json!({})).await.is_error);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn call(&self, arguments: Value) -> ToolResult {
+        #[cfg(feature = "jsonschema")]
+        match &*self.validator {
+            Err(invalid_schema) => return ToolResult::error(invalid_schema.clone()),
+            Ok(validator) => {
+                if let Err(error) = validator.validate(&arguments) {
+                    return ToolResult::error(format!("Input validation error: {error}"));
+                }
+            }
+        }
+        let call = AssertUnwindSafe(async { (self.handler)(arguments).await }).catch_unwind();
+        match call.await {
+            Ok(Ok(result)) => result,
+            Ok(Err(ToolFailure::InvalidInput(message))) => {
+                ToolResult::error(format!("Input validation error: {message}"))
+            }
+            Ok(Err(ToolFailure::Handler(message))) => ToolResult::error(message),
+            Err(_) => ToolResult::error(format!("Tool '{}' panicked", self.name)),
+        }
     }
 }
 
@@ -579,4 +649,29 @@ fn object_schema(name: &str, schema: Value) -> Result<Value> {
     typed.insert("type".to_owned(), json!("object"));
     typed.extend(fields.into_iter().filter(|(key, _)| key != "type"));
     Ok(Value::Object(typed))
+}
+
+#[cfg(all(test, feature = "jsonschema"))]
+mod tests {
+    use serde_json::json;
+
+    use super::{SdkMcpTool, ToolResult};
+
+    #[test]
+    fn each_validator_is_compiled_when_the_tool_is_created() {
+        let raw = |name: &str, schema| {
+            SdkMcpTool::raw(name, "", schema, |_| async { Ok(ToolResult::text("")) }).unwrap()
+        };
+        let valid = raw("valid", json!({"type": "object", "required": ["b"]}));
+        let broken = raw(
+            "broken",
+            json!({"type": "object", "properties": {"x": {"type": "bogus"}}}),
+        );
+        assert!(broken.validator.is_err());
+        let Ok(validator) = &*valid.validator else {
+            unreachable!()
+        };
+        assert!(!validator.is_valid(&json!({})));
+        assert!(validator.is_valid(&json!({"b": 1})));
+    }
 }
