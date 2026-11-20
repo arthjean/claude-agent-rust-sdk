@@ -7,6 +7,15 @@
 - Every pull request compares the public API with the newest release on crates.io through `cargo-semver-checks`, so a patch release cannot break a build against the previous release.
 - A scheduled check of `Cargo.lock` against the RustSec advisory database.
 
+### Changed
+
+- Upstream moved to Python SDK 0.2.186 and CLI 2.1.329.
+- **Breaking:** `PermissionUpdate::to_wire` returns `Result<Value, Error>`. It sends the shape the CLI accepts (upstream #1502): a rule with no `rule_content` leaves `ruleContent` out instead of sending `null`, an unset `destination` is sent as `"session"`, and a missing required field or an `Unknown` kind is an `Error::Config`. The CLI used to reject the whole `updatedPermissions` list, so the call was allowed but nothing was remembered.
+
+### Fixed
+
+- A `can_use_tool` allow decision whose permission updates cannot all be sent now sends none of them and logs a warning; the tool call is still allowed.
+
 ## 0.1.0 - 2026-11-18
 
 Upstream: Python SDK 0.2.182, CLI 2.1.325

@@ -66,7 +66,7 @@ fn version_flag_prints_the_version() {
         assert!(output.status.success());
         assert_eq!(
             String::from_utf8_lossy(&output.stdout).trim(),
-            "2.1.325 (fake-claude)"
+            "2.1.329 (fake-claude)"
         );
     }
 }
@@ -84,7 +84,7 @@ fn without_a_scenario_it_speaks_the_protocol_until_stdin_closes() {
     assert_eq!(frames.len(), 2);
     assert_eq!(frames[0]["type"], "system");
     assert_eq!(frames[0]["subtype"], "init");
-    assert_eq!(frames[0]["claude_code_version"], "2.1.325");
+    assert_eq!(frames[0]["claude_code_version"], "2.1.329");
     assert_eq!(
         frames[0]["fake_args"],
         json!(["--input-format", "stream-json"])

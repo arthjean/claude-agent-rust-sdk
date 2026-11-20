@@ -81,7 +81,9 @@ wire_enum! {
 pub struct PermissionRuleValue {
     /// Name of the tool (`toolName` on the wire).
     pub tool_name: String,
-    /// Rule content, such as a command pattern (`ruleContent` on the wire).
+    /// What the rule matches within the tool, such as `"npm test"` for
+    /// Bash (`ruleContent` on the wire). `None`, or an empty string, makes a
+    /// rule that covers every use of the tool; `None` leaves the key out.
     pub rule_content: Option<String>,
 }
 
@@ -114,7 +116,8 @@ pub struct PermissionUpdate {
     pub mode: Option<PermissionMode>,
     /// Directories, for the directory kinds.
     pub directories: Option<Vec<String>>,
-    /// Where the update is stored.
+    /// Where the update applies and is kept. `None` is sent as
+    /// [`PermissionUpdateDestination::Session`].
     pub destination: Option<PermissionUpdateDestination>,
 }
 
@@ -168,46 +171,90 @@ impl PermissionUpdate {
     }
 
     /// Converts the update to its control-protocol form.
-    #[must_use]
-    pub fn to_wire(&self) -> Value {
+    ///
+    /// The CLI rejects an update that lacks a field its kind needs, or whose
+    /// `ruleContent` is `null`, and then ignores every update of the same
+    /// response. So this method:
+    ///
+    /// - leaves `ruleContent` out when [`PermissionRuleValue::rule_content`]
+    ///   is `None`, which is how the CLI expects a rule for the whole tool;
+    /// - sends `"session"` when [`PermissionUpdate::destination`] is `None`,
+    ///   so the update changes only the current session;
+    /// - fails when a field the kind needs is `None`: `rules` and `behavior`
+    ///   for the rule kinds, `mode` for `setMode`, `directories` for the
+    ///   directory kinds;
+    /// - fails when the kind is [`PermissionUpdateKind::Unknown`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] in the two failing cases above.
+    pub fn to_wire(&self) -> Result<Value, Error> {
+        let kind = self.kind.as_str();
+        let missing = |field: &str, hint: &str| {
+            Error::config(format!(
+                "PermissionUpdate(type='{kind}') has no {field}. {hint}"
+            ))
+        };
         let mut wire = Map::new();
-        wire.insert("type".to_owned(), json!(self.kind.as_str()));
-        if let Some(destination) = &self.destination {
-            wire.insert("destination".to_owned(), json!(destination.as_str()));
-        }
+        wire.insert("type".to_owned(), json!(kind));
+        wire.insert(
+            "destination".to_owned(),
+            json!(
+                self.destination
+                    .as_ref()
+                    .map_or("session", PermissionUpdateDestination::as_str)
+            ),
+        );
         match self.kind {
             PermissionUpdateKind::AddRules
             | PermissionUpdateKind::ReplaceRules
             | PermissionUpdateKind::RemoveRules => {
-                if let Some(rules) = &self.rules {
-                    let rules: Vec<Value> = rules
-                        .iter()
-                        .map(|rule| {
-                            json!({
-                                "toolName": rule.tool_name,
-                                "ruleContent": rule.rule_content,
-                            })
-                        })
-                        .collect();
-                    wire.insert("rules".to_owned(), Value::Array(rules));
-                }
-                if let Some(behavior) = &self.behavior {
-                    wire.insert("behavior".to_owned(), json!(behavior.as_str()));
-                }
+                let rules = self.rules.as_ref().ok_or_else(|| {
+                    missing("rules", "Set rules to a list of PermissionRuleValue.")
+                })?;
+                let behavior = self.behavior.as_ref().ok_or_else(|| {
+                    missing("behavior", "Set behavior to 'allow', 'deny' or 'ask'.")
+                })?;
+                let rules: Vec<Value> = rules
+                    .iter()
+                    .map(|rule| {
+                        let mut wire_rule = Map::new();
+                        wire_rule.insert("toolName".to_owned(), json!(rule.tool_name));
+                        if let Some(content) = &rule.rule_content {
+                            wire_rule.insert("ruleContent".to_owned(), json!(content));
+                        }
+                        Value::Object(wire_rule)
+                    })
+                    .collect();
+                wire.insert("rules".to_owned(), Value::Array(rules));
+                wire.insert("behavior".to_owned(), json!(behavior.as_str()));
             }
             PermissionUpdateKind::SetMode => {
-                if let Some(mode) = &self.mode {
-                    wire.insert("mode".to_owned(), json!(mode.as_str()));
-                }
+                let mode = self.mode.as_ref().ok_or_else(|| {
+                    missing(
+                        "mode",
+                        "Set mode to a permission mode such as 'acceptEdits'.",
+                    )
+                })?;
+                wire.insert("mode".to_owned(), json!(mode.as_str()));
             }
             PermissionUpdateKind::AddDirectories | PermissionUpdateKind::RemoveDirectories => {
-                if let Some(directories) = &self.directories {
-                    wire.insert("directories".to_owned(), json!(directories));
-                }
+                let directories = self
+                    .directories
+                    .as_ref()
+                    .ok_or_else(|| missing("directories", "Set directories to a list of paths."))?;
+                wire.insert("directories".to_owned(), json!(directories));
             }
-            PermissionUpdateKind::Unknown(_) => {}
+            PermissionUpdateKind::Unknown(_) => {
+                return Err(Error::config(format!(
+                    "PermissionUpdate has type '{kind}', which this version of the SDK \
+                     cannot send. Use one of addRules, replaceRules, removeRules, setMode, \
+                     addDirectories or removeDirectories, or upgrade the SDK if this update \
+                     came from the CLI."
+                )));
+            }
         }
-        Value::Object(wire)
+        Ok(Value::Object(wire))
     }
 
     /// Builds an update from its control-protocol form.
@@ -270,7 +317,9 @@ impl PermissionUpdate {
 
 impl Serialize for PermissionUpdate {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_wire().serialize(serializer)
+        self.to_wire()
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
     }
 }
 
@@ -311,7 +360,9 @@ pub enum PermissionResult {
     Allow {
         /// Replacement input; the original input is used when absent.
         updated_input: Option<Value>,
-        /// Permission updates to apply.
+        /// Permission updates to apply along with this allow. If any of them
+        /// cannot be sent ([`PermissionUpdate::to_wire`] fails), none are
+        /// sent and a warning is logged; the tool call is still allowed.
         updated_permissions: Option<Vec<PermissionUpdate>>,
     },
     /// Deny the tool call.

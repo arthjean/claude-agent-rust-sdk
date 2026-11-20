@@ -17,6 +17,7 @@ use claude_agent_rust_sdk::{
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 
+use common::capture::Warnings;
 use common::mock::{
     Recorder, assistant, cli, cli_answering, cli_answering_only_initialize, connected, drain,
     hook_request, initialize_request, is_control_request, options_with_hook, passive_hook, refusal,
@@ -882,6 +883,99 @@ async fn permission_results_use_the_wire_shapes() {
         response_to(&transport, "p-3").unwrap()["response"],
         json!({"behavior": "deny", "message": "Stop everything", "interrupt": true})
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn permission_callback_echoes_whole_tool_suggestions() {
+    let options = ClaudeAgentOptions::builder()
+        .can_use_tool(async |_tool_name, _input, context: ToolPermissionContext| {
+            Ok(PermissionResult::Allow {
+                updated_input: None,
+                updated_permissions: Some(context.suggestions),
+            })
+        })
+        .build()
+        .unwrap();
+    let transport = cli();
+    let _client = connected(&transport, options).await;
+
+    let suggestions = json!([
+        {
+            "type": "addRules",
+            "destination": "localSettings",
+            "behavior": "allow",
+            "rules": [{"toolName": "WebSearch"}],
+        },
+        {
+            "type": "addRules",
+            "destination": "session",
+            "behavior": "allow",
+            "rules": [{"toolName": "Bash", "ruleContent": "git status"}],
+        },
+        {"type": "setMode", "mode": "acceptEdits", "destination": "session"},
+    ]);
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": "test-whole-tool",
+        "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "WebSearch",
+            "input": {"query": "weather"},
+            "permission_suggestions": suggestions,
+        },
+    }));
+    settle().await;
+
+    let response = response_to(&transport, "test-whole-tool").unwrap();
+    assert_eq!(response["subtype"], "success");
+    assert_eq!(response["response"]["updatedPermissions"], suggestions);
+}
+
+#[tokio::test(start_paused = true)]
+async fn permission_callback_sends_no_updates_if_one_is_malformed() {
+    let (warnings, _guard) = Warnings::install();
+    let options = ClaudeAgentOptions::builder()
+        .can_use_tool(async |_tool_name, _input, _context| {
+            Ok(PermissionResult::Allow {
+                updated_input: None,
+                updated_permissions: Some(vec![
+                    PermissionUpdate::new(PermissionUpdateKind::AddRules)
+                        .rules([PermissionRuleValue::new("Read", None)])
+                        .behavior("allow")
+                        .destination(PermissionUpdateDestination::Session),
+                    PermissionUpdate::new(PermissionUpdateKind::AddRules)
+                        .rules([PermissionRuleValue::new("Bash", Some("ls".to_owned()))]),
+                    PermissionUpdate::new(PermissionUpdateKind::SetMode).mode("acceptEdits"),
+                ]),
+            })
+        })
+        .build()
+        .unwrap();
+    let transport = cli();
+    let _client = connected(&transport, options).await;
+
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": "test-malformed-update",
+        "request": {
+            "subtype": "can_use_tool",
+            "tool_name": "Read",
+            "input": {"file_path": "/tmp/x"},
+            "permission_suggestions": [],
+        },
+    }));
+    settle().await;
+
+    let response = response_to(&transport, "test-malformed-update").unwrap();
+    assert_eq!(response["subtype"], "success");
+    assert_eq!(response["response"]["behavior"], "allow");
+    assert!(response["response"].get("updatedPermissions").is_none());
+    let warnings = warnings.all().join("\n");
+    assert!(
+        warnings.contains("updated_permissions[1] cannot be sent"),
+        "{warnings}"
+    );
+    assert!(warnings.contains("has no behavior"), "{warnings}");
 }
 
 #[tokio::test(start_paused = true)]

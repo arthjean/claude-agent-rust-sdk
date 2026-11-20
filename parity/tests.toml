@@ -965,6 +965,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 [tests."tests/test_tool_callbacks.py"]
 "TestToolPermissionCallbacks::test_permission_callback_allow" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_receives_the_tool_the_input_and_the_full_context" }
 "TestToolPermissionCallbacks::test_permission_callback_suggestions_roundtrip" = { rust = ["crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_receives_the_tool_the_input_and_the_full_context", "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_results_use_the_wire_shapes", "crates/claude-agent-rust-sdk/tests/types.rs::permission_update_roundtrip_add_rules"] }
+"TestToolPermissionCallbacks::test_permission_callback_echoes_whole_tool_suggestion" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_echoes_whole_tool_suggestions" }
+"TestToolPermissionCallbacks::test_permission_callback_sends_no_updates_if_one_is_malformed" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_sends_no_updates_if_one_is_malformed" }
 "TestToolPermissionCallbacks::test_permission_callback_deny" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_results_use_the_wire_shapes" }
 "TestToolPermissionCallbacks::test_permission_callback_input_modification" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_results_use_the_wire_shapes" }
 "TestToolPermissionCallbacks::test_permission_callback_receives_tool_use_id" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::permission_callback_receives_the_tool_the_input_and_the_full_context" }
@@ -1169,6 +1171,12 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestPermissionUpdate::test_from_dict_to_dict_roundtrip_add_rules" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::permission_update_roundtrip_add_rules" }
 "TestPermissionUpdate::test_from_dict_set_mode" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::permission_update_set_mode" }
 "TestPermissionUpdate::test_from_dict_directories" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::permission_update_directories" }
+"TestPermissionUpdate::test_whole_tool_rule_has_no_rule_content_key" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::whole_tool_rule_has_no_rule_content_key" }
+"TestPermissionUpdate::test_empty_rule_content_is_sent_as_is" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::empty_rule_content_is_sent_as_is" }
+"TestPermissionUpdate::test_missing_destination_is_sent_as_session" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::missing_destination_is_sent_as_session" }
+"TestPermissionUpdate::test_missing_required_field_raises" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::missing_required_field_fails" }
+"TestPermissionUpdate::test_unknown_type_raises" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::unknown_kind_fails" }
+"TestPermissionUpdate::test_cli_suggestion_round_trips_unchanged" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::cli_suggestion_round_trips_unchanged" }
 "TestMessageTypes::test_user_message_creation" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::message_types_are_constructible" }
 "TestMessageTypes::test_assistant_message_with_text" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::message_types_are_constructible" }
 "TestMessageTypes::test_assistant_message_with_thinking" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::message_types_are_constructible" }

@@ -25,7 +25,7 @@ How to read it:
 <!-- parity:page:begin -->
 ## What was compared
 
-`claude-agent-rust-sdk` against the Python Claude Agent SDK 0.2.182, at upstream commit `4720d367f7db9d5df8a166c74d7f36a538ac8c34`, committed on 2026-11-13. The upstream source is the submodule `upstream/claude-agent-sdk-python`.
+`claude-agent-rust-sdk` against the Python Claude Agent SDK 0.2.186, at upstream commit `69846cdf82aef59add3b14a26b4f16d1ccee26ba`, committed on 2026-11-19. The upstream source is the submodule `upstream/claude-agent-sdk-python`.
 
 ### The ledgers
 
@@ -33,11 +33,11 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 | State | Upstream exports | Upstream tests |
 |---|---|---|
-| Implemented | 147 (92.5%) | 933 (79.7%) |
+| Implemented | 147 (92.5%) | 941 (79.9%) |
 | Adapted | 12 (7.5%) | 0 (0.0%) |
-| Not ported | 0 (0.0%) | 237 (20.3%) |
+| Not ported | 0 (0.0%) | 237 (20.1%) |
 | Pending | 0 (0.0%) | 0 (0.0%) |
-| Total | 159 | 1170 |
+| Total | 159 | 1178 |
 
 ### The differential harness
 
@@ -55,7 +55,7 @@ Rust chose another form on purpose; the CLI accepts both.
 |---|---|---|---|---|
 | `arg --max-budget-usd` on the wire | `"1e-05"` | `"1e-5"` | Python writes the budget with str() (subprocess_cli.py:563), Rust with the shortest round-trip form of f64. The two agree for ordinary amounts and differ only in exponent form, which the CLI parses to the same number. | differential case `budget-in-exponent-form` |
 | `env CLAUDE_CODE_ENTRYPOINT` on the wire | `"sdk-py"` | `"sdk-rs"` | Each SDK names itself to the CLI, which reports the entrypoint in its telemetry (subprocess_cli.py:767 sets sdk-py). | every differential case |
-| `env CLAUDE_AGENT_SDK_VERSION` on the wire | `"0.2.182"` | `"0.1.0"` | Each SDK sends its own package version (subprocess_cli.py:769 sends __version__). | every differential case |
+| `env CLAUDE_AGENT_SDK_VERSION` on the wire | `"0.2.186"` | `"0.1.0"` | Each SDK sends its own package version (subprocess_cli.py:769 sends __version__). | every differential case |
 | `arg --mcp-config /mcpServers/local/type` on the wire | `"stdio"` | nothing | Python passes the server dictionary as the caller wrote it; the typed Rust config never writes the type of a stdio server, which the CLI reads as stdio when missing. Documented in the module docs of src/types/config.rs. | differential case `every-cli-option` |
 | `frame control_response:mcp-4 /response/response/mcp_response/result/content/0/text` on the wire | `"Input validation error: 'b' is a required property"` | `"Input validation error: \"b\" is a required property"` | Both SDKs return the validator's message after the same prefix (__init__.py:630-632); Python's jsonschema quotes the property name with Python repr, the Rust jsonschema crate with JSON quotes. Message wording is not matched (a non-goal of tasks/prd-parity-hardening.md). | differential case `mcp-tools-call` |
 | `can_use_tool` with `permission_prompt_tool_name` set to `stdio` | Any value of `permission_prompt_tool_name` next to `can_use_tool` raises. (upstream `src/claude_agent_sdk/types.py:2362-2366`) | Options whose fields are set directly may hold `can_use_tool` together with the value `stdio`, which the callback needs anyway; any other value is a `Config` error. | `stdio` is the value the SDK itself sets for the callback, so refusing it would reject options the SDK produced. | `crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::session_options_force_the_stdio_prompt_tool_for_a_callback_set_after_the_build` |

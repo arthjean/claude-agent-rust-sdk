@@ -5,7 +5,7 @@ use std::process::Command;
 
 use claude_agent_rust_sdk::{CLI_VERSION, MINIMUM_CLI_VERSION, UPSTREAM_SDK_VERSION};
 
-const UPSTREAM_COMMIT: &str = "4720d367f7db9d5df8a166c74d7f36a538ac8c34";
+const UPSTREAM_COMMIT: &str = "69846cdf82aef59add3b14a26b4f16d1ccee26ba";
 const UPSTREAM_PATH: &str = "upstream/claude-agent-sdk-python";
 
 fn workspace_root() -> PathBuf {
@@ -268,12 +268,14 @@ const MACROS: &str = "crates/claude-agent-rust-sdk-macros";
 #[test]
 fn published_manifests_carry_the_registry_metadata() {
     let root = compact(&read("Cargo.toml"));
-    for setting in [
-        "repository = \"https://github.com/arthjean/claude-agent-rust-sdk\"",
-        "homepage = \"https://github.com/arthjean/claude-agent-rust-sdk\"",
-    ] {
-        assert!(root.contains(setting), "{setting}");
-    }
+    assert!(
+        root.contains("repository = \"https://github.com/arthjean/claude-agent-rust-sdk\""),
+        "repository"
+    );
+    assert!(
+        !root.contains("homepage ="),
+        "cargo warns that a homepage equal to the repository is redundant"
+    );
     let categories = [
         "api-bindings",
         "asynchronous",
@@ -288,7 +290,6 @@ fn published_manifests_carry_the_registry_metadata() {
             "\ndescription = \"".to_owned(),
             "\nlicense.workspace = true\n".to_owned(),
             "\nrepository.workspace = true\n".to_owned(),
-            "\nhomepage.workspace = true\n".to_owned(),
             format!("\ndocumentation = \"https://docs.rs/{name}\"\n"),
             format!("\nreadme = \"{readme}\"\n"),
         ] {
@@ -1796,8 +1797,8 @@ fn upstream_sdk_is_a_submodule_pinned_to_the_reference_commit() {
 #[test]
 fn version_constants_match_the_manifest_and_the_upstream_pin() {
     assert_eq!(claude_agent_rust_sdk::VERSION, env!("CARGO_PKG_VERSION"));
-    assert_eq!(claude_agent_rust_sdk::CLI_VERSION, "2.1.325");
-    assert_eq!(claude_agent_rust_sdk::UPSTREAM_SDK_VERSION, "0.2.182");
+    assert_eq!(claude_agent_rust_sdk::CLI_VERSION, "2.1.329");
+    assert_eq!(claude_agent_rust_sdk::UPSTREAM_SDK_VERSION, "0.2.186");
 }
 
 #[test]

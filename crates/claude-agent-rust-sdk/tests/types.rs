@@ -5,7 +5,7 @@ use std::time::Duration;
 use claude_agent_rust_sdk::{
     AgentDefinition, AgentEffort, AgentMcpServer, AgentMemory, AssistantMessage, AsyncHookOutput,
     BackgroundTaskSummary, CanUseTool, ContentBlock, ContextUsageResponse, EffortLevel,
-    ElicitationAction, ElicitationHookSpecificOutput, FastModeDisabledReason, FastModeState,
+    ElicitationAction, ElicitationHookSpecificOutput, Error, FastModeDisabledReason, FastModeState,
     HookCallback, HookContext, HookDecision, HookEffort, HookEvent, HookFailureMode, HookInput,
     HookMatcher, HookOutput, HookPermissionDecision, HookSpecificOutput, McpServerConnectionStatus,
     McpServerStatus, McpServerStatusConfig, McpStatusResponse, PermissionBehavior, PermissionMode,
@@ -134,7 +134,7 @@ fn permission_update_roundtrip_add_rules() {
         "behavior": "allow",
         "rules": [
             {"toolName": "Bash", "ruleContent": "npm *"},
-            {"toolName": "Read", "ruleContent": null},
+            {"toolName": "Read"},
         ],
     });
     let update = PermissionUpdate::from_wire(&wire).unwrap();
@@ -151,7 +151,7 @@ fn permission_update_roundtrip_add_rules() {
             PermissionRuleValue::new("Read", None),
         ])
     );
-    assert_eq!(update.to_wire(), wire);
+    assert_eq!(update.to_wire().unwrap(), wire);
     assert_eq!(serde_json::to_value(&update).unwrap(), wire);
     assert_eq!(
         serde_json::from_value::<PermissionUpdate>(wire).unwrap(),
@@ -164,11 +164,164 @@ fn permission_update_serializes_tool_name_and_rule_content_in_camel_case() {
     let update = PermissionUpdate::new(PermissionUpdateKind::ReplaceRules)
         .rules([PermissionRuleValue::new("Bash", Some("ls".to_owned()))])
         .behavior(PermissionBehavior::Deny);
-    let wire = update.to_wire();
-    assert_eq!(keys(&wire["rules"][0]), ["ruleContent", "toolName"]);
+    let wire = update.to_wire().unwrap();
     assert_eq!(wire["rules"][0]["toolName"], "Bash");
     assert_eq!(wire["rules"][0]["ruleContent"], "ls");
-    assert_eq!(PermissionUpdate::from_wire(&wire).unwrap(), update);
+    assert_eq!(
+        PermissionUpdate::from_wire(&wire).unwrap(),
+        update.destination(PermissionUpdateDestination::Session)
+    );
+}
+
+#[test]
+fn whole_tool_rule_has_no_rule_content_key() {
+    let update = PermissionUpdate::new(PermissionUpdateKind::AddRules)
+        .rules([PermissionRuleValue::new("WebSearch", None)])
+        .behavior(PermissionBehavior::Allow)
+        .destination(PermissionUpdateDestination::LocalSettings);
+    assert_eq!(
+        update.to_wire().unwrap(),
+        json!({
+            "type": "addRules",
+            "destination": "localSettings",
+            "behavior": "allow",
+            "rules": [{"toolName": "WebSearch"}],
+        })
+    );
+}
+
+#[test]
+fn empty_rule_content_is_sent_as_is() {
+    let update = PermissionUpdate::new(PermissionUpdateKind::AddRules)
+        .rules([PermissionRuleValue::new("Bash", Some(String::new()))])
+        .behavior(PermissionBehavior::Deny)
+        .destination(PermissionUpdateDestination::Session);
+    assert_eq!(
+        update.to_wire().unwrap()["rules"],
+        json!([{"toolName": "Bash", "ruleContent": ""}])
+    );
+}
+
+fn read_rule() -> PermissionRuleValue {
+    PermissionRuleValue::new("Read", None)
+}
+
+#[test]
+fn missing_destination_is_sent_as_session() {
+    let updates = [
+        PermissionUpdate::new(PermissionUpdateKind::AddRules)
+            .rules([read_rule()])
+            .behavior(PermissionBehavior::Allow),
+        PermissionUpdate::new(PermissionUpdateKind::ReplaceRules)
+            .rules([read_rule()])
+            .behavior(PermissionBehavior::Deny),
+        PermissionUpdate::new(PermissionUpdateKind::RemoveRules)
+            .rules([read_rule()])
+            .behavior(PermissionBehavior::Allow),
+        PermissionUpdate::new(PermissionUpdateKind::SetMode).mode(PermissionMode::AcceptEdits),
+        PermissionUpdate::new(PermissionUpdateKind::AddDirectories).directories(["/tmp/a"]),
+        PermissionUpdate::new(PermissionUpdateKind::RemoveDirectories).directories(["/tmp/a"]),
+    ];
+    for update in updates {
+        assert_eq!(
+            update.to_wire().unwrap()["destination"],
+            "session",
+            "{:?}",
+            update.kind
+        );
+    }
+}
+
+#[test]
+fn missing_required_field_fails() {
+    let rules = |kind| PermissionUpdate::new(kind).rules([read_rule()]);
+    let cases = [
+        (
+            PermissionUpdate::new(PermissionUpdateKind::AddRules).behavior("allow"),
+            "rules",
+        ),
+        (
+            PermissionUpdate::new(PermissionUpdateKind::ReplaceRules).behavior("deny"),
+            "rules",
+        ),
+        (
+            PermissionUpdate::new(PermissionUpdateKind::RemoveRules).behavior("ask"),
+            "rules",
+        ),
+        (rules(PermissionUpdateKind::AddRules), "behavior"),
+        (rules(PermissionUpdateKind::ReplaceRules), "behavior"),
+        (rules(PermissionUpdateKind::RemoveRules), "behavior"),
+        (PermissionUpdate::new(PermissionUpdateKind::SetMode), "mode"),
+        (
+            PermissionUpdate::new(PermissionUpdateKind::AddDirectories),
+            "directories",
+        ),
+        (
+            PermissionUpdate::new(PermissionUpdateKind::RemoveDirectories),
+            "directories",
+        ),
+    ];
+    for (update, missing) in cases {
+        let error = update.to_wire().unwrap_err();
+        assert!(matches!(error, Error::Config { .. }), "{error:?}");
+        assert!(
+            error.to_string().contains(&format!("has no {missing}")),
+            "{error}"
+        );
+        assert!(serde_json::to_value(&update).is_err());
+    }
+}
+
+#[test]
+fn unknown_kind_fails() {
+    let update = PermissionUpdate::new("addSomething").destination("session");
+    let error = update.to_wire().unwrap_err();
+    assert!(matches!(error, Error::Config { .. }), "{error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains("type 'addSomething', which this version"),
+        "{error}"
+    );
+}
+
+#[test]
+fn cli_suggestion_round_trips_unchanged() {
+    let wires = [
+        json!({
+            "type": "addRules",
+            "destination": "localSettings",
+            "behavior": "allow",
+            "rules": [{"toolName": "WebSearch"}],
+        }),
+        json!({
+            "type": "replaceRules",
+            "destination": "projectSettings",
+            "behavior": "deny",
+            "rules": [{"toolName": "Bash", "ruleContent": "rm -rf *"}],
+        }),
+        json!({
+            "type": "removeRules",
+            "destination": "userSettings",
+            "behavior": "ask",
+            "rules": [{"toolName": "mcp__server__tool"}],
+        }),
+        json!({"type": "setMode", "mode": "plan", "destination": "session"}),
+        json!({
+            "type": "removeDirectories",
+            "directories": ["/tmp/a"],
+            "destination": "localSettings",
+        }),
+    ];
+    for wire in wires {
+        assert_eq!(
+            PermissionUpdate::from_wire(&wire)
+                .unwrap()
+                .to_wire()
+                .unwrap(),
+            wire
+        );
+    }
 }
 
 #[test]
@@ -177,7 +330,7 @@ fn permission_update_set_mode() {
     let update = PermissionUpdate::from_wire(&wire).unwrap();
     assert_eq!(update.mode, Some(PermissionMode::AcceptEdits));
     assert_eq!(update.rules, None);
-    assert_eq!(update.to_wire(), wire);
+    assert_eq!(update.to_wire().unwrap(), wire);
 }
 
 #[test]
@@ -192,7 +345,7 @@ fn permission_update_directories() {
         update.directories,
         Some(vec!["/tmp/a".to_owned(), "/tmp/b".to_owned()])
     );
-    assert_eq!(update.to_wire(), wire);
+    assert_eq!(update.to_wire().unwrap(), wire);
 }
 
 #[test]
@@ -201,7 +354,10 @@ fn permission_update_sends_only_the_fields_of_its_kind() {
         .mode(PermissionMode::Plan)
         .directories(["/ignored"])
         .rules([PermissionRuleValue::new("Read", None)]);
-    assert_eq!(update.to_wire(), json!({"type": "setMode", "mode": "plan"}));
+    assert_eq!(
+        update.to_wire().unwrap(),
+        json!({"type": "setMode", "destination": "session", "mode": "plan"})
+    );
 }
 
 #[test]

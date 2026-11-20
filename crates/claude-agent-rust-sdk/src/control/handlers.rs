@@ -151,9 +151,10 @@ async fn can_use_tool(shared: &Shared, request: &Value) -> Result<Value, String>
                 "behavior": "allow",
                 "updatedInput": updated_input.unwrap_or(original_input),
             });
-            if let Some(permissions) = updated_permissions {
-                let permissions: Vec<Value> =
-                    permissions.iter().map(PermissionUpdate::to_wire).collect();
+            if let Some(permissions) = updated_permissions
+                .as_deref()
+                .and_then(permission_updates_to_wire)
+            {
                 response["updatedPermissions"] = Value::Array(permissions);
             }
             response
@@ -166,6 +167,29 @@ async fn can_use_tool(shared: &Shared, request: &Value) -> Result<Value, String>
             response
         }
     })
+}
+
+/// Converts the permission updates of an allow decision, all or none.
+///
+/// Returns `None`, and logs a warning, when any update cannot be converted:
+/// the one that failed may be a restriction the others were meant to come
+/// with.
+fn permission_updates_to_wire(updates: &[PermissionUpdate]) -> Option<Vec<Value>> {
+    let mut wire = Vec::with_capacity(updates.len());
+    for (index, update) in updates.iter().enumerate() {
+        match update.to_wire() {
+            Ok(value) => wire.push(value),
+            Err(error) => {
+                tracing::warn!(
+                    "The can_use_tool callback allowed the tool call, but none of its \
+                     permission updates were applied, because updated_permissions[{index}] \
+                     cannot be sent: {error}"
+                );
+                return None;
+            }
+        }
+    }
+    Some(wire)
 }
 
 async fn hook_callback(shared: &Shared, request: &Value) -> Result<Value, String> {
