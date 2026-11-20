@@ -803,11 +803,13 @@ fn stop_hook_input_background_work() {
                     "status": "running",
                     "description": "npm test",
                     "command": "npm test",
+                    "started_at": 1700000000,
                 }
             ],
             "session_crons": [
-                {"id": "cron-1", "schedule": "0 9 * * 1-5", "recurring": true, "prompt": "check CI"}
+                {"id": "cron-1", "schedule": "0 9 * * 1-5", "recurring": true, "prompt": "check CI", "next_run": "t"}
             ],
+            "effort": {"level": "high", "budget": 3},
         }),
     );
     let HookInput::Stop(input) = HookInput::from_wire(wire.clone()) else {
@@ -822,7 +824,14 @@ fn stop_hook_input_background_work() {
     let cron = &input.session_crons.as_ref().unwrap()[0];
     assert!(cron.recurring);
     assert_eq!(cron.schedule, "0 9 * * 1-5");
-    assert_eq!(HookInput::Stop(input).to_wire(), wire);
+    assert_eq!(task.extra["started_at"], 1_700_000_000);
+    assert_eq!(cron.extra["next_run"], "t");
+    assert_eq!(input.base.effort.as_ref().unwrap().extra["budget"], 3);
+    assert_eq!(
+        HookInput::Stop(input).to_wire(),
+        wire,
+        "the keys the crate does not model go back as they came"
+    );
 }
 
 #[test]

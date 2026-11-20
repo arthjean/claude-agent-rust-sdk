@@ -1339,6 +1339,36 @@ fn parse_conversation_reset() {
 }
 
 #[test]
+fn rate_limit_and_conversation_reset_keep_the_keys_they_do_not_model() {
+    let event = rate_limit(json!({
+        "type": "rate_limit_event",
+        "rate_limit_info": {"status": "allowed"},
+        "uuid": "u",
+        "session_id": "s",
+        "new_key": 1,
+    }));
+    assert_eq!(
+        event.extra,
+        json!({"new_key": 1}).as_object().unwrap().clone()
+    );
+
+    let Message::ConversationReset(reset) = parse_message(json!({
+        "type": "conversation_reset",
+        "new_conversation_id": "c",
+        "uuid": "u",
+        "session_id": "s",
+        "reason": "clear",
+    }))
+    .unwrap() else {
+        panic!("expected a conversation reset");
+    };
+    assert_eq!(
+        reset.extra,
+        json!({"reason": "clear"}).as_object().unwrap().clone()
+    );
+}
+
+#[test]
 fn parse_conversation_reset_missing_field() {
     let full = json!({
         "type": "conversation_reset",

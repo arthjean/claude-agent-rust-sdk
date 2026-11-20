@@ -1089,6 +1089,9 @@ pub struct RateLimitEvent {
     pub uuid: String,
     /// Session the event belongs to.
     pub session_id: String,
+    /// Keys of the event this version of the crate does not model, kept
+    /// verbatim.
+    pub extra: Map<String, Value>,
 }
 
 /// Emitted when the conversation is replaced without ending the connection,
@@ -1106,4 +1109,7 @@ pub struct ConversationResetMessage {
     pub uuid: String,
     /// Id of the session that was reset.
     pub session_id: String,
+    /// Keys of the message this version of the crate does not model, kept
+    /// verbatim.
+    pub extra: Map<String, Value>,
 }

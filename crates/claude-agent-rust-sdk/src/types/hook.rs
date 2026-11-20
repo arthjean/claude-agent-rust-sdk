@@ -48,6 +48,9 @@ pub struct HookEffort {
     /// Effort level for the current turn, such as `low` or `high`, after
     /// any downgrade for the selected model.
     pub level: String,
+    /// Fields this version of the crate does not model, kept verbatim.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Reads a duration in milliseconds from any JSON number.
@@ -67,7 +70,10 @@ fn lenient_effort<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<HookEffort>, D::Error> {
     Ok(match Option::<Value>::deserialize(deserializer)? {
-        Some(Value::String(level)) => Some(HookEffort { level }),
+        Some(Value::String(level)) => Some(HookEffort {
+            level,
+            extra: Map::new(),
+        }),
         Some(value @ Value::Object(_)) => HookEffort::deserialize(value).ok(),
         _ => None,
     })
@@ -225,6 +231,9 @@ pub struct BackgroundTaskSummary {
     /// Workflow name, for `workflow` tasks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Fields this version of the crate does not model, kept verbatim.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Scheduled wakeup of the session, as listed on `Stop` and `SubagentStop`
@@ -241,6 +250,9 @@ pub struct SessionCronSummary {
     pub recurring: bool,
     /// Prompt submitted when the cron fires, capped at 1000 characters.
     pub prompt: String,
+    /// Fields this version of the crate does not model, kept verbatim.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Input of a `Stop` hook.

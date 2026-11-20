@@ -649,6 +649,10 @@ fn parse_rate_limit(fields: &Fields<'_>) -> Parsed<RateLimitEvent> {
         rate_limit_info,
         uuid: fields.required_str("uuid")?,
         session_id: fields.required_str("session_id")?,
+        extra: extra_keys(
+            fields.object,
+            &["type", "rate_limit_info", "uuid", "session_id"],
+        ),
     })
 }
 
@@ -657,5 +661,9 @@ fn parse_conversation_reset(fields: &Fields<'_>) -> Parsed<ConversationResetMess
         new_conversation_id: fields.required_str("new_conversation_id")?,
         uuid: fields.required_str("uuid")?,
         session_id: fields.required_str("session_id")?,
+        extra: extra_keys(
+            fields.object,
+            &["type", "new_conversation_id", "uuid", "session_id"],
+        ),
     })
 }
