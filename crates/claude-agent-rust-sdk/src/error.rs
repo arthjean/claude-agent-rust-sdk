@@ -26,6 +26,10 @@
 //!   was set), where Python always says "Check stderr output for details".
 //!   The text of the error leaves them out, where Python's text appends the
 //!   placeholder, so logging an error never logs the CLI's error output.
+//!
+//! Otherwise the text of an error is upstream's, word for word, Python
+//! vocabulary included ("expected dict, got NoneType", "ProcessTransport",
+//! "canUseTool"), so a program that matches on a message keeps matching.
 
 use std::fmt;
 use std::ops::Deref;

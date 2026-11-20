@@ -1,6 +1,6 @@
 [package]
 name = "fake-claude"
-description = "Scriptable stand-in for the Claude CLI, used by the claude-agent-rust-sdk test suite"
+description = "Scriptable stand-in for the Claude Code CLI, used by the claude-agent-rust-sdk test suite"
 publish = false
 version.workspace = true
 edition.workspace = true

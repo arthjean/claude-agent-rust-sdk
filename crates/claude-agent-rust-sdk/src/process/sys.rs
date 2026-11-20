@@ -254,7 +254,7 @@ mod imp {
             let job = child.raw_handle().and_then(|process| {
                 create_job(process)
                     .inspect_err(|error| {
-                        tracing::warn!(%error, "could not place the Claude CLI in a Job Object");
+                        tracing::warn!(%error, "could not place Claude Code in a Job Object");
                     })
                     .ok()
             });

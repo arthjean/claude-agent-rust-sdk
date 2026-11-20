@@ -1,6 +1,6 @@
 # claude-agent-rust-sdk
 
-A Rust port of the Python Claude Agent SDK, published as the crate `claude-agent-rust-sdk`: it runs the Claude CLI as a child process and speaks its JSON control protocol over stdio. The port holds behavioral parity with one pinned upstream version, vendored as the submodule `upstream/claude-agent-sdk-python`. Upstream is the reference for behavior; `parity/` records how each upstream export and test is covered.
+A Rust port of the Python Claude Agent SDK, published as the crate `claude-agent-rust-sdk`: it runs the Claude Code CLI as a child process and speaks its JSON control protocol over stdio. The port holds behavioral parity with one pinned upstream version, vendored as the submodule `upstream/claude-agent-sdk-python`. Upstream is the reference for behavior; `parity/` records how each upstream export and test is covered.
 
 ## Stop for the owner
 

@@ -16,7 +16,7 @@ use crate::types::{BoxFuture, ClaudeAgentOptions, Message};
 
 const ONE_SHOT_SESSION_ID: &str = "";
 
-/// Runs one query against the Claude CLI and returns the stream of its
+/// Runs one query against the Claude Code CLI and returns the stream of its
 /// messages.
 ///
 /// The prompt is a string, or a stream of input messages wrapped in a

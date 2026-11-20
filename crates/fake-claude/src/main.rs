@@ -1,4 +1,4 @@
-//! Scriptable stand-in for the Claude CLI.
+//! Scriptable stand-in for the Claude Code CLI.
 //!
 //! The program plays the scenario file named by the `FAKE_CLAUDE_SCENARIO`
 //! environment variable; the format is documented in the `scenario`

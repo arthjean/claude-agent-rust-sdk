@@ -216,7 +216,7 @@ async fn supervise(
             }));
         }
         Err(error) => {
-            tracing::warn!(%error, "the Claude CLI process could not be reaped");
+            tracing::warn!(%error, "the Claude Code process could not be reaped");
         }
     }
 }

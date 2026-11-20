@@ -767,15 +767,15 @@ impl ControlSession {
             if !supported {
                 return Err(Error::unsupported(
                     "The process answering initialize does not honor on_failure on hook \
-                     matchers, so a hook that fails would not block. Update the Claude CLI if \
-                     it is old, or remove the block failure mode from your hooks.",
+                     matchers, so a hook that fails would not block. Update Claude Code if it \
+                     is old, or remove on_failure=\"block\" from your hooks.",
                 ));
             }
             if response.get("hooks_applied") == Some(&Value::Bool(false)) {
                 return Err(Error::unsupported(
                     "This session was already running and did not register your hooks, so a \
-                     hook with the block failure mode would never run. Start a new session, or \
-                     remove the block failure mode from your hooks.",
+                     hook set to on_failure=\"block\" would never run. Start a new session, or \
+                     remove on_failure=\"block\" from your hooks.",
                 ));
             }
         }

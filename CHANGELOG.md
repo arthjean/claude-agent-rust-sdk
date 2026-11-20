@@ -32,6 +32,7 @@
 - **Breaking:** `ClaudeSdkClient::receive_messages` and `receive_response` end after yielding an error, such as a message that cannot be parsed, as upstream's iterator does; call `receive_messages` again to read the messages after it.
 - `cargo xtask parity-check` fails when a ledger names an `#[ignore]`d test, a test compiled on this platform under another platform's suffix, or, for a test of another platform, a function that is not a test; CI runs it on Linux, macOS, and Windows.
 - **Breaking:** `ClaudeSdkClient::get_server_info`, `get_mcp_status`, and `get_context_usage` are renamed `server_info`, `mcp_status`, and `context_usage`, and `ToolResult::is_error(bool)` is renamed `with_error_flag(bool)`.
+- The product is named Claude Code throughout the docs, logs, and package descriptions, and the errors about hooks set to block on failure use upstream's words (`remove on_failure="block" from your hooks`).
 
 ### Removed
 

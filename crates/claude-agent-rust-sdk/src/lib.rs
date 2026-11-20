@@ -1,4 +1,4 @@
-//! Rust SDK for building agents on top of the Claude CLI.
+//! Rust SDK for building agents on top of the Claude Code CLI.
 //!
 //! The crate spawns the CLI as a child process and exchanges
 //! newline-delimited JSON with it. It has two entry points:

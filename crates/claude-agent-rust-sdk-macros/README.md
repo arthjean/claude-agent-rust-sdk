@@ -1,7 +1,7 @@
 # claude-agent-rust-sdk-macros
 
 Procedural macros of [`claude-agent-rust-sdk`](https://crates.io/crates/claude-agent-rust-sdk),
-the Rust SDK for building agents on top of the Claude CLI.
+the Rust SDK for building agents on top of the Claude Code CLI.
 
 Do not depend on this crate directly. It is used through the `macros` feature
 of `claude-agent-rust-sdk`, which re-exports the `#[tool]` attribute and

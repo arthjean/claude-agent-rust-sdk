@@ -1,4 +1,4 @@
-//! Interactive client: a long-lived session with the Claude CLI.
+//! Interactive client: a long-lived session with the Claude Code CLI.
 
 use std::fmt;
 use std::marker::PhantomData;
@@ -24,7 +24,7 @@ use crate::types::{
 const DEFAULT_SESSION_ID: &str = "default";
 const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 
-/// Client for a multi-turn, interactive conversation with the Claude CLI.
+/// Client for a multi-turn, interactive conversation with the Claude Code CLI.
 ///
 /// The client keeps one session open: send a prompt with
 /// [`query`](Self::query), read the answer with

@@ -1,6 +1,6 @@
 [package]
 name = "claude-agent-rust-sdk"
-description = "Rust SDK for building Claude Agent applications on top of the Claude CLI"
+description = "Rust SDK for building Claude Agent applications on top of the Claude Code CLI"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
