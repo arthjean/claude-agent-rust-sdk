@@ -93,7 +93,7 @@ type SharedClose = Shared<BoxFuture<'static, ()>>;
 /// has its own state: [`process_id`](Self::process_id) names the current
 /// process and [`read_messages`](Self::read_messages) hands out its output.
 pub struct SubprocessTransport {
-    options: ClaudeAgentOptions,
+    options: Arc<ClaudeAgentOptions>,
     skip_version_check: bool,
     connecting: tokio::sync::Mutex<()>,
     inner: Mutex<Arc<Inner>>,
@@ -156,7 +156,7 @@ impl SubprocessTransport {
         let skip_version_check =
             std::env::var_os(SKIP_VERSION_CHECK_VARIABLE).is_some_and(|value| !value.is_empty());
         Self {
-            options,
+            options: Arc::new(options),
             skip_version_check,
             connecting: tokio::sync::Mutex::new(()),
             inner: Mutex::new(Inner::new()),
@@ -212,40 +212,10 @@ impl SubprocessTransport {
         }
         let inner = self.inner();
 
-        let cli_path = match &self.options.cli_path {
-            Some(path) => path.clone(),
-            None => tokio::task::spawn_blocking(find_cli)
-                .await
-                .map_err(|error| Error::spawn(format!("CLI discovery failed: {error}")))??,
-        };
-        reject_windows_batch_cli(&cli_path, Platform::current())?;
-        let arguments = self.command_arguments()?;
-        let environment = build_environment(
-            &self.options,
-            std::env::vars_os(),
-            Platform::current(),
-            &active_trace_context(),
-        );
-
-        let mut command = Command::new(&cli_path);
-        command
-            .args(arguments)
-            .env_clear()
-            .envs(environment.into_entries())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(if self.options.stderr.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::inherit()
-            });
-        if let Some(cwd) = self.working_directory() {
-            command.current_dir(cwd);
-        }
-        if let Some(user) = &self.options.user {
-            process::run_as_user(&mut command, user)
-                .map_err(|error| Error::spawn("Failed to start Claude Code").with_source(error))?;
-        }
+        let trace_context = active_trace_context();
+        let options = Arc::clone(&self.options);
+        let (cli_path, command) =
+            crate::blocking::run(move || prepare_command(&options, &trace_context)).await??;
 
         let spawned = process::spawn(command)
             .await
@@ -429,15 +399,6 @@ impl SubprocessTransport {
         Ok(())
     }
 
-    /// The working directory of the CLI. An empty path is unset, as
-    /// upstream treats it: the CLI runs in the directory of this process.
-    fn working_directory(&self) -> Option<&Path> {
-        self.options
-            .cwd
-            .as_deref()
-            .filter(|cwd| !cwd.as_os_str().is_empty())
-    }
-
     fn max_buffer_size(&self) -> usize {
         self.options
             .max_buffer_size
@@ -445,7 +406,7 @@ impl SubprocessTransport {
     }
 
     fn spawn_error(&self, cli_path: &Path, error: std::io::Error) -> Error {
-        if let Some(cwd) = self.working_directory()
+        if let Some(cwd) = working_directory(&self.options)
             && !cwd.exists()
         {
             return Error::spawn(format!(
@@ -497,6 +458,60 @@ impl fmt::Debug for SubprocessTransport {
             .field("process_id", &self.process_id())
             .finish_non_exhaustive()
     }
+}
+
+/// The working directory of the CLI. An empty path is unset, as upstream
+/// treats it: the CLI runs in the directory of this process.
+fn working_directory(options: &ClaudeAgentOptions) -> Option<&Path> {
+    options
+        .cwd
+        .as_deref()
+        .filter(|cwd| !cwd.as_os_str().is_empty())
+}
+
+/// Finds the CLI and builds the command that starts it. It blocks: the
+/// discovery and the sandbox settings read the file system, and the
+/// `user` option looks the user up in the user database, which may query a
+/// directory service. [`SubprocessTransport::connect`] runs it on the
+/// blocking pool. The trace context is read before, on the thread of the
+/// caller, where the OpenTelemetry context is current.
+fn prepare_command(
+    options: &ClaudeAgentOptions,
+    trace_context: &[(String, String)],
+) -> Result<(PathBuf, Command)> {
+    let cli_path = match &options.cli_path {
+        Some(path) => path.clone(),
+        None => find_cli()?,
+    };
+    reject_windows_batch_cli(&cli_path, Platform::current())?;
+    let arguments = build_arguments(options, Platform::current())?;
+    let environment = build_environment(
+        options,
+        std::env::vars_os(),
+        Platform::current(),
+        trace_context,
+    );
+
+    let mut command = Command::new(&cli_path);
+    command
+        .args(arguments)
+        .env_clear()
+        .envs(environment.into_entries())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(if options.stderr.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        });
+    if let Some(cwd) = working_directory(options) {
+        command.current_dir(cwd);
+    }
+    if let Some(user) = &options.user {
+        process::run_as_user(&mut command, user)
+            .map_err(|error| Error::spawn("Failed to start Claude Code").with_source(error))?;
+    }
+    Ok((cli_path, command))
 }
 
 async fn shut_down(inner: Arc<Inner>, connection: Connection) {

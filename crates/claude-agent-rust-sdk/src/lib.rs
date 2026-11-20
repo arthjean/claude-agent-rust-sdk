@@ -128,6 +128,7 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+mod blocking;
 mod caller_context;
 pub mod cli;
 mod client;

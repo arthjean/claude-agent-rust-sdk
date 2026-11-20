@@ -74,6 +74,82 @@ async fn connect_after_close_starts_a_new_process() {
     assert!(wait_until_gone(second, Duration::from_secs(5)).await);
 }
 
+/// Writes `{}` into a named pipe once a reader has it open, trying for up
+/// to `limit`. Returns whether a reader took it.
+#[cfg(unix)]
+fn feed_pipe(pipe: &std::path::Path, limit: Duration) -> bool {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let deadline = std::time::Instant::now() + limit;
+    while std::time::Instant::now() < deadline {
+        let opened = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(pipe);
+        if let Ok(mut file) = opened {
+            return file.write_all(b"{}").is_ok();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// Connects with a settings file that is a named pipe, which blocks its
+/// reader until a writer opens it, on a single-thread runtime whose only
+/// writer is a task of that runtime. A connect that reads the settings on
+/// the runtime thread never lets the writer run; a watchdog then feeds the
+/// pipe itself so the thread is released, and the test fails.
+#[cfg(unix)]
+#[test]
+fn connect_reads_the_settings_without_stalling_a_single_thread_runtime() {
+    let directory = tempfile::tempdir().unwrap();
+    let pipe = directory.path().join("settings.json");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&pipe)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let options = stand_in_options()
+        .settings(pipe.to_string_lossy())
+        .sandbox(claude_agent_rust_sdk::SandboxSettings::new().enabled(true))
+        .build()
+        .unwrap();
+
+    let (done, finished) = std::sync::mpsc::channel();
+    let writer_pipe = pipe.clone();
+    let session = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let writer_ran = runtime.block_on(async move {
+            let transport = SubprocessTransport::new(options);
+            let writer = async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::task::spawn_blocking(move || feed_pipe(&writer_pipe, Duration::from_secs(5)))
+                    .await
+                    .unwrap()
+            };
+            let (connected, writer_ran) = tokio::join!(transport.connect(), writer);
+            connected.unwrap();
+            transport.close().await.unwrap();
+            writer_ran
+        });
+        let _ = done.send(writer_ran);
+    });
+
+    let outcome = finished.recv_timeout(Duration::from_secs(10));
+    if outcome.is_err() {
+        feed_pipe(&pipe, Duration::from_secs(5));
+    }
+    session.join().unwrap();
+    assert_eq!(
+        outcome,
+        Ok(true),
+        "reading the settings blocked the runtime thread, so its writer task never ran"
+    );
+}
+
 #[tokio::test]
 async fn an_empty_working_directory_runs_the_cli_in_the_current_directory() {
     let transport = SubprocessTransport::new(stand_in_options().cwd("").build().unwrap());

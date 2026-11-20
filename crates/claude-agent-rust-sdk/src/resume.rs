@@ -14,6 +14,11 @@
 //! child without them would only fail later on authentication. The other
 //! seed files (`.claude.json` and the settings) are best effort: one that
 //! cannot be read or written is skipped with a warning.
+//!
+//! Every file operation and the Keychain read run on the blocking pool, so
+//! a resume never stalls the runtime. The directory moves into each
+//! blocking job and comes back with its result: a resume cancelled while a
+//! job runs removes the directory once that job is done, never under it.
 
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -21,6 +26,7 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use indexmap::IndexMap;
 use serde_json::Value;
 
 use crate::error::{Error, Result};
@@ -70,8 +76,13 @@ impl ResumeDir {
 
     /// Removes the directory, retrying 4 times 100 ms apart while a handle
     /// is still held (antivirus and indexers on Windows), then once more
-    /// ignoring errors. It never fails.
-    pub(crate) async fn remove(mut self) {
+    /// ignoring errors. It never fails, and runs on the blocking pool, so
+    /// it finishes even when this future is dropped.
+    pub(crate) async fn remove(self) {
+        let _ = crate::blocking::run(move || self.remove_blocking()).await;
+    }
+
+    fn remove_blocking(mut self) {
         let Some(path) = self.path.take() else {
             return;
         };
@@ -82,21 +93,39 @@ impl ResumeDir {
                 Err(error) if is_transient(&error) => {}
                 Err(_) => break,
             }
-            let mut sweep = Sweep(Some(path.clone()));
-            tokio::time::sleep(CLEANUP_DELAY).await;
-            sweep.0 = None;
+            std::thread::sleep(CLEANUP_DELAY);
         }
         let _ = std::fs::remove_dir_all(&path);
     }
 }
 
-/// Removes the directory if a retry wait is cancelled.
-struct Sweep(Option<PathBuf>);
+/// Runs file work on the directory on the blocking pool, with the
+/// directory moved in. The directory comes back with the result when the
+/// work succeeds; when it fails, the directory is removed and the error
+/// returned. A caller dropped meanwhile leaves the work to finish, and the
+/// directory is removed after it.
+async fn in_directory<T: Send + 'static>(
+    directory: ResumeDir,
+    work: impl FnOnce(&Path) -> Result<T> + Send + 'static,
+) -> Result<(ResumeDir, T)> {
+    crate::blocking::run(move || match work(directory.path()) {
+        Ok(value) => Ok((directory, value)),
+        Err(error) => {
+            directory.remove_blocking();
+            Err(error)
+        }
+    })
+    .await?
+}
 
-impl Drop for Sweep {
-    fn drop(&mut self) {
-        if let Some(path) = &self.0 {
-            let _ = std::fs::remove_dir_all(path);
+/// The value of `result` with the directory, or its error once the
+/// directory is removed.
+async fn or_remove<T>(directory: ResumeDir, result: Result<T>) -> Result<(ResumeDir, T)> {
+    match result {
+        Ok(value) => Ok((directory, value)),
+        Err(error) => {
+            directory.remove().await;
+            Err(error)
         }
     }
 }
@@ -270,18 +299,27 @@ pub(crate) async fn materialize_resume_session(
         return Ok(None);
     };
 
-    let directory = ResumeDir::create()?;
+    let directory = crate::blocking::run(ResumeDir::create).await??;
     let project_dir = directory.path().join("projects").join(&project_key);
-    let filled = async {
-        write_jsonl(&project_dir.join(format!("{session_id}.jsonl")), &entries)?;
-        copy_auth_files(directory.path(), options)?;
-        materialize_subkeys(store, &project_dir, &project_key, &session_id, limit).await
+    let transcript = project_dir.join(format!("{session_id}.jsonl"));
+    let env = options.env.clone();
+    let (directory, skipped) = in_directory(directory, move |root| {
+        write_jsonl(&transcript, &entries)?;
+        copy_auth_files(root, &env)
+    })
+    .await?;
+    for warning in skipped {
+        tracing::warn!("{warning}");
     }
-    .await;
-    if let Err(error) = filled {
-        directory.remove().await;
-        return Err(error);
-    }
+    let directory = materialize_subkeys(
+        store,
+        directory,
+        &project_dir,
+        &project_key,
+        &session_id,
+        limit,
+    )
+    .await?;
     Ok(Some(MaterializedResume {
         directory,
         session_id,
@@ -322,33 +360,31 @@ fn write_jsonl(path: &Path, entries: &[SessionStoreEntry]) -> Result<()> {
         .map_err(|error| Error::io(format!("Cannot write {}", path.display()), error))
 }
 
-fn env_value(options: &ClaudeAgentOptions, name: &str) -> Option<String> {
-    options
-        .env
-        .get(name)
+fn env_value(env: &IndexMap<String, String>, name: &str) -> Option<String> {
+    env.get(name)
         .cloned()
         .filter(|value| !value.is_empty())
         .or_else(|| std::env::var(name).ok().filter(|value| !value.is_empty()))
 }
 
 /// Reads a regular file. A missing file is absent; any other reason it
-/// cannot be read is logged and treated as absent, since these files only
-/// enrich the temporary directory.
-fn read_if_present(path: &Path) -> Option<Vec<u8>> {
+/// cannot be read is added to `skipped` and treated as absent, since these
+/// files only enrich the temporary directory.
+fn read_if_present(path: &Path, skipped: &mut Vec<String>) -> Option<Vec<u8>> {
+    let mut skip = |reason: String| {
+        skipped.push(format!(
+            "[SessionStore] resume: skipping {} ({reason})",
+            path.display()
+        ));
+    };
     match std::fs::metadata(path) {
         Err(error) if error.kind() == ErrorKind::NotFound => return None,
         Err(error) => {
-            tracing::warn!(
-                "[SessionStore] resume: skipping {} ({error})",
-                path.display()
-            );
+            skip(error.to_string());
             return None;
         }
         Ok(metadata) if !metadata.is_file() => {
-            tracing::warn!(
-                "[SessionStore] resume: skipping {} (not a regular file)",
-                path.display()
-            );
+            skip("not a regular file".to_owned());
             return None;
         }
         Ok(_) => {}
@@ -356,25 +392,27 @@ fn read_if_present(path: &Path) -> Option<Vec<u8>> {
     match std::fs::read(path) {
         Ok(content) => Some(content),
         Err(error) => {
-            tracing::warn!(
-                "[SessionStore] resume: skipping {} ({error})",
-                path.display()
-            );
+            skip(error.to_string());
             None
         }
     }
 }
 
-fn copy_if_present(source: &Path, target: &Path, transform: impl FnOnce(Vec<u8>) -> Vec<u8>) {
-    let Some(content) = read_if_present(source) else {
+fn copy_if_present(
+    source: &Path,
+    target: &Path,
+    transform: impl FnOnce(Vec<u8>) -> Vec<u8>,
+    skipped: &mut Vec<String>,
+) {
+    let Some(content) = read_if_present(source, skipped) else {
         return;
     };
     if let Err(error) = write_private(target, &transform(content)) {
         let _ = std::fs::remove_file(target);
-        tracing::warn!(
+        skipped.push(format!(
             "[SessionStore] resume: skipping {} ({error})",
             source.display()
-        );
+        ));
     }
 }
 
@@ -427,18 +465,20 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
 ///
 /// Returns [`ErrorKind::Io`](crate::ErrorKind::Io) naming the credentials file when credentials were
 /// found but cannot be written. A seed file that cannot be copied is only
-/// logged.
-fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) -> Result<()> {
-    let caller_config_dir = env_value(options, CONFIG_DIR_VARIABLE).map(PathBuf::from);
+/// reported in the returned warnings, which the caller logs: this runs on
+/// the blocking pool, away from the task, and the span, of the caller.
+fn copy_auth_files(target: &Path, env: &IndexMap<String, String>) -> Result<Vec<String>> {
+    let mut skipped = Vec::new();
+    let caller_config_dir = env_value(env, CONFIG_DIR_VARIABLE).map(PathBuf::from);
     let home = std::env::home_dir().unwrap_or_default();
     let source = caller_config_dir
         .clone()
         .unwrap_or_else(|| home.join(".claude"));
 
-    let mut credentials = read_if_present(&source.join(".credentials.json"))
+    let mut credentials = read_if_present(&source.join(".credentials.json"), &mut skipped)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
-    let env_auth = env_value(options, "ANTHROPIC_API_KEY").is_some()
-        || env_value(options, "CLAUDE_CODE_OAUTH_TOKEN").is_some();
+    let env_auth = env_value(env, "ANTHROPIC_API_KEY").is_some()
+        || env_value(env, "CLAUDE_CODE_OAUTH_TOKEN").is_some();
     if caller_config_dir.is_none()
         && !env_auth
         && let Some(keychain) = read_keychain_credentials()
@@ -447,43 +487,53 @@ fn copy_auth_files(target: &Path, options: &ClaudeAgentOptions) -> Result<()> {
     }
     if let Some(credentials) = credentials {
         let target = target.join(".credentials.json");
-        write_credentials(&target, redact_credentials(&credentials).as_bytes()).map_err(
-            |error| {
-                Error::io(
-                    format!(
-                        "Cannot write the credentials file {} for the resumed session",
-                        target.display()
-                    ),
-                    error,
-                )
-            },
-        )?;
+        write_credentials(
+            &source,
+            &target,
+            redact_credentials(&credentials).as_bytes(),
+        )
+        .map_err(|error| {
+            Error::io(
+                format!(
+                    "Cannot write the credentials file {} for the resumed session",
+                    target.display()
+                ),
+                error,
+            )
+        })?;
     }
 
     let claude_json = match &caller_config_dir {
         Some(directory) => directory.join(".claude.json"),
         None => home.join(".claude.json"),
     };
-    copy_if_present(&claude_json, &target.join(".claude.json"), |content| {
-        content
-    });
+    copy_if_present(
+        &claude_json,
+        &target.join(".claude.json"),
+        |content| content,
+        &mut skipped,
+    );
     for name in SETTINGS_FILES {
         copy_if_present(
             &source.join(name),
             &target.join(name),
             strip_settings_for_resume,
+            &mut skipped,
         );
     }
-    Ok(())
+    Ok(skipped)
 }
 
-/// Writes the redacted credentials. Unit tests can make the write fail, as
-/// a full disk or a denied permission would.
-fn write_credentials(path: &Path, content: &[u8]) -> std::io::Result<()> {
+/// Writes the redacted credentials read from the config directory
+/// `source`. Unit tests can make the write fail, as a full disk or a
+/// denied permission would.
+fn write_credentials(source: &Path, path: &Path, content: &[u8]) -> std::io::Result<()> {
     #[cfg(test)]
-    if let Some(error) = tests::credentials_write_fault(path) {
+    if let Some(error) = tests::credentials_write_fault(source, path) {
         return Err(error);
     }
+    #[cfg(not(test))]
+    let _ = source;
     write_private(path, content)
 }
 
@@ -564,15 +614,17 @@ fn subkey_transcript_path(session_dir: &Path, subpath: &str) -> Option<PathBuf> 
     file.starts_with(session_dir).then_some(file)
 }
 
-/// Writes the subagent transcripts the store lists under the session. A
-/// store without `list_subkeys` gets the main transcript only.
+/// Writes the subagent transcripts the store lists under the session into
+/// the directory, which comes back on success and is removed on failure.
+/// A store without `list_subkeys` gets the main transcript only.
 async fn materialize_subkeys(
     store: &SharedSessionStore,
+    directory: ResumeDir,
     project_dir: &Path,
     project_key: &str,
     session_id: &str,
     limit: Duration,
-) -> Result<()> {
+) -> Result<ResumeDir> {
     let session_dir = project_dir.join(session_id);
     let listed = bounded(
         &format!("list_subkeys for session {session_id}"),
@@ -587,9 +639,10 @@ async fn materialize_subkeys(
             }
         },
     )
-    .await?;
+    .await;
+    let (mut directory, listed) = or_remove(directory, listed).await?;
     let Some(subkeys) = listed else {
-        return Ok(());
+        return Ok(directory);
     };
     for subpath in subkeys {
         if !is_safe_subpath(&subpath) {
@@ -597,13 +650,15 @@ async fn materialize_subkeys(
             continue;
         }
         let key = SessionKey::new(project_key, session_id).with_subpath(subpath.clone());
-        let entries = bounded(
+        let loaded = bounded(
             &format!("load for session {session_id} subpath {subpath}"),
             limit,
             store.load(&key),
         )
-        .await?
-        .unwrap_or_default();
+        .await;
+        let (kept, entries) = or_remove(directory, loaded).await?;
+        directory = kept;
+        let entries = entries.unwrap_or_default();
         if entries.is_empty() {
             continue;
         }
@@ -619,25 +674,30 @@ async fn materialize_subkeys(
         let Some(file) = subkey_transcript_path(&session_dir, &subpath) else {
             continue;
         };
-        if !transcript.is_empty() {
-            write_jsonl(&file, &transcript)?;
-        }
-        if let Some(mut metadata) = metadata {
-            metadata.shift_remove("type");
-            let sidecar = agent_metadata_sidecar_path(&file);
-            if let Some(parent) = sidecar.parent() {
-                create_dir(parent)?;
+        (directory, ()) = in_directory(directory, move |_| {
+            if !transcript.is_empty() {
+                write_jsonl(&file, &transcript)?;
             }
-            write_private(&sidecar, Value::Object(metadata).to_string().as_bytes())
-                .map_err(|error| Error::io(format!("Cannot write {}", sidecar.display()), error))?;
-        }
+            if let Some(mut metadata) = metadata {
+                metadata.shift_remove("type");
+                let sidecar = agent_metadata_sidecar_path(&file);
+                if let Some(parent) = sidecar.parent() {
+                    create_dir(parent)?;
+                }
+                write_private(&sidecar, Value::Object(metadata).to_string().as_bytes()).map_err(
+                    |error| Error::io(format!("Cannot write {}", sidecar.display()), error),
+                )?;
+            }
+            Ok(())
+        })
+        .await?;
     }
-    Ok(())
+    Ok(directory)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     use futures_util::StreamExt;
     use serde_json::json;
@@ -646,38 +706,52 @@ mod tests {
     use crate::session_store::{InMemorySessionStore, SessionStore};
     use crate::types::ClaudeAgentOptionsBuilder;
 
-    thread_local! {
-        static CREDENTIALS_FAULT: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
+    /// The config directories whose credentials writes fail, each with the
+    /// path of every attempt. Keyed by directory, not by thread, since the
+    /// writes run on the blocking pool.
+    static CREDENTIALS_FAULTS: Mutex<Vec<(PathBuf, Vec<PathBuf>)>> = Mutex::new(Vec::new());
+
+    fn faults() -> std::sync::MutexGuard<'static, Vec<(PathBuf, Vec<PathBuf>)>> {
+        CREDENTIALS_FAULTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The error a credentials write on this thread fails with while a test
-    /// holds an [`Arm`]; the path of each attempt is recorded for the test.
-    pub(super) fn credentials_write_fault(path: &Path) -> Option<std::io::Error> {
-        CREDENTIALS_FAULT.with(|fault| {
-            fault.borrow_mut().as_mut().map(|attempts| {
+    /// The error a write of the credentials read from `source` fails with
+    /// while a test holds an [`Arm`] on it; the path of each attempt is
+    /// recorded for the test.
+    pub(super) fn credentials_write_fault(source: &Path, path: &Path) -> Option<std::io::Error> {
+        faults()
+            .iter_mut()
+            .find(|(armed, _)| armed == source)
+            .map(|(_, attempts)| {
                 attempts.push(path.to_path_buf());
                 std::io::Error::new(ErrorKind::PermissionDenied, "injected: disk refused")
             })
-        })
     }
 
-    /// Makes every credentials write on this thread fail until dropped.
-    struct Arm;
+    /// Makes every write of the credentials of one config directory fail
+    /// until dropped.
+    struct Arm(PathBuf);
 
     impl Arm {
-        fn new() -> Self {
-            CREDENTIALS_FAULT.with(|fault| *fault.borrow_mut() = Some(Vec::new()));
-            Self
+        fn new(config: &Path) -> Self {
+            faults().push((config.to_path_buf(), Vec::new()));
+            Self(config.to_path_buf())
         }
 
         fn attempts(&self) -> Vec<PathBuf> {
-            CREDENTIALS_FAULT.with(|fault| fault.borrow().clone().unwrap_or_default())
+            faults()
+                .iter()
+                .find(|(armed, _)| *armed == self.0)
+                .map(|(_, attempts)| attempts.clone())
+                .unwrap_or_default()
         }
     }
 
     impl Drop for Arm {
         fn drop(&mut self) {
-            CREDENTIALS_FAULT.with(|fault| *fault.borrow_mut() = None);
+            faults().retain(|(armed, _)| *armed != self.0);
         }
     }
 
@@ -712,7 +786,7 @@ mod tests {
         )
         .unwrap();
         let options = resumable(config.path(), cwd.path()).await.build().unwrap();
-        let arm = Arm::new();
+        let arm = Arm::new(config.path());
         let mut messages = crate::query("hi", options);
         let first = messages.next().await;
         let Some(Err(error)) = &first else {
@@ -754,7 +828,7 @@ mod tests {
             .env_var("ANTHROPIC_API_KEY", "sk-test")
             .build()
             .unwrap();
-        let arm = Arm::new();
+        let arm = Arm::new(config.path());
         let mut messages = crate::query("hi", options);
         let first = messages.next().await;
         assert!(

@@ -462,7 +462,9 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
     key: &SessionKey,
     batch_size: usize,
 ) -> Result<()> {
-    let content = std::fs::read(path)
+    let owned = path.to_path_buf();
+    let content = crate::blocking::run(move || std::fs::read(owned))
+        .await?
         .map_err(|error| Error::io(format!("Cannot read {}", path.display()), error))?;
     let content = String::from_utf8_lossy(&content);
     let mut batch: Vec<SessionStoreEntry> = Vec::new();
@@ -515,6 +517,9 @@ async fn append_file_in_batches<S: SessionStore + ?Sized>(
 /// fails the import. Stores should treat
 /// `uuid` as an idempotency key, so importing again is safe.
 ///
+/// The local files are found and read on the blocking pool of tokio, one
+/// at a time, so the import never stalls the runtime.
+///
 /// # Errors
 ///
 /// [`ErrorKind::Config`](crate::ErrorKind::Config) for an id that is not a UUID,
@@ -529,7 +534,12 @@ pub async fn import_session_to_store<S: SessionStore + ?Sized>(
     batch_size: usize,
 ) -> Result<()> {
     let session_id = require_uuid(session_id, "session_id")?;
-    let Some(transcript) = resolve_session_file_path(session_id, directory) else {
+    let (owned_id, owned_directory) = (session_id.to_owned(), directory.map(Path::to_path_buf));
+    let resolved = crate::blocking::run(move || {
+        resolve_session_file_path(&owned_id, owned_directory.as_deref())
+    })
+    .await?;
+    let Some(transcript) = resolved else {
         return Err(Error::session_not_found(format!(
             "Session {session_id} not found"
         )));
@@ -550,7 +560,9 @@ pub async fn import_session_to_store<S: SessionStore + ?Sized>(
         return Ok(());
     }
     let session_dir = transcript.with_extension("");
-    for file in collect_jsonl_files(&session_dir.join("subagents")) {
+    let subagents = session_dir.join("subagents");
+    let files = crate::blocking::run(move || collect_jsonl_files(&subagents)).await?;
+    for file in files {
         let Ok(relative) = file.strip_prefix(&session_dir) else {
             continue;
         };
@@ -565,15 +577,18 @@ pub async fn import_session_to_store<S: SessionStore + ?Sized>(
         }
         let key = SessionKey::new(project_key.clone(), session_id).with_subpath(parts.join("/"));
         append_file_in_batches(store, &file, &key, batch_size).await?;
-        let sidecar = read_agent_metadata_sidecar_strictly(&file).map_err(|error| {
-            Error::io(
-                format!(
-                    "Cannot read {}",
-                    agent_metadata_sidecar_path(&file).display()
-                ),
-                error,
-            )
-        })?;
+        let sidecar = crate::blocking::run(move || {
+            read_agent_metadata_sidecar_strictly(&file).map_err(|error| {
+                Error::io(
+                    format!(
+                        "Cannot read {}",
+                        agent_metadata_sidecar_path(&file).display()
+                    ),
+                    error,
+                )
+            })
+        })
+        .await??;
         if let Some(mut metadata) = sidecar {
             metadata.insert("type".to_owned(), Value::from("agent_metadata"));
             store
