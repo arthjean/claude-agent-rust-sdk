@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod common;
+
 use std::time::Duration;
 
 use claude_agent_rust_sdk::ErrorKind;
@@ -674,6 +676,44 @@ fn post_tool_use_hook_input_with_agent_id_and_duration() {
     assert_eq!(input.base.agent_id.as_deref(), Some("agent-42"));
     assert_eq!(input.duration_ms, Some(12));
     assert_eq!(input.tool_response["content"][0]["text"], "hello");
+}
+
+#[test]
+fn a_hook_input_the_cli_schema_allows_stays_typed() {
+    let wire = base_hook_input(
+        "PostToolUse",
+        json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "true"},
+            "tool_use_id": "toolu_1",
+            "duration_ms": 12.5,
+            "effort": "high",
+        }),
+    );
+    let HookInput::PostToolUse(input) = HookInput::from_wire(wire) else {
+        panic!("a missing tool_response and a fractional duration are allowed by the CLI schema");
+    };
+    assert_eq!(input.duration_ms, Some(12));
+    assert_eq!(input.tool_response, Value::Null);
+    assert_eq!(
+        input.base.effort.map(|effort| effort.level).as_deref(),
+        Some("high")
+    );
+}
+
+#[test]
+fn a_hook_input_that_does_not_match_its_event_is_unknown_and_logged() {
+    let (warnings, _guard) = common::capture::Warnings::install_at(tracing::Level::DEBUG);
+    let wire = base_hook_input("PostToolUse", json!({"tool_name": 7}));
+    assert_eq!(HookInput::from_wire(wire.clone()), HookInput::Unknown(wire));
+    assert!(
+        warnings
+            .all()
+            .iter()
+            .any(|message| message.contains("does not match the type of its event")),
+        "{:?}",
+        warnings.all()
+    );
 }
 
 #[test]

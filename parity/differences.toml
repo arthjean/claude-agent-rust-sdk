@@ -303,6 +303,16 @@ category = "deliberate"
 reason = "The fields are typed as unsigned integers; any JSON number still parses."
 test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::integer_fields_accept_any_json_number"
 
+[behavior.hook-input-shape]
+summary = "A hook input that does not match the type of its event"
+python = "The callback receives the raw dict whatever its shape."
+rust = "Read leniently (a missing `tool_response` is null, a fractional `duration_ms` is truncated, a bare `effort` string is its level); an input that still does not match is `HookInput::Unknown` with its raw JSON, and the reason is logged at debug level."
+ref = "src/claude_agent_sdk/_internal/query.py:702-706"
+anchor = 'request_data.get("input"),'
+category = "deliberate"
+reason = "Hook inputs are typed per event; what the CLI schema allows stays typed, and anything else still reaches the callback."
+test = "crates/claude-agent-rust-sdk/tests/types.rs::a_hook_input_the_cli_schema_allows_stays_typed"
+
 [behavior.windows-environment-case]
 summary = "Environment variables that differ only in case, on Windows"
 python = "Merged as distinct keys of a dictionary."

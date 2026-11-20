@@ -43,6 +43,7 @@
 - An MCP server status written back with `serde` keeps the `"type": "stdio"` key the CLI sent.
 - A session store whose `append` panics no longer stops the session: the panic counts as a failed append, so it is retried and then reported as a `mirror_error` message, and the result is still delivered. A panic anywhere in the task that reads the CLI output now fails the pending control requests at once and ends the message stream with an `ErrorKind::ConnectionClosed` error, where the stream used to end with no result and the requests waited for their timeout.
 - When a program returns from `main` with a session still open, the CLI process group gets `SIGTERM` on Unix, as upstream sends at interpreter exit, instead of `SIGKILL`: the CLI writes the end of its transcript before it exits.
+- A hook input without `tool_response`, with a fractional `duration_ms`, or with `effort` as a bare string stays typed instead of becoming `HookInput::Unknown`, and an input that still does not match its event is logged at debug level.
 
 ## 0.1.0 - 2026-11-18
 

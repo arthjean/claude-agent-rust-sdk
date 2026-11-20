@@ -50,6 +50,29 @@ pub struct HookEffort {
     pub level: String,
 }
 
+/// Reads a duration in milliseconds from any JSON number.
+fn lenient_milliseconds<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| {
+        value
+            .as_u64()
+            .or_else(|| value.as_f64().map(|number| number as u64))
+    }))
+}
+
+/// Reads the effort of a hook input from an object or a bare level.
+fn lenient_effort<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<HookEffort>, D::Error> {
+    Ok(match Option::<Value>::deserialize(deserializer)? {
+        Some(Value::String(level)) => Some(HookEffort { level }),
+        Some(value @ Value::Object(_)) => HookEffort::deserialize(value).ok(),
+        _ => None,
+    })
+}
+
 /// Fields shared by every hook input.
 ///
 /// It includes the subagent context (`agent_id`, `agent_type`): when
@@ -70,8 +93,14 @@ pub struct HookInputBase {
     /// Id of the user prompt being processed; absent until the first input.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_id: Option<String>,
-    /// Effort in effect for the current turn.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Effort in effect for the current turn. An object with `level` is
+    /// read, and so is a bare level string; any other value reads as
+    /// `None`.
+    #[serde(
+        default,
+        deserialize_with = "lenient_effort",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub effort: Option<HookEffort>,
     /// Id of the subagent the hook fired in; absent on the main thread.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,12 +139,19 @@ pub struct PostToolUseHookInput {
     pub tool_name: String,
     /// Input of the tool, normally a JSON object.
     pub tool_input: Value,
-    /// Output of the tool.
+    /// Output of the tool; `Value::Null` when the CLI sent none.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
     pub tool_response: Value,
     /// Identifier of the tool call.
     pub tool_use_id: String,
     /// Tool execution time in milliseconds, without prompt and hook time.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Any JSON number is read, as the message parser reads counts: a
+    /// fraction is truncated and a negative value reads as zero.
+    #[serde(
+        default,
+        deserialize_with = "lenient_milliseconds",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub duration_ms: Option<u64>,
 }
 
@@ -138,7 +174,13 @@ pub struct PostToolUseFailureHookInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_interrupt: Option<bool>,
     /// Tool execution time in milliseconds, without prompt and hook time.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Any JSON number is read, as the message parser reads counts: a
+    /// fraction is truncated and a negative value reads as zero.
+    #[serde(
+        default,
+        deserialize_with = "lenient_milliseconds",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub duration_ms: Option<u64>,
 }
 
@@ -359,7 +401,15 @@ macro_rules! hook_input_variants {
                                 input.base.extra.shift_remove(HOOK_EVENT_NAME_KEY);
                                 Self::$variant(input)
                             }
-                            Err(_) => Self::Unknown(wire),
+                            Err(error) => {
+                                tracing::debug!(
+                                    event = $wire,
+                                    %error,
+                                    "a hook input does not match the type of its event; it is \
+                                     passed as HookInput::Unknown with its raw JSON"
+                                );
+                                Self::Unknown(wire)
+                            }
                         },
                     )+
                     _ => Self::Unknown(wire),

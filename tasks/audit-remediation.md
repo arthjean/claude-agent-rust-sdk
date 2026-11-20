@@ -30,7 +30,7 @@ difference, recorded), `blocked` (waiting on the owner).
 | A13 | major | Align public claims with what is measured | doing | Done: README, migration guide, parity page reworded (port of 0.2.186, reviewed and unclassified differences, unit tests only, e2e not listed); claim check extended to README and migration guide with new phrases (`xtask/tests/parity.rs::a_claim_of_parity_in_the_migration_guide_fails_the_check_too`); `src/control/mod.rs` lists only real differences; "Claude CLI" ledger notes removed; ResultError now chains the process error as source (as `__cause__`). Left: the README sentence on what parity-diff compares, after A05 merges. |
 | A14 | minor | Propagate the tracing span and OTel context | todo | |
 | A15 | minor | Connection error after the CLI died | done | A request after the CLI died is `ErrorKind::ConnectionClosed` with the process error as source; test `control_protocol.rs::a_control_request_after_the_cli_died_is_a_connection_error`. |
-| A16 | minor | Typed hook input does not silently fall back to Unknown | todo | |
+| A16 | minor | Typed hook input does not silently fall back to Unknown | done | `tool_response` defaults to null, `duration_ms` accepts any number, `effort` accepts a bare string; a mismatch is logged at debug level. `[behavior.hook-input-shape]`; tests `types.rs::a_hook_input_the_cli_schema_allows_stays_typed` (Unknown on the old code) and `a_hook_input_that_does_not_match_its_event_is_unknown_and_logged`. |
 | A17 | minor | `receive_messages` after an unparseable message | todo | |
 | A18 | minor | Native tool cancellation | todo | |
 | A19 | minor | No `format` validation for draft-04/06/07 | todo | |
