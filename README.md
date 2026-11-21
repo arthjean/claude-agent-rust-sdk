@@ -53,12 +53,6 @@ read, removed when the session ends.
 this crate must not offer a claude.ai login on behalf of its users, and the
 crate provides no way to do so.
 
-**Plan API credits may not apply.** The crate identifies itself to the CLI as
-`sdk-rs`. When tested on 2026-11-15 with CLI 2.1.325 and an API key, calls
-carrying that label were not paid by the monthly API credit of an Ultra plan:
-they were billed to the purchased credit balance of the Console organization.
-Budget for API usage accordingly.
-
 ## Installation
 
 ```text
