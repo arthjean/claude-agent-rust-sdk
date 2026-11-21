@@ -763,3 +763,13 @@ anchor = "jsonschema.validate(instance=arguments, schema=schemas[tool_name])"
 category = "deliberate"
 reason = "The validator is the heaviest dependency of the crate; a program that checks its arguments itself can leave it out, and the default keeps the Python behavior."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_tool_arguments_are_validated_only_with_the_jsonschema_feature"
+
+[behavior.error-text-adaptations]
+summary = "Error texts that upstream writes with Python code or punctuation"
+python = "The texts show Python calls (`ClaudeAgentOptions(cli_path='/path/to/claude')`, the wheel that bundles the CLI), quote values with `repr`, and use a long dash in some sentences."
+rust = "The same sentences show the Rust call (`ClaudeAgentOptions::builder().cli_path(\"/path/to/claude\")`, no wheel), quote values as `{:?}` prints them, and write a hyphen for the long dash; every other word is upstream's."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:307-328"
+anchor = "ClaudeAgentOptions(cli_path='/path/to/claude')"
+category = "deliberate"
+reason = "An instruction must be one the reader can follow in Rust; matching on an error keeps working on the parts that name the cause."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::the_not_found_message_shows_the_rust_call_where_upstream_shows_python"

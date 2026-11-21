@@ -460,6 +460,25 @@ mod tests {
     }
 
     #[test]
+    fn the_not_found_message_shows_the_rust_call_where_upstream_shows_python() {
+        let root = tempfile::tempdir().unwrap();
+        for platform in [Platform::Unix, Platform::Windows] {
+            let mut locator = locator(platform, root.path(), &[]);
+            locator.search_path = Some(OsString::new());
+            let message = not_found_message(locator.find());
+            assert!(
+                message.contains("ClaudeAgentOptions::builder().cli_path(\""),
+                "{message}"
+            );
+            assert!(
+                !message.contains("ClaudeAgentOptions(cli_path="),
+                "{message}"
+            );
+            assert!(!message.contains("wheel"), "{message}");
+        }
+    }
+
+    #[test]
     fn managed_install_directory_takes_precedence_over_path() {
         let root = tempfile::tempdir().unwrap();
         for platform in [Platform::Windows, Platform::Unix] {

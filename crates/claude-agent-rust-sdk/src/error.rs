@@ -19,8 +19,8 @@
 //! - Python raises `CLIConnectionError` for about a dozen causes; here they
 //!   are told apart: [`ErrorKind::Spawn`], [`ErrorKind::NotConnected`],
 //!   [`ErrorKind::ConnectionClosed`], and [`ErrorKind::Unsupported`].
-//! - The text of an error does not repeat its [`source`](std::error::Error::source),
-//!   which carries the underlying error instead.
+//! - When an error has a [`source`](std::error::Error::source), its text
+//!   does not repeat it: the source carries the underlying error.
 //! - [`Error::stderr`] holds the last lines the CLI wrote to its error
 //!   output when they were captured (a [`StderrCallback`](crate::StderrCallback)
 //!   was set), where Python always says "Check stderr output for details".
@@ -32,9 +32,16 @@
 //!   can_use_tool request: 'input'"), where Python answers the bare
 //!   `KeyError` (`'input'`) or nothing at all.
 //!
-//! Otherwise the text of an error is upstream's, word for word, Python
-//! vocabulary included ("expected dict, got NoneType", "ProcessTransport",
-//! "canUseTool"), so a program that matches on a message keeps matching.
+//! Otherwise the text of an error follows upstream's, Python vocabulary
+//! included ("expected dict, got NoneType", "ProcessTransport",
+//! "canUseTool"), so a program that matches on a message keeps matching,
+//! with three adaptations: an instruction that shows Python code shows the
+//! Rust call instead (the "Claude Code not found" text names
+//! `ClaudeAgentOptions::builder().cli_path(...)` and no wheel), a value is
+//! quoted as Rust's `{:?}` prints it (`"a b"` where Python's `repr` prints
+//! `'a b'`), and the long dash of an upstream text is written as a hyphen.
+//! `[behavior.error-text-adaptations]` in `parity/differences.toml` records
+//! them.
 
 use std::fmt;
 use std::sync::Arc;

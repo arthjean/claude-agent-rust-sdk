@@ -157,7 +157,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestErrorTypes::test_base_error" = { rust = ["crates/claude-agent-rust-sdk/tests/errors.rs::every_kind_can_be_built_and_displays_its_message", "crates/claude-agent-rust-sdk/tests/errors.rs::error_is_send_sync_and_static"], note = "Rust has one Error type with a kind instead of a base class." }
 "TestErrorTypes::test_cli_not_found_error" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::cli_not_found_error" }
 "TestErrorTypes::test_connection_error" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::connection_error" }
-"TestErrorTypes::test_process_error" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::process_error_with_exit_code_and_stderr" }
+"TestErrorTypes::test_process_error" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::process_error_with_exit_code_and_stderr", note = "Upstream asserts that the error output appears in the text; the Rust test asserts it is held by `Error::stderr` and left out of the text, the difference the module docs of src/error.rs state." }
 "TestErrorTypes::test_result_error_carries_payload" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::result_error_carries_payload" }
 "TestErrorTypes::test_result_error_tolerates_missing_or_malformed_fields" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::result_error_tolerates_missing_or_malformed_fields" }
 "TestErrorTypes::test_result_error_normalizes_errors_like_the_message_text" = { rust = "crates/claude-agent-rust-sdk/tests/errors.rs::result_error_normalizes_errors_like_the_message_text" }
