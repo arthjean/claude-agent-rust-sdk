@@ -233,3 +233,10 @@ failing macOS run is the red-before, the next run the proof.
 
 Second run, on `a7528b7`: all 19 jobs pass, the quality gates on Linux,
 macOS, and Windows included (the macOS run-as-user test with them).
+
+## Real end-to-end run (owner approved, 2026-11-21)
+
+`End-to-end` workflow run 44905908393 on `b3d2af0`, CLI 2.1.329 installed by
+`install-cli.sh`: `cargo xtask e2e` ran all 55 real-CLI tests, 55 passed (the
+4 tests the run filters out are the non-ignored helpers of the target, which
+passed in the unit step).
