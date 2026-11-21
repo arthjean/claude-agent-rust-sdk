@@ -1540,3 +1540,29 @@ async fn a_control_call_whose_future_is_dropped_leaves_the_session_usable_and_it
     settle().await;
     client.interrupt().await.unwrap();
 }
+
+/// Upstream reads `request["request_id"]` whatever its type and echoes it:
+/// a number is answered with the same number, and `5` and `"5"` are two
+/// requests.
+#[tokio::test(start_paused = true)]
+async fn a_request_id_that_is_not_a_string_is_answered_with_the_same_value() {
+    let transport = cli();
+    let _client = connected(&transport, default_options()).await;
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": 5,
+        "request": {"subtype": "teleport"},
+    }));
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": "5",
+        "request": {"subtype": "teleport"},
+    }));
+    settle().await;
+    let ids: Vec<Value> = written(&transport, "control_response")
+        .into_iter()
+        .map(|frame| frame["response"]["request_id"].clone())
+        .collect();
+    assert!(ids.contains(&json!(5)), "{ids:?}");
+    assert!(ids.contains(&json!("5")), "{ids:?}");
+}

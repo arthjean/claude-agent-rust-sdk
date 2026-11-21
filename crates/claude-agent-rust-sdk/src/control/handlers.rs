@@ -33,15 +33,17 @@ const MISSING_PERMISSION_CALLBACK: &str = "canUseTool callback is not provided";
 /// callback has answered, the response is written in full. For an
 /// `mcp_message`, it stops only the wait: an in-process server keeps running
 /// the tool to its end, as the Python SDK does.
+///
+/// The id is echoed in the response as it came, whatever its JSON type, as
+/// upstream echoes `request["request_id"]`; handlers are tracked by its
+/// JSON text, so `5` and `"5"` stay two requests, as two keys of a Python
+/// dictionary do.
 pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
-    let Some(request_id) = frame
-        .get("request_id")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-    else {
+    let Some(id) = frame.get("request_id").cloned() else {
         tracing::warn!("Ignoring a control request without a request id");
         return;
     };
+    let request_id = id.to_string();
     let (cancel, cancelled) = oneshot::channel::<()>();
     let number = {
         let mut state = shared.state();
@@ -77,17 +79,17 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
         let response = match outcome {
             Ok(Ok(response)) => json!({
                 "subtype": "success",
-                "request_id": request_id,
+                "request_id": id,
                 "response": response,
             }),
             Ok(Err(error)) => json!({
                 "subtype": "error",
-                "request_id": request_id,
+                "request_id": id,
                 "error": error,
             }),
             Err(_) => json!({
                 "subtype": "error",
-                "request_id": request_id,
+                "request_id": id,
                 "error": "The control request handler panicked",
             }),
         };
@@ -100,10 +102,10 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
 
 /// Aborts the handler of a control request, if it is still running.
 pub(super) fn cancel(shared: &Shared, frame: &Value) {
-    let Some(request_id) = frame.get("request_id").and_then(Value::as_str) else {
+    let Some(request_id) = frame.get("request_id").map(Value::to_string) else {
         return;
     };
-    if let Some((_, cancel)) = shared.state().inflight.remove(request_id) {
+    if let Some((_, cancel)) = shared.state().inflight.remove(&request_id) {
         let _ = cancel.send(());
     }
 }
