@@ -240,3 +240,12 @@ macOS, and Windows included (the macOS run-as-user test with them).
 `install-cli.sh`: `cargo xtask e2e` ran all 55 real-CLI tests, 55 passed (the
 4 tests the run filters out are the non-ignored helpers of the target, which
 passed in the unit step).
+
+Last name-only entries, checked by hand at source level: the session mirror
+flag, mirror frames without a store, the project key NFC and long-path
+entries, `_sanitize_path` and `_simple_hash`, the conformance entry
+`test_no_store_is_always_valid`. All match except the last, whose Rust test
+did not combine `continue_conversation` with file checkpointing as upstream
+does; `options.rs::session_store_with_file_checkpointing_is_a_config_error`
+now builds and asserts that combination without a store. Every mapped entry
+of `parity/tests.toml` has now been read against its Rust tests.

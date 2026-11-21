@@ -744,9 +744,11 @@ fn session_store_with_file_checkpointing_is_a_config_error() {
 
     let checkpointing_alone = ClaudeAgentOptions::builder()
         .enable_file_checkpointing(true)
+        .continue_conversation(true)
         .build()
         .unwrap();
     assert!(checkpointing_alone.enable_file_checkpointing);
+    assert!(checkpointing_alone.continue_conversation);
 }
 
 /// The error of a connect whose options are refused before anything
