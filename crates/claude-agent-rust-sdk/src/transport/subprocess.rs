@@ -125,7 +125,9 @@ struct SharedState {
     /// [`WRITE_LOCK_LIMIT`] for it, so the write gives up the pipe and
     /// stdin is closed, as upstream closes it without the write lock.
     close_requested: tokio::sync::Notify,
-    exit_error: Mutex<Option<String>>,
+    /// The error the process ended with, kept typed so a later write can
+    /// name it as its source, as upstream raises `from self._exit_error`.
+    exit_error: Mutex<Option<Error>>,
     exit: OnceLock<watch::Receiver<Option<Exit>>>,
     process_id: OnceLock<u32>,
 }
@@ -305,10 +307,11 @@ impl SubprocessTransport {
                 exit.code
             )));
         }
-        if let Some(error) = &*lock(&shared.exit_error) {
+        if let Some(error) = lock(&shared.exit_error).clone() {
             return Err(Error::connection_closed(format!(
                 "Cannot write to process that exited with error: {error}"
-            )));
+            ))
+            .with_source(error));
         }
         let close_requested = shared.close_requested.notified();
         tokio::pin!(close_requested);
@@ -333,9 +336,11 @@ impl SubprocessTransport {
         };
         if let Err(error) = written {
             shared.ready.store(false, Ordering::SeqCst);
-            let message = format!("Failed to write to process stdin: {error}");
-            *lock(&shared.exit_error) = Some(message.clone());
-            return Err(Error::connection_closed(message).with_source(error));
+            let failure =
+                Error::connection_closed(format!("Failed to write to process stdin: {error}"))
+                    .with_source(error);
+            *lock(&shared.exit_error) = Some(failure.clone());
+            return Err(failure);
         }
         Ok(())
     }
@@ -655,7 +660,7 @@ async fn read_output<R>(
             Some(code),
             stderr,
         );
-        *lock(&context.shared.exit_error) = Some(error.to_string());
+        *lock(&context.shared.exit_error) = Some(error.clone());
         let _ = sender.send(Err(error)).await;
     }
 }
