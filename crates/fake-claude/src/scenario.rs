@@ -4,7 +4,7 @@
 //!
 //! ```json
 //! {
-//!   "claude_code_version": "2.1.329",
+//!   "claude_code_version": "2.1.330",
 //!   "init": true,
 //!   "auto_reply": true,
 //!   "report_env": ["CLAUDE_CODE_ENTRYPOINT"],
@@ -53,7 +53,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 
-pub(crate) const DEFAULT_VERSION: &str = "2.1.329";
+pub(crate) const DEFAULT_VERSION: &str = "2.1.330";
 pub(crate) const DEFAULT_EXPECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn defaults_follow_the_documented_format() {
         let scenario = Scenario::parse("{}").unwrap();
-        assert_eq!(scenario.claude_code_version.as_deref(), Some("2.1.329"));
+        assert_eq!(scenario.claude_code_version.as_deref(), Some("2.1.330"));
         assert!(scenario.init);
         assert!(!scenario.auto_reply);
         assert!(scenario.read_stdin);

@@ -12,7 +12,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  CLAUDE_CODE_VERSION: 2.1.329
+  CLAUDE_CODE_VERSION: 2.1.330
 
 jobs:
   e2e:

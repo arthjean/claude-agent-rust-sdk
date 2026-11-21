@@ -1,6 +1,6 @@
 # Migrating from the Python SDK
 
-`claude-agent-rust-sdk` is a port of version 0.2.186 of the Python Claude Agent
+`claude-agent-rust-sdk` is a port of version 0.2.187 of the Python Claude Agent
 SDK. Every name of the `__all__` of the Python package is listed in the table
 at the end of this page, with its Rust counterpart or the reason it has none.
 Names defined outside it, in `claude_agent_sdk.types` (such as

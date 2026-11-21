@@ -5,7 +5,7 @@ use std::process::Command;
 
 use claude_agent_rust_sdk::{CLI_VERSION, MINIMUM_CLI_VERSION, UPSTREAM_SDK_VERSION};
 
-const UPSTREAM_COMMIT: &str = "69846cdf82aef59add3b14a26b4f16d1ccee26ba";
+const UPSTREAM_COMMIT: &str = "3184360393a92ca8a6ec7bbbdee571afd1ce1c56";
 const UPSTREAM_PATH: &str = "upstream/claude-agent-sdk-python";
 
 fn workspace_root() -> PathBuf {
@@ -1868,8 +1868,8 @@ fn upstream_sdk_is_a_submodule_pinned_to_the_reference_commit() {
 #[test]
 fn version_constants_match_the_manifest_and_the_upstream_pin() {
     assert_eq!(claude_agent_rust_sdk::VERSION, env!("CARGO_PKG_VERSION"));
-    assert_eq!(claude_agent_rust_sdk::CLI_VERSION, "2.1.329");
-    assert_eq!(claude_agent_rust_sdk::UPSTREAM_SDK_VERSION, "0.2.186");
+    assert_eq!(claude_agent_rust_sdk::CLI_VERSION, "2.1.330");
+    assert_eq!(claude_agent_rust_sdk::UPSTREAM_SDK_VERSION, "0.2.187");
 }
 
 #[test]

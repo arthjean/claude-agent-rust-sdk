@@ -11,7 +11,7 @@ newline-delimited JSON. You get typed messages, hooks, tool-permission
 callbacks, tools served from your own process, session stores, and session
 management, all on tokio.
 
-It is a port of the Python Claude Agent SDK, version 0.2.186.
+It is a port of the Python Claude Agent SDK, version 0.2.187.
 [`docs/migration.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/migration.md) maps every Python name to its Rust
 name, and [`docs/parity.md`](https://github.com/arthjean/claude-agent-rust-sdk/blob/main/docs/parity.md) lists what was compared, the
 measured counts, each reviewed difference with its reason and its test, and the
@@ -26,7 +26,7 @@ differences found but not yet classified.
 - Rust 1.88 or newer, with tokio as the async runtime.
 - The Claude Code CLI installed on the machine that runs your program. The
   crate does not bundle it. Version 2.0.0 is the minimum; the crate is tested
-  against 2.1.329 and logs a warning when the CLI reports another version.
+  against 2.1.330 and logs a warning when the CLI reports another version.
   To run a fixed release instead of one that updates itself, set `cli_path`,
   or place the executable in the directory the crate reserves for it and
   searches before `PATH`: `~/.local/share/claude-agent-rust-sdk/cli`
