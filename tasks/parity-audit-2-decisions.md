@@ -217,3 +217,15 @@ Options:
    type, but loses key lookup, which `options.env.get("X")` callers use.
 
 This changes the type of public fields, so it is yours to decide.
+
+**`UnknownError` and `UnknownReason` (D22).** `AssistantMessageError` has
+`UnknownError` (the wire value `"unknown"`, a category the CLI sends) next
+to `Unknown(String)` (any value this version does not know), and
+`FastModeDisabledReason` has `UnknownReason` next to `Unknown(String)`.
+They are different things, but a reader sees two "unknown" variants.
+Options: rename the wire ones (`Unspecified`, `Other`), which is a public
+rename and yours; or keep the names and say it on each variant (done: the
+docs of `UnknownError` say "Any other failure; details are in the message
+text"). The error texts that name Python types (`got NoneType`) are kept on
+purpose: they are upstream's text word for word, now said on
+`python_type_name` in `src/message_parser.rs`.

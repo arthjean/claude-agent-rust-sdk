@@ -114,6 +114,11 @@ fn parse(data: &Value) -> Parsed<Option<Message>> {
     Ok(Some(message))
 }
 
+/// The Python name of a JSON type, as upstream's `type(x).__name__` writes
+/// it in a parse error. The names are kept so the text of the error is
+/// upstream's word for word (a program that matched on it keeps working);
+/// the JSON type is clear from them: `NoneType` is `null`, `dict` an
+/// object, `list` an array.
 fn python_type_name(value: &Value) -> &'static str {
     match value {
         Value::Null => "NoneType",
