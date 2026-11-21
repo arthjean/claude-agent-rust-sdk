@@ -48,7 +48,11 @@
 //!   application writes them; when none is installed, the W3C trace
 //!   context and baggage are written, as the Python SDK does by default,
 //!   following `OTEL_PROPAGATORS` (`tracecontext`, `baggage`, `none`).
-//!   Variables set in the `env` option are never overwritten. Callbacks,
+//!   The active context is `opentelemetry::Context::current()`; a `tracing`
+//!   span becomes it through `tracing-opentelemetry`, whose layer attaches
+//!   the context of a span while it is entered (its default), so a
+//!   `connect` instrumented with that span propagates it. Variables set in
+//!   the `env` option are never overwritten. Callbacks,
 //!   hooks, and in-process MCP tools run in the OpenTelemetry context that
 //!   was current when the session connected.
 //! - `testing`: the `testing` module, with a scriptable transport for tests.
