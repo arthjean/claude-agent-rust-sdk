@@ -151,6 +151,27 @@ fn result_error_carries_payload() {
         "Claude Code returned an error result: API Error: Stream idle timeout - no chunks \
          received (exit code: 1)"
     );
+
+    assert_eq!(
+        error.data(),
+        None,
+        "the payload of a result error is result()"
+    );
+
+    let chosen = Error::result_error_with_message(
+        "Claude Code returned an error result: x",
+        data.clone(),
+        Some(1),
+    );
+    assert_eq!(chosen.kind(), ErrorKind::ResultError);
+    assert_eq!(
+        chosen.to_string(),
+        "Claude Code returned an error result: x (exit code: 1)"
+    );
+    assert_eq!(
+        Value::Object(result_error_data(&chosen).as_map().clone()),
+        data
+    );
 }
 
 #[test]

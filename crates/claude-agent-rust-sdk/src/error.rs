@@ -292,11 +292,22 @@ impl Error {
     /// [`ResultErrorData::summary`] and the exit code.
     #[must_use]
     pub fn result_error(data: Value, exit_code: Option<i32>) -> Self {
+        let summary = ResultErrorData::from(data.clone()).summary();
+        Self::result_error_with_message(format!("{ERROR_RESULT_PREFIX}{summary}"), data, exit_code)
+    }
+
+    /// Builds an [`ErrorKind::ResultError`] error with a message of the
+    /// caller's choosing, as upstream's `ResultError(message, data,
+    /// exit_code)`: for a test double, or to rethrow with context. The exit
+    /// code is appended as [`process`](Self::process) appends it.
+    #[must_use]
+    pub fn result_error_with_message(
+        message: impl Into<String>,
+        data: Value,
+        exit_code: Option<i32>,
+    ) -> Self {
         let data = ResultErrorData::from(data);
-        let message = process_text(
-            &format!("{ERROR_RESULT_PREFIX}{}", data.summary()),
-            exit_code,
-        );
+        let message = process_text(&message.into(), exit_code);
         Self::with_detail(
             ErrorKind::ResultError,
             message,
@@ -531,6 +542,10 @@ impl Error {
 
     /// The message that failed to parse, for [`ErrorKind::MessageParse`],
     /// when available.
+    ///
+    /// Upstream's `ResultError.data` is [`result`](Self::result) here (its
+    /// [`as_map`](ResultErrorData::as_map) is the raw payload): this method
+    /// returns `None` for [`ErrorKind::ResultError`].
     #[must_use]
     pub fn data(&self) -> Option<&Value> {
         self.0.detail.data.as_ref()

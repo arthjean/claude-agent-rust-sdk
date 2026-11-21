@@ -4,6 +4,7 @@
 
 ### Added
 
+- `Error::result_error_with_message`, the counterpart of `ResultError(message, data, exit_code)`, for an error result with a message of the caller's choosing.
 - `ToolContent::with_mime_type`, which sets the MIME type of an embedded resource. It stays with the content; the CLI still receives the text alone, as upstream sends it.
 - `ClaudeSdkClient::options`, the counterpart of `client.options`. `server_info` returns `Ok(None)` while `connect` waits for the initialize response, as upstream returns `None`, instead of a not-connected error.
 - `ClaudeSdkClient::scoped`, the counterpart of `async with ClaudeSDKClient()`: it connects, runs an async closure with the client, and waits for the disconnect whether the closure succeeded or failed.

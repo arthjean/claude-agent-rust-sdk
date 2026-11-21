@@ -110,6 +110,13 @@ Rust splits into four kinds by cause. Two predicates keep the Python meaning:
 | `except ProcessError:` | `if error.is_process()`: true for `ErrorKind::Process` and `ErrorKind::ResultError` |
 | `except CLIConnectionError:` | `if error.is_cli_connection()`: true for `ErrorKind::CliNotFound`, `Spawn`, `NotConnected`, `ConnectionClosed`, and `Unsupported` |
 
+The fields of a `ResultError` are on `error.result()`, a `ResultErrorData`:
+`e.subtype` is `error.result()?.subtype()`, and `e.data`, the raw payload, is
+`error.result()?.as_map()`. `Error::data()` is the payload of a
+`MessageParseError` only, and returns `None` for a result error.
+`ResultError(message, data, exit_code)`, built by hand in a test, is
+`Error::result_error_with_message(message, data, exit_code)`.
+
 ## Hooks and the permission callback
 
 A Python hook is an `async def` that returns a dictionary. A Rust hook is a
@@ -289,7 +296,7 @@ shape, not only spelling.
 | `RateLimitInfo` | `claude_agent_rust_sdk::RateLimitInfo` |  |
 | `RateLimitStatus` | `claude_agent_rust_sdk::RateLimitStatus` |  |
 | `RateLimitType` | `claude_agent_rust_sdk::RateLimitType` |  |
-| `ResultError` | `claude_agent_rust_sdk::ErrorKind::ResultError` | Adapted: A kind of `Error`; `Error::result()` returns its fields as `ResultErrorData`. |
+| `ResultError` | `claude_agent_rust_sdk::ErrorKind::ResultError` | Adapted: A kind of `Error`; `Error::result()` returns its fields as `ResultErrorData`, whose `as_map()` is the raw `data`. `Error::result_error_with_message` builds one with a chosen message. |
 | `ResultMessage` | `claude_agent_rust_sdk::ResultMessage` |  |
 | `SDKSessionInfo` | `claude_agent_rust_sdk::SdkSessionInfo` |  |
 | `SandboxIgnoreViolations` | `claude_agent_rust_sdk::SandboxIgnoreViolations` |  |
