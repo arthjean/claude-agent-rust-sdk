@@ -381,6 +381,7 @@ where
             let listed = call(14, "list_sessions", store.list_sessions("proj").await)?;
             let listed_mtime = listed
                 .iter()
+                .rev()
                 .find(|entry| entry.session_id == "summ-sess")
                 .map(|entry| entry.mtime);
             check(
@@ -423,6 +424,7 @@ where
         )?;
         let data_after = after
             .iter()
+            .rev()
             .find(|entry| entry.session_id == "summ-sess")
             .map(|entry| &entry.data);
         check(14, data_after == Some(&summary.data), || {

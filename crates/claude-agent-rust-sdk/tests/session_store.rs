@@ -688,3 +688,71 @@ async fn the_example_adapter_passes_every_contract() {
     .await
     .unwrap();
 }
+
+/// Lists, before the real summaries, an empty copy of each. Upstream
+/// builds a dictionary from the listing, where the last entry of an id
+/// wins, so the copies are never read. (A duplicate in `list_sessions`
+/// fails contracts 6 and 7 on both sides.)
+#[derive(Default, Clone)]
+struct StaleFirstStore(InMemorySessionStore);
+
+impl SessionStore for StaleFirstStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    fn capabilities(&self) -> SessionStoreCapabilities {
+        self.0.capabilities()
+    }
+
+    async fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<claude_agent_rust_sdk::SessionStoreListEntry>, SessionStoreError> {
+        self.0.list_sessions(project_key).await
+    }
+
+    async fn list_session_summaries(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<claude_agent_rust_sdk::SessionSummaryEntry>, SessionStoreError> {
+        let summaries = self.0.list_session_summaries(project_key).await?;
+        let stale = summaries.iter().map(|summary| {
+            claude_agent_rust_sdk::SessionSummaryEntry::new(
+                summary.session_id.clone(),
+                summary.mtime,
+                serde_json::Map::new(),
+            )
+        });
+        Ok(stale.chain(summaries.iter().cloned()).collect())
+    }
+
+    async fn delete(&self, key: &SessionKey) -> Result<(), SessionStoreError> {
+        self.0.delete(key).await
+    }
+
+    async fn list_subkeys(
+        &self,
+        key: &SessionListSubkeysKey,
+    ) -> Result<Vec<String>, SessionStoreError> {
+        self.0.list_subkeys(key).await
+    }
+}
+
+#[tokio::test]
+async fn conformance_reads_the_last_listing_of_a_session_as_upstream() {
+    run_session_store_conformance(|| async { StaleFirstStore::default() })
+        .await
+        .unwrap();
+}

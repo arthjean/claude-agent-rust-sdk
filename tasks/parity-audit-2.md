@@ -94,7 +94,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D12 | Float `created_at` refused by the session summary | done | Float created_at cut to ms; non-number dropped, recorded `[behavior.summary-created-at-typed]` (rust-stricter). Lib test `summary::tests::a_created_at_written_as_a_float_is_kept_to_the_millisecond`, red before (None). |
 | D13 | Mirror drops a non-object entry without a trace | done | Warn log added, recorded `[behavior.mirror-non-object-entries]` (rust-more-robust). Test `transcript_mirror.rs::a_mirrored_entry_that_is_not_an_object_is_left_out_and_the_others_are_stored`. |
 | D14 | macOS: `CLAUDE_CONFIG_DIR=""` reads the Keychain | done | Keychain read only when the variable is unset in the options and the process, as upstream `caller_config_dir is None`; `resume::tests::an_empty_config_dir_variable_of_the_process_keeps_the_keychain_out_as_upstream`. Home part of D15 done with m14. |
-| D15 | Sync `remove_dir_all` in a `Drop`; no home reads `./.claude` | todo | |
+| D15 | Sync `remove_dir_all` in a `Drop`; no home reads `./.claude` | done | Drop part: kept synchronous on purpose (a blocking job may never run at runtime shutdown and the directory holds credentials; upstream rmtree is synchronous on the loop in every case). Module doc no longer claims every file op runs on the blocking pool. Home part done with m14. |
 | D16 | Conformance takes the first summary instead of the last | todo | |
 | D17 | `ToolContent::Resource.mime_type` never settable or sent | todo | |
 | D18 | CLI discovery: empty `PATH` looks for `./claude`; exec bit instead of access | todo | |
