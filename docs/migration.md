@@ -1,8 +1,12 @@
 # Migrating from the Python SDK
 
 `claude-agent-rust-sdk` is a port of version 0.2.186 of the Python Claude Agent
-SDK. Every name the Python package exports is listed in the table at the end of
-this page, with its Rust counterpart or the reason it has none. This guide
+SDK. Every name of the `__all__` of the Python package is listed in the table
+at the end of this page, with its Rust counterpart or the reason it has none.
+Names defined outside it, in `claude_agent_sdk.types` (such as
+`McpStdioServerConfig` or `SystemPromptPreset`) and `claude_agent_sdk.testing`
+(`run_session_store_conformance`), are not listed; most keep their name in Rust,
+`run_session_store_conformance` under `claude_agent_rust_sdk::testing`. This guide
 covers what changes in shape when you move a program from Python to Rust.
 [`parity.md`](parity.md) lists each reviewed difference in behavior, with its
 reason and the test that shows it, and the differences not yet classified.

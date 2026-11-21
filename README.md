@@ -240,7 +240,8 @@ cargo xtask e2e                    run the end-to-end suite against the real CLI
 ```
 
 The parity ledgers live in [`parity/`](https://github.com/arthjean/claude-agent-rust-sdk/tree/main/parity): `surface.toml` lists every name
-the Python SDK exports, and `tests.toml` lists every upstream unit test (under
+of the `__all__` of the Python package (the names `claude_agent_sdk.testing` and
+`claude_agent_sdk.types` define outside it are not listed), and `tests.toml` lists every upstream unit test (under
 `tests/`), each with the Rust item that replaces it or the reason it is not
 ported. The upstream end-to-end tests (under `e2e-tests/`) are not listed;
 `crates/claude-agent-rust-sdk/tests/e2e` holds the Rust suite against the real CLI.
