@@ -1195,7 +1195,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestOptions::test_claude_code_options_with_system_prompt_custom" = { rust = "crates/claude-agent-rust-sdk/tests/options.rs::system_prompt_union_forms" }
 "TestOptions::test_claude_code_options_with_system_prompt_file" = { rust = "crates/claude-agent-rust-sdk/tests/options.rs::system_prompt_union_forms" }
 "TestOptions::test_claude_code_options_with_session_continuation" = { rust = "crates/claude-agent-rust-sdk/tests/options.rs::builder_sets_every_option" }
-"TestOptions::test_claude_code_options_with_model_specification" = { rust = ["crates/claude-agent-rust-sdk/tests/options.rs::builder_sets_every_option", "crates/claude-agent-rust-sdk/tests/options.rs::can_use_tool_forces_the_stdio_permission_prompt_tool"] }
+"TestOptions::test_claude_code_options_with_model_specification" = { rust = ["crates/claude-agent-rust-sdk/tests/options.rs::builder_sets_every_option", "crates/claude-agent-rust-sdk/tests/options.rs::can_use_tool_puts_the_stdio_permission_prompt_tool_on_the_command_line_only"] }
 "TestHookInputTypes::test_notification_hook_input" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::notification_hook_input" }
 "TestHookInputTypes::test_notification_hook_input_with_title" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::notification_hook_input" }
 "TestHookInputTypes::test_subagent_start_hook_input" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::subagent_start_hook_input" }

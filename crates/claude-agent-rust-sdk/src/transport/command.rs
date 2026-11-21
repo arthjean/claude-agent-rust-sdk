@@ -69,7 +69,9 @@ pub(crate) fn build_arguments(
         let betas: Vec<&str> = options.betas.iter().map(|beta| beta.as_str()).collect();
         arguments.pair("--betas", betas.join(","));
     }
-    if let Some(tool) = non_empty(options.permission_prompt_tool_name.as_deref()) {
+    let prompt_tool = non_empty(options.permission_prompt_tool_name.as_deref())
+        .or_else(|| options.can_use_tool.is_some().then_some("stdio"));
+    if let Some(tool) = prompt_tool {
         arguments.pair("--permission-prompt-tool", tool);
     }
     if let Some(mode) = &options.permission_mode

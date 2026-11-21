@@ -15,7 +15,6 @@ use super::permission::{CanUseTool, PermissionMode};
 use crate::error::Error;
 use crate::session_store::{SessionStore, SessionStoreFlushMode, SharedSessionStore};
 
-const STDIO_PERMISSION_PROMPT_TOOL: &str = "stdio";
 const DEFAULT_LOAD_TIMEOUT_MS: u64 = 60_000;
 const SKILL_TOOL: &str = "Skill";
 
@@ -329,15 +328,7 @@ impl ClaudeAgentOptions {
     }
 
     /// Returns a builder that starts from these options.
-    ///
-    /// The `stdio` permission prompt tool that a previous build forced for
-    /// `can_use_tool` is cleared, so the options can be built again.
-    pub fn into_builder(mut self) -> ClaudeAgentOptionsBuilder {
-        let forced_by_callback = self.can_use_tool.is_some()
-            && self.permission_prompt_tool_name.as_deref() == Some(STDIO_PERMISSION_PROMPT_TOOL);
-        if forced_by_callback {
-            self.permission_prompt_tool_name = None;
-        }
+    pub fn into_builder(self) -> ClaudeAgentOptionsBuilder {
         ClaudeAgentOptionsBuilder { options: self }
     }
 
@@ -367,18 +358,16 @@ impl ClaudeAgentOptions {
         shadowed_warning_message(self.permission_mode.as_ref(), &allowed_tools)
     }
 
-    /// Returns the options a session starts from: the checks of
-    /// [`ClaudeAgentOptionsBuilder::build`] are applied again, so options
-    /// changed after they were built are still consistent.
+    /// Returns the options a session starts from, after the checks of
+    /// [`ClaudeAgentOptionsBuilder::build`], applied again at connect as
+    /// upstream's `_apply_can_use_tool` does, so options changed after they
+    /// were built are still consistent. The `stdio` permission prompt tool
+    /// that `can_use_tool` needs is added by the command line, not written
+    /// into the options.
     pub(crate) fn for_session(&self) -> Result<Self, Error> {
-        let mut options = self.clone();
-        validate_session_store(&options)?;
-        let forced_by_callback = options.can_use_tool.is_some()
-            && options.permission_prompt_tool_name.as_deref() == Some(STDIO_PERMISSION_PROMPT_TOOL);
-        if !forced_by_callback {
-            configure_can_use_tool(&mut options)?;
-        }
-        Ok(options)
+        validate_session_store(self)?;
+        check_can_use_tool(self)?;
+        Ok(self.clone())
     }
 }
 
@@ -451,21 +440,17 @@ fn validate_session_store(options: &ClaudeAgentOptions) -> Result<(), Error> {
     Ok(())
 }
 
-fn configure_can_use_tool(options: &mut ClaudeAgentOptions) -> Result<(), Error> {
-    if options.can_use_tool.is_none() {
-        return Ok(());
-    }
+fn check_can_use_tool(options: &ClaudeAgentOptions) -> Result<(), Error> {
     let prompt_tool_is_set = options
         .permission_prompt_tool_name
         .as_deref()
         .is_some_and(|name| !name.is_empty());
-    if prompt_tool_is_set {
+    if options.can_use_tool.is_some() && prompt_tool_is_set {
         return Err(Error::config(
             "can_use_tool callback cannot be used with permission_prompt_tool_name. Please use \
              one or the other.",
         ));
     }
-    options.permission_prompt_tool_name = Some(STDIO_PERMISSION_PROMPT_TOOL.to_owned());
     Ok(())
 }
 
@@ -571,8 +556,9 @@ impl ClaudeAgentOptionsBuilder {
         value max_buffer_size: usize;
         /// Sets the callback that receives each line of CLI error output.
         some stderr: StderrCallback;
-        /// Sets the tool-permission callback. This forces
-        /// `permission_prompt_tool_name` to `stdio`.
+        /// Sets the tool-permission callback. A session started with it
+        /// passes `--permission-prompt-tool stdio` to the CLI; the field
+        /// `permission_prompt_tool_name` itself is left as it is.
         some can_use_tool: CanUseTool;
         /// Sets the user identifier.
         some user: String;
@@ -720,10 +706,9 @@ impl ClaudeAgentOptionsBuilder {
     /// `enable_file_checkpointing`, or when `continue_conversation` is used
     /// without `resume` on a store that does not list sessions.
     pub fn build(self) -> Result<ClaudeAgentOptions, Error> {
-        let mut options = self.options;
-        validate_session_store(&options)?;
-        configure_can_use_tool(&mut options)?;
-        Ok(options)
+        validate_session_store(&self.options)?;
+        check_can_use_tool(&self.options)?;
+        Ok(self.options)
     }
 }
 
@@ -737,75 +722,43 @@ mod tests {
         CanUseTool::new(async |_tool_name, _input, _context| Ok(PermissionResult::allow()))
     }
 
+    /// Upstream refuses any prompt tool next to the callback at connect,
+    /// `stdio` included, and sets `stdio` only on the copy it connects
+    /// with; here the command line adds it.
     #[test]
-    fn session_options_force_the_stdio_prompt_tool_for_a_callback_set_after_the_build() {
-        let mut options = ClaudeAgentOptions::default();
-        assert_eq!(
-            options.for_session().unwrap().permission_prompt_tool_name,
-            None
-        );
-        options.can_use_tool = Some(allow_everything());
-        assert_eq!(
-            options
-                .for_session()
-                .unwrap()
-                .permission_prompt_tool_name
-                .as_deref(),
-            Some("stdio")
-        );
-
+    fn building_leaves_the_prompt_tool_as_written_and_any_prompt_tool_next_to_the_callback_is_refused()
+     {
         let built = ClaudeAgentOptions::builder()
             .can_use_tool(allow_everything())
             .build()
             .unwrap();
+        assert_eq!(built.permission_prompt_tool_name, None);
         assert_eq!(
-            built
-                .for_session()
-                .unwrap()
-                .permission_prompt_tool_name
-                .as_deref(),
-            Some("stdio")
+            built.for_session().unwrap().permission_prompt_tool_name,
+            None
         );
+        assert!(built.clone().into_builder().build().is_ok());
 
-        options.permission_prompt_tool_name = Some("mcp__approver__ask".to_owned());
-        assert_eq!(
-            options.for_session().as_ref().err().map(Error::kind),
-            Some(ErrorKind::Config)
-        );
-    }
-
-    #[test]
-    fn a_callback_next_to_the_stdio_prompt_tool_is_accepted_only_when_the_fields_are_set_directly()
-    {
-        let mut direct = ClaudeAgentOptions {
-            can_use_tool: Some(allow_everything()),
-            permission_prompt_tool_name: Some("stdio".to_owned()),
-            ..ClaudeAgentOptions::default()
-        };
-        assert_eq!(
-            direct
-                .for_session()
-                .unwrap()
-                .permission_prompt_tool_name
-                .as_deref(),
-            Some("stdio")
-        );
-
-        direct.permission_prompt_tool_name = Some("mcp__approver__ask".to_owned());
-        assert_eq!(
-            direct.for_session().as_ref().err().map(Error::kind),
-            Some(ErrorKind::Config)
-        );
-
-        let built = ClaudeAgentOptions::builder()
-            .can_use_tool(allow_everything())
-            .permission_prompt_tool_name("stdio")
-            .build();
-        assert_eq!(
-            built.as_ref().err().map(Error::kind),
-            Some(ErrorKind::Config),
-            "the builder refuses any prompt tool next to the callback, as upstream"
-        );
+        for name in ["stdio", "mcp__approver__ask"] {
+            let direct = ClaudeAgentOptions {
+                can_use_tool: Some(allow_everything()),
+                permission_prompt_tool_name: Some(name.to_owned()),
+                ..ClaudeAgentOptions::default()
+            };
+            assert_eq!(
+                direct.for_session().as_ref().err().map(Error::kind),
+                Some(ErrorKind::Config),
+                "{name}"
+            );
+            let refused = ClaudeAgentOptions::builder()
+                .can_use_tool(allow_everything())
+                .permission_prompt_tool_name(name)
+                .build();
+            assert_eq!(
+                refused.as_ref().err().map(Error::kind),
+                Some(ErrorKind::Config)
+            );
+        }
     }
 
     #[test]

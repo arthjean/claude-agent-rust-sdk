@@ -334,10 +334,7 @@ fn builder_sets_every_option() {
         .unwrap();
     assert_eq!(rebuilt.model.as_deref(), Some("claude-opus-5"));
     assert_eq!(rebuilt.allowed_tools, options.allowed_tools);
-    assert_eq!(
-        rebuilt.permission_prompt_tool_name.as_deref(),
-        Some("stdio")
-    );
+    assert_eq!(rebuilt.permission_prompt_tool_name, None);
 }
 
 #[tokio::test]
@@ -673,15 +670,24 @@ fn sandbox_settings_use_camel_case_wire_names() {
 }
 
 #[test]
-fn can_use_tool_forces_the_stdio_permission_prompt_tool() {
+fn can_use_tool_puts_the_stdio_permission_prompt_tool_on_the_command_line_only() {
     let options = ClaudeAgentOptions::builder()
         .can_use_tool(allow_everything)
         .build()
         .unwrap();
-    assert_eq!(
-        options.permission_prompt_tool_name.as_deref(),
-        Some("stdio")
-    );
+    assert_eq!(options.permission_prompt_tool_name, None);
+    let arguments: Vec<String> = claude_agent_rust_sdk::SubprocessTransport::new(options.clone())
+        .command_arguments()
+        .unwrap()
+        .iter()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect();
+    let at = arguments
+        .iter()
+        .position(|argument| argument == "--permission-prompt-tool")
+        .expect("the flag is passed");
+    assert_eq!(arguments[at + 1], "stdio");
+    assert_eq!(options.permission_prompt_tool_name, None);
 
     let without_callback = ClaudeAgentOptions::builder()
         .permission_prompt_tool_name("CustomTool")

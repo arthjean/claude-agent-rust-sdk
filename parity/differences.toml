@@ -154,16 +154,6 @@ category = "deliberate"
 reason = "Rust has no warning categories: the target plays that part, and a log line per session names the session that is affected."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_shadow_warning_is_logged_again_on_every_session"
 
-[behavior.can-use-tool-with-stdio]
-summary = "`can_use_tool` with `permission_prompt_tool_name` set to `stdio`"
-python = "Any value of `permission_prompt_tool_name` next to `can_use_tool` raises."
-rust = "Options whose fields are set directly may hold `can_use_tool` together with the value `stdio`, which the callback needs anyway; any other value is a `Config` error."
-ref = "src/claude_agent_sdk/types.py:2400-2404"
-anchor = "if options.permission_prompt_tool_name:"
-category = "deliberate"
-reason = "`stdio` is the value the SDK itself sets for the callback, so refusing it would reject options the SDK produced."
-test = "crates/claude-agent-rust-sdk/src/lib.rs::types::options::tests::a_callback_next_to_the_stdio_prompt_tool_is_accepted_only_when_the_fields_are_set_directly"
-
 [behavior.status-response-numbers-and-nulls]
 summary = "A fraction, a negative number, or `null` in a number or string field of `get_mcp_status` or `get_context_usage`"
 python = "The response dictionary is returned as sent."

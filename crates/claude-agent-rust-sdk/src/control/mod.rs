@@ -728,13 +728,14 @@ impl ControlSession {
         (Self { shared }, inbox)
     }
 
-    /// Creates the session of these options. Without a transport, the CLI
-    /// runs as a child process.
-    pub(crate) fn for_options(
+    /// Creates the session of options that
+    /// [`ClaudeAgentOptions::for_session`] returned. Without a transport,
+    /// the CLI runs as a child process.
+    fn for_options(
         options: &ClaudeAgentOptions,
         transport: Option<SharedTransport>,
     ) -> Result<(Self, Inbox)> {
-        let options = options.for_session()?;
+        let options = options.clone();
         let config = SessionConfig::from_options(&options)?;
         let transport =
             transport.unwrap_or_else(|| SharedTransport::new(SubprocessTransport::new(options)));
