@@ -138,7 +138,21 @@ mod spawn_thread {
 
     const THREAD_NAME: &str = "claude-agent-rust-sdk-spawn";
 
-    type Request = (Command, Handle, oneshot::Sender<io::Result<Child>>);
+    type Request = (Command, Handle, oneshot::Sender<io::Result<Handoff>>);
+
+    /// A child on its way from the spawning thread to the task that asked
+    /// for it. If that task was cancelled, the hand-off is dropped on
+    /// either side of the channel (the send fails, or the value is dropped
+    /// with the receiver) and the child is ended instead of left to run.
+    struct Handoff(Option<Child>);
+
+    impl Drop for Handoff {
+        fn drop(&mut self) {
+            if let Some(child) = &self.0 {
+                abandon(child);
+            }
+        }
+    }
 
     fn queue() -> Option<&'static Sender<Request>> {
         static QUEUE: OnceLock<Option<Sender<Request>>> = OnceLock::new();
@@ -150,13 +164,22 @@ mod spawn_thread {
                     .spawn(move || {
                         for (mut command, runtime, reply) in receiver {
                             let _context = runtime.enter();
-                            let _ = reply.send(command.spawn());
+                            let _ = reply.send(command.spawn().map(|child| Handoff(Some(child))));
                         }
                     })
                     .ok()
                     .map(|_| sender)
             })
             .as_ref()
+    }
+
+    /// Ends a child whose spawn was cancelled before it was handed over
+    /// (the `connect` that asked for it was dropped): its group gets
+    /// the `SIGTERM` a dropped [`ProcessTree`](super::ProcessTree) sends, so
+    /// no CLI runs on unsupervised. Dropping the child leaves its exit
+    /// status to the runtime, which reaps orphaned children.
+    fn abandon(child: &Child) {
+        drop(super::ProcessTree::attach(child));
     }
 
     pub(super) async fn spawn(mut command: Command) -> io::Result<Child> {
@@ -167,7 +190,13 @@ mod spawn_thread {
         match queue.send((command, Handle::current(), reply)) {
             Ok(()) => spawned
                 .await
-                .unwrap_or_else(|_| Err(io::Error::other("the spawning thread stopped"))),
+                .unwrap_or_else(|_| Err(io::Error::other("the spawning thread stopped")))
+                .and_then(|mut handoff| {
+                    handoff
+                        .0
+                        .take()
+                        .ok_or_else(|| io::Error::other("the child was already handed over"))
+                }),
             Err(rejected) => {
                 let (mut command, _, _) = rejected.0;
                 command.spawn()
@@ -234,4 +263,33 @@ fn exit_code(status: ExitStatus) -> i32 {
 #[cfg(not(unix))]
 fn exit_code(status: ExitStatus) -> i32 {
     status.code().unwrap_or(UNKNOWN_EXIT_CODE)
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::process::Command;
+
+    /// A `connect` cancelled while the spawning thread starts the CLI
+    /// leaves no child running: without the hand-off, the child would be
+    /// dropped unsupervised and run on. The child leaves a file after half
+    /// a second, so the file shows that it outlived the cancellation.
+    #[tokio::test]
+    async fn a_spawn_cancelled_before_the_hand_off_ends_the_child() {
+        let directory = tempfile::tempdir().unwrap();
+        let survived = directory.path().join("survived");
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(format!("sleep 0.5; touch '{}'", survived.display()));
+        super::sys::prepare(&mut command);
+        let spawning = super::spawn_thread::spawn(command);
+        assert!(
+            futures_util::FutureExt::now_or_never(spawning).is_none(),
+            "one poll only queues the spawn"
+        );
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert!(!survived.exists(), "the child of a cancelled spawn ran on");
+    }
 }

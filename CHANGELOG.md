@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- On Linux, a `connect` cancelled while the CLI is being spawned no longer leaves the child running unsupervised: its process group gets `SIGTERM`.
 - CLI discovery on Unix asks the system whether the process may execute a candidate (`access(X_OK)`, as `shutil.which` does) instead of reading the execute bits, and an empty `PATH` searches nothing instead of the current directory.
 - A store summary whose `created_at` is a float gives that time, cut to the millisecond, instead of none.
 - `list_sessions_from_store` fills every slot of a session the store lists twice, as upstream does, instead of the first one only.
