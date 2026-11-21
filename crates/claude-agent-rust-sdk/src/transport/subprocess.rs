@@ -121,6 +121,10 @@ struct SharedState {
     stderr_tail: StderrTail,
     ready: AtomicBool,
     closing: AtomicBool,
+    /// Wakes a write still blocked on a full pipe once `close` has waited
+    /// [`WRITE_LOCK_LIMIT`] for it, so the write gives up the pipe and
+    /// stdin is closed, as upstream closes it without the write lock.
+    close_requested: tokio::sync::Notify,
     exit_error: Mutex<Option<String>>,
     exit: OnceLock<watch::Receiver<Option<Exit>>>,
     process_id: OnceLock<u32>,
@@ -306,11 +310,28 @@ impl SubprocessTransport {
                 "Cannot write to process that exited with error: {error}"
             )));
         }
+        let close_requested = shared.close_requested.notified();
+        tokio::pin!(close_requested);
+        close_requested.as_mut().enable();
+        if shared.closing.load(Ordering::SeqCst) {
+            return Err(Error::connection_closed("The transport is closing"));
+        }
         let written = async {
             pipe.write_all(data.as_bytes()).await?;
             pipe.flush().await
         };
-        if let Err(error) = written.await {
+        let written = tokio::select! {
+            biased;
+            written = written => written,
+            () = close_requested => {
+                shared.ready.store(false, Ordering::SeqCst);
+                stdin.take();
+                return Err(Error::connection_closed(
+                    "The transport closed while a write to the CLI was blocked",
+                ));
+            }
+        };
+        if let Err(error) = written {
             shared.ready.store(false, Ordering::SeqCst);
             let message = format!("Failed to write to process stdin: {error}");
             *lock(&shared.exit_error) = Some(message.clone());
@@ -532,13 +553,16 @@ async fn shut_down(inner: Arc<Inner>, connection: Connection) {
         }
     }
 
-    match timeout(WRITE_LOCK_LIMIT, inner.stdin.lock()).await {
-        Ok(mut stdin) => {
-            shared.ready.store(false, Ordering::SeqCst);
-            stdin.take();
+    let mut stdin = match timeout(WRITE_LOCK_LIMIT, inner.stdin.lock()).await {
+        Ok(stdin) => stdin,
+        Err(_) => {
+            shared.close_requested.notify_waiters();
+            inner.stdin.lock().await
         }
-        Err(_) => shared.ready.store(false, Ordering::SeqCst),
-    }
+    };
+    shared.ready.store(false, Ordering::SeqCst);
+    stdin.take();
+    drop(stdin);
 
     let exit = process.shut_down(deadline).await;
     let exited_on_its_own = exit.is_some_and(|exit| !exit.forced);

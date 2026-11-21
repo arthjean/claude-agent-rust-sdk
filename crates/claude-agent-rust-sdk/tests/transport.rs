@@ -1134,6 +1134,50 @@ async fn a_run_of_spaces_spanning_several_reads_is_delivered_intact() {
     assert_eq!(messages[0].as_ref().unwrap()["data"], content.as_str());
 }
 
+/// Upstream waits 5 s for the write lock, then closes stdin anyway, so a
+/// CLI that stopped reading for longer still gets its end of input when it
+/// reads again, within the 5 s grace before `SIGTERM`.
+#[tokio::test]
+async fn close_ends_stdin_even_while_a_write_is_blocked_on_a_full_pipe() {
+    let fake = Fake::new(json!({
+        "init": false,
+        "stdin_pause": {"after_lines": 1, "ms": 6500},
+        "steps": [],
+    }));
+    let record = fake.directory.path().join("record.jsonl");
+    let options = fake
+        .options()
+        .env_var("FAKE_CLAUDE_RECORD", record.to_string_lossy())
+        .build()
+        .unwrap();
+    let transport = Arc::new(SubprocessTransport::new(options));
+    transport.connect().await.unwrap();
+    transport
+        .write("{\"type\": \"keep_alive\"}\n")
+        .await
+        .unwrap();
+
+    let writer = {
+        let transport = Arc::clone(&transport);
+        tokio::spawn(async move {
+            let frame = json!({"type": "user", "message": {"content": "x".repeat(1_000_000)}});
+            transport.write(&format!("{frame}\n")).await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!writer.is_finished(), "the pipe was expected to be full");
+    transport.close().await.unwrap();
+    assert!(writer.await.unwrap().is_err());
+
+    let records = std::fs::read_to_string(&record).unwrap();
+    assert!(
+        records
+            .lines()
+            .any(|line| serde_json::from_str::<Value>(line).unwrap()["record"] == "stdin_eof"),
+        "the CLI never saw the end of its input:\n{records}"
+    );
+}
+
 #[tokio::test]
 async fn a_dropped_write_never_cuts_a_frame_the_cli_reads() {
     let fake = Fake::new(json!({

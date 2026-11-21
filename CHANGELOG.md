@@ -13,6 +13,7 @@
 - A resume from a store reads the macOS Keychain only when `CLAUDE_CONFIG_DIR` is unset, as upstream: an empty value set in the process keeps the Keychain out.
 - `get_subagent_messages_from_store` checks the agent id only on the direct path, when the store does not list its subkeys, and only for a separator or NUL, as `[behavior.store-agent-id-segment]` states: `.` and `..` name one segment once prefixed with `agent-`.
 - A control request whose write never completes (a CLI that stopped reading its stdin) fails with `ErrorKind::ControlTimeout` after its limit instead of waiting forever: the timeout covers the write and the wait (`[behavior.control-timeout-covers-write]`).
+- `SubprocessTransport::close` closes stdin even when a write is still blocked on a full pipe after the 5 s it waits for the write lock, as upstream does, so a CLI that reads again within its grace period gets its end of input instead of `SIGTERM`.
 
 ## 0.2.0 - 2026-11-20
 

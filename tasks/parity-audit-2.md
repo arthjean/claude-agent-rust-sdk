@@ -49,7 +49,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m6 | `task_progress` null/non-object `usage` read as zeros | todo | |
 | m7 | `close()` does not close stdin when the write lock times out | todo | |
 | m8 | Derived `Debug` prints secrets of options | todo | |
-| m9 | Control request timeout does not cover the write | todo | |
+| m9 | Control request timeout does not cover the write | done | One `timeout` around write and wait; `[behavior.control-timeout-covers-write]`; `control_protocol.rs::a_control_request_whose_write_never_completes_times_out`, red before. |
 | m10 | No `async with` equivalent; drop closes on a detached task | todo | |
 | m11 | `user` option drops supplementary groups | todo | |
 | m12 | macOS: no parent-death signal, no exit cleanup | todo | |
