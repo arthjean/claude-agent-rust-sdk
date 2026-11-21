@@ -569,6 +569,7 @@ async fn the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_wa
 /// others of the frame are still mirrored.
 #[tokio::test]
 async fn a_mirrored_entry_that_is_not_an_object_is_left_out_and_the_others_are_stored() {
+    let (warnings, _guard) = common::capture::Warnings::install();
     let store = InMemorySessionStore::new();
     let transport = cli_answering(|frame| {
         if frame["type"] == "user" {
@@ -588,4 +589,10 @@ async fn a_mirrored_entry_that_is_not_an_object_is_left_out_and_the_others_are_s
         .await;
     assert!(messages.iter().all(Result::is_ok));
     assert_eq!(uuids(&store, "objects"), ["u1", "u2"]);
+    let logged: Vec<String> = warnings
+        .all()
+        .into_iter()
+        .filter(|line| line.contains("that is not a JSON object"))
+        .collect();
+    assert_eq!(logged.len(), 2, "{logged:?}");
 }
