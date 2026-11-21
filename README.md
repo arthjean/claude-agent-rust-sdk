@@ -166,11 +166,12 @@ async fn main() -> Result<(), claude_agent_rust_sdk::Error> {
 
 ## Cargo features
 
-`jsonschema` is on by default; the other features are off by default.
+`jsonschema` and `preserve-order` are on by default; the other features are off by default.
 
 | Feature | What it adds |
 |---|---|
 | `jsonschema` | On by default. Validation of tool arguments against the JSON Schema of the tool, as the Python SDK does. Set `default-features = false` to turn it off. |
+| `preserve-order` | On by default. JSON objects keep the order their keys were written in, as Python dictionaries do, so tool schemas and copied transcripts keep their key order. Cargo applies it to every `serde_json::Map` of your program: turn it off with `default-features = false` if another part needs sorted maps. |
 | `macros` | The `#[tool]` attribute, which turns an async function into a tool. |
 | `rmcp` | Serving a server built with the `rmcp` crate inside your process. |
 | `otel` | OpenTelemetry trace propagation: the spans of the CLI join the trace that is active when the session starts. |

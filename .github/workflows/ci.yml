@@ -159,7 +159,7 @@ jobs:
       # `macros` and requires at the exact same version, and rustdoc
       # describes a procedural macro by its name only.
       - name: Compare with the newest release
-        run: cargo xtask semver-check --features jsonschema,macros,otel,rmcp
+        run: cargo xtask semver-check --features jsonschema,macros,otel,preserve-order,rmcp
 
   licenses:
     name: Dependency licenses

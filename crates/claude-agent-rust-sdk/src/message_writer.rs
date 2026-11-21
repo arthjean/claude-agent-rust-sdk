@@ -28,6 +28,7 @@
 //!   not the order of the frame: the round trip keeps the value, not the
 //!   key order of a frame the crate rebuilds.
 
+use crate::json_map::RemoveKey;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
@@ -428,7 +429,7 @@ impl Overlay {
                     .insert(key.to_owned(), Value::String(text.to_owned()));
             }
             None => {
-                self.map.shift_remove(key);
+                self.map.remove_key(key);
             }
         }
     }
@@ -463,7 +464,7 @@ impl Overlay {
                 self.map.insert(key.to_owned(), value);
             }
             None => {
-                self.map.shift_remove(key);
+                self.map.remove_key(key);
             }
         }
     }
@@ -495,7 +496,7 @@ fn usage(frame: &mut Overlay, key: &str, typed: Option<&TaskUsage>) {
         }),
         None => {
             if frame.map.get(key).is_some_and(Value::is_object) {
-                frame.map.shift_remove(key);
+                frame.map.remove_key(key);
             }
         }
     }
@@ -543,7 +544,7 @@ fn task_updated(frame: &mut Overlay, message: &TaskUpdatedMessage) {
                 patch.insert("status".to_owned(), Value::String(status.to_owned()));
             }
             None => {
-                patch.shift_remove("status");
+                patch.remove_key("status");
             }
         }
     }
@@ -576,7 +577,7 @@ fn mirror_error(frame: &mut Overlay, message: &MirrorErrorMessage) {
 fn hook_event(frame: &mut Overlay, message: &HookEventMessage) {
     if message_parser::read_hook_event_name(&frame.map) != message.hook_event_name {
         for key in HOOK_EVENT_NAME_KEYS {
-            frame.map.shift_remove(key);
+            frame.map.remove_key(key);
         }
         if !message.hook_event_name.is_empty() {
             frame.map.insert(

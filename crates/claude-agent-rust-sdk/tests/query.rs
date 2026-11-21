@@ -583,7 +583,7 @@ async fn failing_exit_is_kept_when_the_last_result_is_not_the_cause() {
     visible_state
         .as_object_mut()
         .unwrap()
-        .shift_remove("sdk_host_only");
+        .retain(|name, _| name.as_str() != "sdk_host_only");
     for marker in [session_state("idle"), visible_state] {
         let mut items = run_ending_with(vec![failed.clone(), marker], exit(1)).await;
         let last = items.pop().unwrap().unwrap_err();

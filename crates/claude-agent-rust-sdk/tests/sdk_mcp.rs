@@ -246,6 +246,7 @@ fn typed_tool_whose_argument_type_is_not_one_object_lists_an_object_schema() {
     assert_eq!(map["additionalProperties"]["type"], "integer");
 }
 
+#[cfg(feature = "preserve-order")]
 #[test]
 fn typed_tool_of_an_enum_lists_every_field_of_every_variant_in_one_object() {
     #[derive(Deserialize, JsonSchema)]
@@ -512,6 +513,7 @@ fn raw_schema_that_is_not_a_json_object_is_a_config_error() {
     }
 }
 
+#[cfg(feature = "preserve-order")]
 #[test]
 fn raw_schema_without_a_type_is_listed_as_an_object_schema() {
     let cases = [
@@ -786,12 +788,12 @@ async fn initialize_without_its_required_params_is_jsonrpc_invalid_params_as_ups
     without_client
         .as_object_mut()
         .unwrap()
-        .shift_remove("clientInfo");
+        .retain(|name, _| name.as_str() != "clientInfo");
     let mut without_version = complete.clone();
     without_version["clientInfo"]
         .as_object_mut()
         .unwrap()
-        .shift_remove("version");
+        .retain(|name, _| name.as_str() != "version");
     for params in [json!({}), Value::Null, without_client, without_version] {
         let response = client.request("srv", "initialize", params.clone()).await;
         assert_eq!(

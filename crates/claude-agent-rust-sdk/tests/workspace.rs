@@ -691,6 +691,24 @@ fn readme_and_crate_docs_state_the_compatibility_promise() {
     ));
 }
 
+/// Cargo unifies features across the whole program, so a library that
+/// turns `serde_json/preserve_order` on in its dependency line changes
+/// every `serde_json::Map` of its dependents with no way out. The library
+/// turns it on only through its own `preserve-order` feature.
+#[test]
+fn serde_json_key_order_is_a_feature_of_the_library_its_dependents_can_turn_off() {
+    let manifest = read("crates/claude-agent-rust-sdk/Cargo.toml");
+    let dependency = manifest
+        .lines()
+        .find(|line| line.starts_with("serde_json"))
+        .expect("the library depends on serde_json");
+    assert!(!dependency.contains("preserve_order"), "{dependency}");
+    assert!(
+        manifest.contains("preserve-order = [\"serde_json/preserve_order\"]"),
+        "{manifest}"
+    );
+}
+
 #[test]
 fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
     let library = read("crates/claude-agent-rust-sdk/src/lib.rs");
@@ -723,7 +741,7 @@ fn crate_root_documents_features_platforms_and_the_tested_cli_version() {
         documented += 1;
     }
     assert!(documented >= 5, "{features}");
-    assert_eq!(defaults, ["jsonschema"], "{features}");
+    assert_eq!(defaults, ["jsonschema", "preserve-order"], "{features}");
     for feature in &defaults {
         assert!(
             library.contains(&format!("//! - `{feature}`: on by default.")),

@@ -22,6 +22,7 @@
 //! the defined ones, where `mcp` 2.x drops them and `mcp` 1.x keeps them:
 //! they are sent because the program asked for them.
 
+use crate::json_map::RemoveKey;
 use serde_json::{Map, Value};
 
 /// What to do with the keys an object model does not define.
@@ -286,7 +287,7 @@ fn shape(shape_of: Shape, value: Value) -> Value {
 fn object_of(model: &Model, mut object: Map<String, Value>) -> Map<String, Value> {
     let mut shaped = Map::new();
     for (key, shape_of) in model.fields {
-        if let Some(value) = object.shift_remove(*key)
+        if let Some(value) = object.remove_key(key)
             && !value.is_null()
         {
             shaped.insert((*key).to_owned(), shape(*shape_of, value));
@@ -302,7 +303,10 @@ fn object_of(model: &Model, mut object: Map<String, Value>) -> Map<String, Value
     shaped
 }
 
+/// The order of the keys is what these tests check, so they need the
+/// `preserve-order` feature.
 #[cfg(test)]
+#[cfg(feature = "preserve-order")]
 mod tests {
     use serde_json::json;
 

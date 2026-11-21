@@ -1,6 +1,7 @@
 //! Session summaries a store maintains as entries are appended, so a
 //! listing needs no per-session load.
 
+use crate::json_map::RemoveKey;
 use serde_json::{Map, Value};
 
 use super::SdkSessionInfo;
@@ -122,7 +123,7 @@ pub fn fold_session_summary(
                     data.insert("tag".to_owned(), Value::from(tag));
                 }
                 None => {
-                    data.shift_remove("tag");
+                    data.remove_key("tag");
                 }
             }
         }

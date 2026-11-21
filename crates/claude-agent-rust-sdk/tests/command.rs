@@ -959,6 +959,7 @@ fn output_format_emits_the_schema_only_for_json_schema() {
     }
 }
 
+#[cfg(feature = "preserve-order")]
 #[test]
 fn json_values_reach_the_cli_with_their_keys_in_the_order_written() {
     let schema = json!({

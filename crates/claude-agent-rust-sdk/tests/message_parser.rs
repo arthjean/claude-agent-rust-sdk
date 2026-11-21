@@ -1329,7 +1329,9 @@ fn parse_stream_event_requires_uuid_session_id_and_event() {
 
     for field in ["uuid", "session_id", "event"] {
         let mut data = full.clone();
-        data.as_object_mut().unwrap().shift_remove(field);
+        data.as_object_mut()
+            .unwrap()
+            .retain(|name, _| name.as_str() != field);
         let (message, _) = parse_error(data);
         assert_eq!(
             message,
@@ -1398,7 +1400,9 @@ fn parse_conversation_reset_missing_field() {
     });
     for field in ["new_conversation_id", "uuid", "session_id"] {
         let mut data = full.clone();
-        data.as_object_mut().unwrap().shift_remove(field);
+        data.as_object_mut()
+            .unwrap()
+            .retain(|name, _| name.as_str() != field);
         let (message, _) = parse_error(data);
         assert_eq!(
             message,
@@ -1674,7 +1678,9 @@ fn parse_result_message_missing_fields() {
         "session_id",
     ] {
         let mut data = base_result();
-        data.as_object_mut().unwrap().shift_remove(field);
+        data.as_object_mut()
+            .unwrap()
+            .retain(|name, _| name.as_str() != field);
         let (message, _) = parse_error(data);
         assert_eq!(
             message,

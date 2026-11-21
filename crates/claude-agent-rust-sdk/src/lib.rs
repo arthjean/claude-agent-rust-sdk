@@ -15,7 +15,7 @@
 //!
 //! # Cargo features
 //!
-//! `jsonschema` is the one feature on by default; the others are off:
+//! `jsonschema` and `preserve-order` are on by default; the others are off:
 //!
 //! - `jsonschema`: on by default. Validation of tool arguments against the
 //!   JSON Schema of the tool, for every [`SdkMcpTool`], as the Python SDK
@@ -25,6 +25,18 @@
 //!   `default-features = false`: the arguments of a raw tool then reach the
 //!   handler as the model sent them, and those of a typed tool are still
 //!   checked by `serde`.
+//! - `preserve-order`: on by default. Turns on `serde_json/preserve_order`,
+//!   so a JSON object keeps the order its keys were written in, as a Python
+//!   dictionary does: the properties of a tool schema reach the model in
+//!   the order the program wrote them, and a transcript the crate copies
+//!   (a fork, a resume from a store) keeps the key order the CLI wrote.
+//!   Cargo turns a feature on for the whole program, so with it every
+//!   `serde_json::Map` of the program keeps insertion order instead of
+//!   sorting its keys. Turn it off with `default-features = false` (and
+//!   `features = ["jsonschema"]` to keep validation) when another part of
+//!   the program needs sorted maps: the crate works the same, except that
+//!   the keys of the JSON it writes to the CLI and to transcripts come out
+//!   sorted.
 //! - `macros`: the `#[tool]` attribute, which turns an async function into
 //!   a tool.
 //! - `rmcp`: `McpServerConfig::sdk_rmcp`, which serves a server built with
@@ -166,6 +178,7 @@ pub mod cli;
 mod client;
 mod control;
 pub mod error;
+mod json_map;
 pub mod mcp;
 pub mod message_parser;
 mod message_writer;

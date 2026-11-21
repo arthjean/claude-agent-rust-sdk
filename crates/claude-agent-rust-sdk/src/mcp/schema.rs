@@ -15,6 +15,7 @@
 //!   looser than the enum, so `serde` checks the exact shape when the
 //!   arguments are read.
 
+use crate::json_map::RemoveKey;
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
 use serde_json::{Map, Number, Value, json};
@@ -122,7 +123,7 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
         }
     }
     for combinator in COMBINATORS {
-        let Some(Value::Array(alternatives)) = root.shift_remove(combinator) else {
+        let Some(Value::Array(alternatives)) = root.remove_key(combinator) else {
             continue;
         };
         let objects: Vec<Map<String, Value>> = alternatives
@@ -181,7 +182,7 @@ fn merge_alternatives(root: &mut Map<String, Value>) -> bool {
         .collect();
     root.insert("properties".to_owned(), Value::Object(merged));
     if required.is_empty() {
-        root.shift_remove("required");
+        root.remove_key("required");
     } else {
         root.insert("required".to_owned(), json!(required));
     }
@@ -411,6 +412,7 @@ mod tests {
 
     use super::{MAX_VISITS, integral_floats_to_integers};
 
+    #[cfg(feature = "preserve-order")]
     #[test]
     fn integral_floats_become_integers_only_where_the_schema_wants_an_integer() {
         let schema = json!({

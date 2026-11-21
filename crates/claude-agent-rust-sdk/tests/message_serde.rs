@@ -215,7 +215,7 @@ fn a_changed_field_of_a_system_message_is_written_over_its_frame() {
     expected
         .as_object_mut()
         .unwrap()
-        .shift_remove("last_tool_name");
+        .retain(|name, _| name.as_str() != "last_tool_name");
     assert_eq!(written, expected);
 }
 

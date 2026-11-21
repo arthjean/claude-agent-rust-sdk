@@ -17,6 +17,7 @@
 //! value of another JSON type fails the call with the raw response in
 //! [`Error::data`](crate::Error::data).
 
+use crate::json_map::RemoveKey;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -90,7 +91,7 @@ impl McpServerStatusConfig {
     fn from_wire(raw: Value) -> Self {
         let mut fields = raw.clone();
         if let Some(object) = fields.as_object_mut() {
-            object.shift_remove("type");
+            object.remove_key("type");
         }
         let parsed = match raw.get("type").and_then(Value::as_str) {
             None | Some("stdio") => McpStdioServerConfig::deserialize(&fields).map(Self::Stdio),

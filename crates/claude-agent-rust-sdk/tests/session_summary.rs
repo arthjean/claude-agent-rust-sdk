@@ -236,21 +236,29 @@ async fn a_summary_is_titled_by_the_first_field_of_the_precedence_chain_it_holds
     assert_eq!(info.summary, "ct");
     assert_eq!(info.custom_title.as_deref(), Some("ct"));
 
-    data.as_object_mut().unwrap().shift_remove("custom_title");
+    data.as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != "custom_title");
     let info = listed_from_summary(&data).await;
     assert_eq!(info.summary, "ai");
     assert_eq!(info.custom_title.as_deref(), Some("ai"));
 
-    data.as_object_mut().unwrap().shift_remove("ai_title");
+    data.as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != "ai_title");
     let info = listed_from_summary(&data).await;
     assert_eq!(info.summary, "lp");
     assert_eq!(info.custom_title, None);
 
-    data.as_object_mut().unwrap().shift_remove("last_prompt");
+    data.as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != "last_prompt");
     let info = listed_from_summary(&data).await;
     assert_eq!(info.summary, "sh");
 
-    data.as_object_mut().unwrap().shift_remove("summary_hint");
+    data.as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != "summary_hint");
     let info = listed_from_summary(&data).await;
     assert_eq!(info.summary, "fp");
     assert_eq!(info.first_prompt.as_deref(), Some("fp"));

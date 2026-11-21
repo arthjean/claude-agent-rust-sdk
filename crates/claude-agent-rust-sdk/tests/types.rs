@@ -708,7 +708,9 @@ fn a_hook_input_missing_metadata_the_callback_does_not_need_stays_typed() {
         json!({"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}),
     );
     wire["transcript_path"] = Value::Null;
-    wire.as_object_mut().unwrap().shift_remove("cwd");
+    wire.as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != "cwd");
     let HookInput::PreToolUse(input) = HookInput::from_wire(wire) else {
         panic!("a missing tool_use_id or cwd, or a null transcript_path, must not hide the tool");
     };
@@ -904,7 +906,10 @@ fn stop_and_subagent_stop_optional_fields_default_to_none() {
 
 fn without(value: &Value, key: &str) -> Value {
     let mut value = value.clone();
-    value.as_object_mut().unwrap().shift_remove(key);
+    value
+        .as_object_mut()
+        .unwrap()
+        .retain(|name, _| name.as_str() != key);
     value
 }
 
@@ -1238,7 +1243,10 @@ fn hook_specific_output_key_sets_match_upstream() {
 
         for key in required {
             let mut missing = minimal.clone();
-            missing.as_object_mut().unwrap().shift_remove(*key);
+            missing
+                .as_object_mut()
+                .unwrap()
+                .retain(|name, _| name.as_str() != *key);
             assert!(
                 serde_json::from_value::<HookSpecificOutput>(missing).is_err(),
                 "{event} should require {key}"

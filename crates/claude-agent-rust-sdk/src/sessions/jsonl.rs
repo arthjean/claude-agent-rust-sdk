@@ -93,6 +93,7 @@ mod tests {
         assert_eq!(line, r#"{"type":"tag","tag":"a\"b","sessionId":"s"}"#);
     }
 
+    #[cfg(feature = "preserve-order")]
     #[test]
     fn plain_lines_keep_the_key_order_of_the_entry() {
         let entry = json!({"parentUuid": null, "type": "user", "uuid": "u", "cwd": "/w"});

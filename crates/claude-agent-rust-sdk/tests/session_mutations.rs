@@ -462,6 +462,7 @@ fn fork_writes_a_relinked_copy_with_new_ids() {
     }
 }
 
+#[cfg(feature = "preserve-order")]
 #[test]
 fn fork_keeps_the_key_order_of_each_entry_as_upstream_does() {
     let project = Project::new();

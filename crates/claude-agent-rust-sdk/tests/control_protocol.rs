@@ -818,7 +818,7 @@ async fn hook_callback_receives_the_typed_input_and_answers_with_wire_names() {
     without_tool_use["request"]
         .as_object_mut()
         .unwrap()
-        .shift_remove("tool_use_id");
+        .retain(|name, _| name.as_str() != "tool_use_id");
     transport.push_frame(without_tool_use);
     settle().await;
 

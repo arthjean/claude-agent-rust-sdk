@@ -20,6 +20,7 @@
 //! blocking job and comes back with its result: a resume cancelled while a
 //! job runs removes the directory once that job is done, never under it.
 
+use crate::json_map::RemoveKey;
 use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::future::Future;
@@ -463,10 +464,10 @@ pub(crate) fn strip_settings_for_resume(content: Vec<u8>) -> Vec<u8> {
     };
     let mut stripped = false;
     for key in STRIPPED_SETTINGS {
-        stripped |= settings.shift_remove(key).is_some();
+        stripped |= settings.remove_key(key).is_some();
     }
     if let Some(Value::Object(env)) = settings.get_mut("env") {
-        stripped |= env.shift_remove(CONFIG_DIR_VARIABLE).is_some();
+        stripped |= env.remove_key(CONFIG_DIR_VARIABLE).is_some();
     }
     if !stripped {
         return content;
@@ -483,7 +484,7 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
     let removed = data
         .get_mut("claudeAiOauth")
         .and_then(Value::as_object_mut)
-        .and_then(|oauth| oauth.shift_remove("refreshToken"))
+        .and_then(|oauth| oauth.remove_key("refreshToken"))
         .is_some();
     if !removed {
         return credentials.to_owned();
@@ -727,7 +728,7 @@ async fn materialize_subkeys(
                 write_jsonl(&file, &transcript)?;
             }
             if let Some(mut metadata) = metadata {
-                metadata.shift_remove("type");
+                metadata.remove_key("type");
                 let sidecar = agent_metadata_sidecar_path(&file);
                 if let Some(parent) = sidecar.parent() {
                     create_dir(parent)?;

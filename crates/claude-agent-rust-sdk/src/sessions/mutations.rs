@@ -5,6 +5,7 @@
 //! process, the CLI reads the tail of the file before re-appending its own
 //! metadata, so an entry written here is kept.
 
+use crate::json_map::RemoveKey;
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -434,7 +435,7 @@ pub(crate) fn build_fork_entries(
             json!({"sessionId": session_id, "messageUuid": original_uuid}),
         );
         for field in LEAKED_FIELDS {
-            forked.shift_remove(field);
+            forked.remove_key(field);
         }
         entries.push(forked);
     }
