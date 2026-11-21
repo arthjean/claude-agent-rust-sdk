@@ -179,6 +179,9 @@ impl CliLocator {
 
     fn search_path_entries(&self, name: &str) -> Option<PathBuf> {
         let search_path = self.search_path.as_ref()?;
+        if search_path.is_empty() {
+            return None;
+        }
         std::env::split_paths(search_path).find_map(|directory| match self.platform {
             Platform::Windows => {
                 let candidate = directory.join(name);
@@ -227,13 +230,11 @@ impl CliLocator {
     }
 }
 
+/// A file, not a directory, that this process may execute: the check of
+/// `shutil.which` on Unix.
 #[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::metadata(path)
-        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    path.is_file() && crate::process::sys::may_execute(path)
 }
 
 #[cfg(not(unix))]
@@ -426,6 +427,31 @@ mod tests {
             .find()
             .unwrap();
         assert_eq!(found, on_path);
+    }
+
+    /// `shutil.which` asks the kernel (`os.access(X_OK)`), so a file whose
+    /// execute bits belong only to others is not the CLI of its owner, and
+    /// an empty `PATH` searches nothing.
+    #[cfg(unix)]
+    #[test]
+    fn unix_skips_a_file_its_user_may_not_execute_and_an_empty_path_searches_nothing() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let root = tempfile::tempdir().unwrap();
+        let denied = add(&root.path().join("denied"), "claude");
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o611)).unwrap();
+        let allowed = add(&root.path().join("allowed"), "claude");
+        let entries = [root.path().join("denied"), root.path().join("allowed")];
+        let found = locator(Platform::Unix, root.path(), &entries)
+            .find()
+            .unwrap();
+        if std::fs::metadata(&denied).unwrap().uid() != 0 {
+            assert_eq!(found, allowed);
+        }
+
+        let mut empty = locator(Platform::Unix, root.path(), &[]);
+        empty.search_path = Some(OsString::new());
+        assert_eq!(empty.search_path_entries("claude"), None);
     }
 
     #[test]

@@ -96,7 +96,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D14 | macOS: `CLAUDE_CONFIG_DIR=""` reads the Keychain | done | Keychain read only when the variable is unset in the options and the process, as upstream `caller_config_dir is None`; `resume::tests::an_empty_config_dir_variable_of_the_process_keeps_the_keychain_out_as_upstream`. Home part of D15 done with m14. |
 | D15 | Sync `remove_dir_all` in a `Drop`; no home reads `./.claude` | done | Drop part: kept synchronous on purpose (a blocking job may never run at runtime shutdown and the directory holds credentials; upstream rmtree is synchronous on the loop in every case). Module doc no longer claims every file op runs on the blocking pool. Home part done with m14. |
 | D16 | Conformance takes the first summary instead of the last | done | Both remaining lookups (listed mtime, summary after the subagent append) take the last entry. `session_store.rs::conformance_reads_the_last_listing_of_a_session_as_upstream`, red before (contract 14). |
-| D17 | `ToolContent::Resource.mime_type` never settable or sent | todo | |
+| D17 | `ToolContent::Resource.mime_type` never settable or sent | done | New `ToolContent::with_mime_type`; field documented as kept, not sent (upstream flattens a resource to text and drops mimeType too). Asserted in `sdk_mcp.rs::tool_results_convert_each_content_type` (wire unchanged). |
 | D18 | CLI discovery: empty `PATH` looks for `./claude`; exec bit instead of access | todo | |
 | D19 | `#[allow]` without reason; `Message` is 808 bytes | todo | |
 | D20 | `syn` 2 and 3 built together with `macros` | todo | |

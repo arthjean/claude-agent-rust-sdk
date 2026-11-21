@@ -11,6 +11,8 @@
 
 #[cfg(all(unix, any(target_os = "macos", test)))]
 pub(crate) use imp::current_user_name;
+#[cfg(unix)]
+pub(crate) use imp::may_execute;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) use imp::system_search_path;
 pub(crate) use imp::{ProcessTree, prepare, run_as_user};
@@ -188,6 +190,20 @@ mod imp {
             let entry = unsafe { entry.assume_init() };
             return Ok(Some(read(&entry)));
         }
+    }
+
+    /// Whether this process may execute `path`, as `os.access(path, X_OK)`
+    /// answers in Python's `shutil.which`: the kernel decides, with the
+    /// real user and group ids, so a file whose only execute bit belongs
+    /// to another user is refused. The path is copied into a C string that
+    /// outlives the call.
+    pub(crate) fn may_execute(path: &std::path::Path) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+
+        let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
+            return false;
+        };
+        unsafe { libc::access(path.as_ptr(), libc::X_OK) == 0 }
     }
 
     /// The search path of the system, `confstr(_CS_PATH)`, which Python's

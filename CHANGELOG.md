@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- CLI discovery on Unix asks the system whether the process may execute a candidate (`access(X_OK)`, as `shutil.which` does) instead of reading the execute bits, and an empty `PATH` searches nothing instead of the current directory.
 - A store summary whose `created_at` is a float gives that time, cut to the millisecond, instead of none.
 - `list_sessions_from_store` fills every slot of a session the store lists twice, as upstream does, instead of the first one only.
 - The title of a fork and the cut of a long first prompt strip what Python's `str.strip()` and `str.rstrip()` strip, the separators U+001C to U+001F included.
