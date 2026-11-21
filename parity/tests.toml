@@ -113,7 +113,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 [tests."tests/test_close_cancellation.py"]
 "test_close_under_cancellation_still_reaps_child" = { rust = "crates/claude-agent-rust-sdk/tests/shutdown.rs::close_runs_to_completion_when_its_future_is_dropped" }
 "test_cancelled_client_context_leaves_no_child" = { rust = ["crates/claude-agent-rust-sdk/tests/run_end_subprocess.rs::a_client_whose_disconnect_is_cancelled_leaves_no_process", "crates/claude-agent-rust-sdk/tests/stress.rs::two_hundred_cycles_half_of_them_cancelled_leave_no_process"] }
-"test_still_running_child_stays_tracked_for_atexit_reaper" = { rust = "crates/claude-agent-rust-sdk/tests/shutdown.rs::a_program_that_exits_without_closing_gives_its_sessions_sigterm @unix" }
+"test_still_running_child_stays_tracked_for_atexit_reaper" = { rust = ["crates/claude-agent-rust-sdk/tests/shutdown.rs::a_program_that_exits_without_closing_gives_its_sessions_sigterm @unix", "crates/claude-agent-rust-sdk/tests/shutdown.rs::a_cli_that_ignores_the_end_of_its_input_ends_when_the_program_exits @unix"] }
 "test_reaped_child_is_untracked" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::process::sys::imp::tests::a_group_is_tracked_for_the_exit_hook_until_it_is_swept @unix" }
 "test_fake_cli_speaks_the_protocol" = { rust = ["crates/fake-claude/tests/cli.rs::version_flag_prints_the_version", "crates/fake-claude/tests/cli.rs::without_a_scenario_it_speaks_the_protocol_until_stdin_closes"] }
 

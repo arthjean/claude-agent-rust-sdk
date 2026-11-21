@@ -428,6 +428,65 @@ fn a_program_that_exits_without_closing_gives_its_sessions_sigterm() {
     );
 }
 
+/// The CLI itself, when it does not stop at the end of its input: macOS
+/// has no parent-death signal, so only the exit hook ends it once the
+/// program leaves through `exit` without closing the session. (On Linux
+/// the parent-death signal would end it too.)
+#[cfg(unix)]
+#[test]
+fn a_cli_that_ignores_the_end_of_its_input_ends_when_the_program_exits() {
+    let fake = Fake::new(json!({"read_stdin": false, "steps": [{"sleep_ms": 120_000}]}));
+    let directory = fake.scenario.parent().unwrap().to_path_buf();
+    let cli_pid = directory.join("cli-pid");
+    let wrapper = directory.join(BACKGROUND_WRAPPER);
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\necho $$ > \"{}\"\necho ready > \"{}\"\nexec \"{}\" \"$@\"\n",
+            cli_pid.display(),
+            directory.join("ready").display(),
+            fake_claude().display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "host_process_for_the_exit_test",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(EXIT_HOST_VARIABLE, &fake.scenario)
+        .status()
+        .unwrap();
+    assert!(status.success(), "the host process exits with 0");
+
+    let pid = std::fs::read_to_string(&cli_pid).unwrap();
+    let pid = pid.trim();
+    let alive = || {
+        std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let orphaned = alive();
+    if orphaned {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", pid])
+            .status();
+    }
+    assert!(!orphaned, "the CLI {pid} outlived the program that exited");
+}
+
 #[cfg(any(windows, target_os = "linux"))]
 #[test]
 fn the_process_dies_when_its_parent_dies_abruptly() {
