@@ -29,6 +29,7 @@
 
 ### Fixed
 
+- With a global W3C propagator installed, a span with no trace state no longer sends an empty `TRACESTATE` to the CLI, which the Python SDK never sends.
 - Closing a session stops every handler of a control request, including one whose request id a later request reused.
 - A hook output that cannot be serialized is answered with an error, never with an empty output that would let the call through.
 - A permission request is read in upstream's order: a missing `input` is reported before a missing callback.

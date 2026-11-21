@@ -134,10 +134,10 @@ async fn inherited_trace_variables_are_replaced_by_the_fresh_values() {
     let reported = environment_seen_by_the_cli(fake.options()).await;
 
     assert_eq!(reported["TRACEPARENT"], trace_parent());
-    assert_ne!(reported["TRACESTATE"], "stale=1");
-    assert!(
-        reported["TRACESTATE"] == Value::Null || reported["TRACESTATE"] == "",
-        "{reported}"
+    assert_eq!(
+        reported["TRACESTATE"],
+        Value::Null,
+        "an empty trace state is not sent, as Python's propagator writes none: {reported}"
     );
 }
 

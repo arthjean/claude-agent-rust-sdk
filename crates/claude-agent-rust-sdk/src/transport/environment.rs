@@ -26,6 +26,11 @@ const INHERITED_TRACE_VARIABLES: [&str; 2] = ["TRACEPARENT", "TRACESTATE"];
 /// propagator that declares no field and writes nothing, where the Python
 /// SDK writes the W3C trace context and baggage, so this writes those two
 /// itself, following `OTEL_PROPAGATORS` as the Python SDK does.
+///
+/// An empty `tracestate` is left out: the W3C propagator of
+/// `opentelemetry_sdk` writes one for a span with no trace state, where the
+/// Python propagator writes none, so the CLI would otherwise get an empty
+/// `TRACESTATE` that upstream never sends.
 #[cfg(feature = "otel")]
 pub(crate) fn active_trace_context() -> Vec<(String, String)> {
     let injected = std::panic::catch_unwind(|| {
@@ -42,7 +47,10 @@ pub(crate) fn active_trace_context() -> Vec<(String, String)> {
         carrier
     });
     match injected {
-        Ok(carrier) => carrier.into_iter().collect(),
+        Ok(carrier) => carrier
+            .into_iter()
+            .filter(|(key, value)| !(key == "tracestate" && value.is_empty()))
+            .collect(),
         Err(_) => {
             tracing::debug!("OTEL trace context injection failed");
             Vec::new()
