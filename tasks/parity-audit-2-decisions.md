@@ -186,8 +186,9 @@ not needed, since the `*_from_store` readers already are.
 with `create_sdk_mcp_server` runs on a native dispatcher
 (`src/mcp/server.rs`), and a hand-written `rmcp::ServerHandler` runs on rmcp
 itself (feature `rmcp`, `McpServerConfig::sdk_rmcp`). The reasons for the
-native default: it keeps rmcp out of the default build (109 crates in the
-normal dependency tree without the feature, 138 with it), and the dispatcher
+native default: it keeps rmcp out of the default build (96 crates in the
+normal and build dependency tree on Linux without the feature, 115 with it,
+measured 2026-11-21), and the dispatcher
 only has to serve `initialize`, `ping`, `tools/list`, `tools/call`, and
 `notifications/cancelled`. The cost is the one M1 measured: the answers
 must follow the protocol library upstream pins, which moved when `mcp` 2.x

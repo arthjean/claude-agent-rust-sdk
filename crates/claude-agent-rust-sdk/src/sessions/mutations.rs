@@ -277,8 +277,8 @@ pub(crate) fn partition_fork_entries(
 }
 
 /// Splits at line feeds only, where upstream's `splitlines()` also splits
-/// at U+2028, U+2029, U+0085 and the separators U+001C to U+001E, which a
-/// JSON string holds unescaped: such an entry would be cut in two and lost.
+/// at U+2028, U+2029, and U+0085, which a JSON string holds unescaped:
+/// such an entry would be cut in two and lost.
 fn parse_fork_transcript(content: &str, session_id: &str) -> (Vec<Entry>, Vec<Value>) {
     let entries = content
         .lines()

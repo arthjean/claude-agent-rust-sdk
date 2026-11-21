@@ -48,7 +48,7 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 | `.github/scripts/upstream-watch.sh` | `bash .github/scripts/upstream-watch.test.sh` (offline, needs `git`) |
 | `.github/scripts/release.sh` | `bash .github/scripts/release.test.sh` (offline, needs `git` and `jq`) |
 | `.github/scripts/install-cli.sh` | `bash .github/scripts/install-cli.test.sh` (offline, needs `jq`) |
-| New code paths | Cover them with offline tests: CI fails under 91.5% line coverage, measured on Linux with `fake-claude` and `xtask` left out. |
+| New code paths | Cover them with offline tests: CI fails under 91.5% line coverage, measured on Linux with `fake-claude`, `parity-driver`, and `xtask` left out. |
 
 CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and tests with `cfg`, and keep both the Unix and the Windows branch compiling.
 
@@ -60,7 +60,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 - **`unsafe` lives only in `src/process/sys.rs`**. An operating-system call that needs it goes there, with a doc comment that justifies the block.
 - **Fifteen examples**: the README Examples table and the example files match one to one. Adding an example means adding its row and raising the count in the test.
 - **Every Cargo feature** is described in the crate docs of `src/lib.rs` as ``//! - `name`:``.
-- **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, `crates/fake-claude`, and the test itself. `cargo xtask upstream-sync` moves every copy together.
+- **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, `.github/workflows/ci.yml`, `crates/fake-claude`, and the test itself. `cargo xtask upstream-sync` moves every copy together.
 - **README statements**: the authentication, non-affiliation, and license sentences are matched word for word.
 - **The former crate name and the former license** appear in no tracked file outside `docs/research/`, `docs/validation/`, `tasks/`, and `upstream/`. A test that needs either string builds it from parts.
 - **Published packages**: each published crate directory holds copies of `LICENSE-MIT` and `LICENSE-APACHE` (the library also `THIRD_PARTY_NOTICES`) identical to the files at the repository root, so edit the root file and copy it. The `include` lists, the registry metadata, and the exact `=<version>` requirement on the macros crate are pinned, and no file under `src/` loads a file outside its package.

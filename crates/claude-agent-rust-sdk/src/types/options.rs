@@ -58,8 +58,9 @@ pub struct ClaudeAgentOptions {
     pub fallback_model: Option<String>,
     /// Beta features to enable.
     pub betas: Vec<SdkBeta>,
-    /// MCP tool that handles permission prompts. Setting `can_use_tool`
-    /// forces this to `stdio`.
+    /// MCP tool that handles permission prompts. Cannot be combined with
+    /// `can_use_tool`: a session with that callback passes
+    /// `--permission-prompt-tool stdio` itself.
     pub permission_prompt_tool_name: Option<String>,
     /// Working directory of the session. Defaults to the directory of this
     /// process, as does an empty path.
@@ -142,7 +143,9 @@ pub struct ClaudeAgentOptions {
     pub session_store: Option<SharedSessionStore>,
     /// When mirrored transcript entries are flushed to `session_store`.
     pub session_store_flush: SessionStoreFlushMode,
-    /// Timeout of each store load during a resume, in milliseconds.
+    /// Timeout of each session store call made at connect, in
+    /// milliseconds: the loads of a resume, `list_sessions` for
+    /// `continue_conversation`, and `list_subkeys`.
     pub load_timeout_ms: u64,
     /// API-side task budget in tokens.
     pub task_budget: Option<TaskBudget>,

@@ -29,6 +29,13 @@
 
 ### Fixed
 
+- Closing a session stops every handler of a control request, including one whose request id a later request reused.
+- A hook output that cannot be serialized is answered with an error, never with an empty output that would let the call through.
+- A permission request is read in upstream's order: a missing `input` is reported before a missing callback.
+- A transcript entry whose `agentId` is `null` is read as written by the same agent as one without the key, as upstream reads both.
+- A mirrored transcript entry that is not a JSON object is logged when it is left out, instead of dropped silently; a control response without a request id is logged too.
+- The error a CLI process ended with stays typed, so a later write error names it as its source, as upstream raises `from` it.
+- The summary contract of the session store conformance suite reads the last listing of a session, as upstream's dictionary does, instead of the first.
 - An in-process tool that panics is answered with the message of the panic, as upstream answers an exception with `str(e)`, instead of a fixed text; a control callback that panics is answered the same way.
 - A `connect` cancelled during the initialize handshake no longer leaves the client reading as connecting, and a `scoped` call cancelled while its body runs disconnects the client, as leaving `async with` does.
 - Closing a session no longer waits out the shutdown grace for a tool the CLI started that is stopped (for example by reading the terminal): the `SIGTERM` to the process group is followed by `SIGCONT`.
@@ -39,7 +46,7 @@
 - The title of a fork and the cut of a long first prompt strip what Python's `str.strip()` and `str.rstrip()` strip, the separators U+001C to U+001F included.
 - A stream from `receive_messages` or `receive_response` checks the connection when first polled, as upstream checks it at the first iteration, so a stream created before `connect` reads the session connected since. The documented errors of `ClaudeSdkClient::query` now name `PromptStream` for a failing input stream.
 - A control request whose `request_id` is a number (or any JSON value other than a string) is answered with that same id, as upstream answers it, instead of being ignored.
-- `ClaudeSdkClient::disconnect` called during a `connect` closes the session being opened, so the connect fails at once instead of after the 60-second `initialize` timeout.
+- `ClaudeSdkClient::disconnect` called during the `initialize` handshake of a `connect` closes the session being opened, so the connect fails at once instead of after the 60-second timeout. Called earlier, while a resume still reads the session store, it waits for the connect and then closes its session.
 - On Unix, a program that leaves through `exit` (returning from `main`, `std::process::exit`) with a session still open gives the process group of each CLI `SIGTERM` from an exit hook, as the Python SDK does from `atexit`, instead of leaving it running (on macOS, which has no parent-death signal) or leaving its background processes behind (on Linux).
 - A CLI started with the `user` option holds the supplementary groups of that user, from the group database, instead of none when the parent is privileged.
 - A `task_progress` message whose `usage` is not an object fails to parse with `Invalid field in system message: 'usage'`, as any required field of the wrong type does, instead of reading as zero counts.

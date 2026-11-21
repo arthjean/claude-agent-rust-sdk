@@ -146,8 +146,8 @@ test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::descendants_end_with_the
 
 [behavior.shadow-warning-per-session]
 summary = "The warning that `can_use_tool` is shadowed"
-python = "Emitted once per process with `warnings.warn`, under the filterable category `CanUseToolShadowedWarning`."
-rust = "Logged through `tracing` at each connect, once the options pass validation as upstream checks them first, under the target `claude_agent_rust_sdk::can_use_tool_shadowed` with the field `code = \"CLAUDE_SDK_CAN_USE_TOOL_SHADOWED\"`, so a filter can drop it alone; `ClaudeAgentOptions::can_use_tool_shadowed_warning` returns the text."
+python = "Emitted once per process for each distinct message with `warnings.warn`, under the filterable category `CanUseToolShadowedWarning`."
+rust = "Logged through `tracing` at each connect, once the options, the session store, and the resume have been checked, as upstream configures the callback after them, under the target `claude_agent_rust_sdk::can_use_tool_shadowed` with the field `code = \"CLAUDE_SDK_CAN_USE_TOOL_SHADOWED\"`, so a filter can drop it alone; `ClaudeAgentOptions::can_use_tool_shadowed_warning` returns the text."
 ref = "src/claude_agent_sdk/types.py:2374-2380"
 anchor = "warnings.warn(message, CanUseToolShadowedWarning, stacklevel=2)"
 category = "deliberate"
@@ -215,8 +215,8 @@ reason = "One malformed frame from the CLI must not end the session."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::mirror_frames_go_to_the_attached_mirror_and_results_wait_for_its_flush"
 
 [behavior.pending-requests-fail-at-end]
-summary = "Control requests pending when the CLI output ends or the session closes"
-python = "They wait for their 60-second timeout: neither the end of the output nor `close()` wakes them."
+summary = "Control requests pending when the CLI output ends cleanly or the session closes"
+python = "They wait for their 60-second timeout: neither a clean end of the output nor `close()` wakes them. (An output that ends with an error fails them at once on both sides.)"
 rust = "They fail at once with `ErrorKind::ConnectionClosed` (`crates/claude-agent-rust-sdk/tests/control_protocol.rs::disconnect_fails_pending_requests_at_once` shows the close)."
 ref = "src/claude_agent_sdk/_internal/query.py:791-793"
 anchor = "with anyio.fail_after(timeout):"
@@ -317,7 +317,7 @@ test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::tests::a_session_id_f
 [behavior.control-routed-past-unread-messages]
 summary = "Control traffic while the application is not reading its messages"
 python = "The reader stops at 100 unread messages, so an `interrupt` sent from the loop that reads them times out after 60 s, and hooks and permission requests wait unanswered."
-rust = "The reader keeps routing control responses and requests while up to 16 MiB of messages wait for the application, beyond the queue of 100, and stops reading only past that budget. A `result` also no longer stops the routing while the transcript mirror flushes; the result itself still waits for the flush."
+rust = "The reader keeps routing control responses and requests while up to 16 MiB of messages wait for the application, beyond the queue of 100, and stops reading only past that budget. A `result` does not stop the routing while the transcript mirror flushes either (`[behavior.run-end-before-mirror-flush]`)."
 ref = "src/claude_agent_sdk/_internal/query.py:259-261"
 anchor = '](max_buffer_size=100)'
 category = "rust-more-robust"
@@ -326,7 +326,7 @@ test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::interrupt_is_ans
 
 [behavior.otel-propagators-names]
 summary = "A propagator name in `OTEL_PROPAGATORS` other than `tracecontext`, `baggage`, or `none`"
-python = "The propagator registered under that entry point name is loaded, and an unknown name raises at import."
+python = "The propagator registered under that entry point name is loaded. An unknown name makes `opentelemetry.propagate` raise at import; the SDK catches it, logs at debug level, and propagates nothing, not even `tracecontext`."
 rust = "Without a global propagator only `tracecontext` and `baggage` are written, and other names are skipped with a debug log; an application that needs another format installs it with `opentelemetry::global::set_text_map_propagator`, which then takes over."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:785-806"
 anchor = 'propagate.inject(carrier)'
@@ -434,16 +434,6 @@ category = "deliberate"
 reason = "The result does not depend on the zone of the machine that reads the file."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::timestamp::tests::a_timestamp_without_a_zone_is_read_as_utc"
 
-[behavior.user-option-group]
-summary = "The `user` option"
-python = "Only the user changes."
-rust = "The primary group of that user is set too, and supplementary groups are cleared when running as root."
-ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:835"
-anchor = "user=self._options.user,"
-category = "deliberate"
-reason = "A process running as another user with the caller's groups keeps access the user does not have."
-test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the_requested_user @unix"
-
 [behavior.process-error-stderr]
 summary = "The error output carried by a process error"
 python = "`ProcessError.stderr` is always the placeholder \"Check stderr output for details\"."
@@ -466,7 +456,7 @@ test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_schema_whose_type_is_
 
 [behavior.untested-cli-version]
 summary = "A CLI whose version is not the tested one"
-python = "Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version."
+python = "Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version, or, with `verbatim_prompts` on, a version older than the one that option needs; never about a version that differs from the tested one."
 rust = "Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`, once per process for each path and version."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1153-1175"
 anchor = "is too old to report its version"
@@ -491,7 +481,7 @@ rust = "Each invalid sequence becomes U+FFFD and the line is read; the session g
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:840"
 anchor = "self._stdout_stream = TextReceiveStream(self._process.stdout)"
 category = "rust-more-robust"
-reason = "One corrupt byte, such as a tool output cut in the middle of a character, must not end a session whose frames are otherwise readable; it is the reading the transcripts already get."
+reason = "One corrupt byte, such as a tool output cut in the middle of a character, must not end a session whose frames are otherwise readable; it is the reading the transcripts already get. Also shown for the error output: `tests/transport.rs::a_stderr_line_that_is_not_utf8_reaches_the_callback_with_replacement_characters`."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::invalid_utf8_from_the_cli_is_replaced_and_does_not_end_the_session"
 
 [behavior.nesting-depth-limit]
@@ -541,7 +531,7 @@ rust = "The characters are written as raw UTF-8, as the CLI writes its own trans
 ref = "src/claude_agent_sdk/_internal/session_mutations.py:98"
 anchor = "json.dumps("
 category = "rust-follows-cli"
-reason = "CLI 2.1.329 writes a prompt holding `café` with the raw bytes `caf\\xc3\\xa9` and no escape (probe of 2026-11-20 logged in `tasks/audit-remediation.md`), so a line Rust appends has the bytes of the lines around it, and file sizes match what the CLI would write."
+reason = "CLI 2.1.329 writes a prompt holding `café` with the raw bytes `caf\\xc3\\xa9` and no escape (probe of 2026-11-20 logged in `tasks/audit-remediation.md`), so a line Rust appends has the bytes of the lines around it, and file sizes match what the CLI would write. Also shown for the resume: `resume::tests::a_materialized_transcript_is_the_compact_json_of_each_entry_in_its_key_order`."
 test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::titles_tags_and_forks_are_written_with_raw_utf8_as_the_cli_writes"
 
 [behavior.transcript-invalid-utf8]
@@ -551,11 +541,11 @@ rust = "Each invalid sequence becomes U+FFFD: the messages are returned and the 
 ref = "src/claude_agent_sdk/_internal/sessions.py:839"
 anchor = 'read_text(encoding="utf-8")'
 category = "rust-more-robust"
-reason = "One corrupt byte, as a write cut at a crash can leave, must not make a whole session unreadable; the parsers that read the head and tail of a transcript already replace them in both SDKs."
+reason = "One corrupt byte, as a write cut at a crash can leave, must not make a whole session unreadable; the parsers that read the head and tail of a transcript already replace them in both SDKs. Also shown for the credentials: `resume::tests::credentials_that_are_not_utf8_are_copied_with_replacement_characters_and_redacted`."
 test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::transcripts_that_are_not_utf8_are_read_and_imported_with_replacement_characters"
 
 [behavior.fork-line-separators]
-summary = "A transcript line holding U+2028, U+2029, U+0085, or U+001C to U+001E when a session is forked"
+summary = "A transcript line holding U+2028, U+2029, or U+0085 when a session is forked"
 python = "`str.splitlines()` also cuts on those characters, which JSON allows unescaped in a string, so the halves fail to parse and the entry is missing from the fork."
 rust = "Lines are cut on `\\n` only, as the CLI writes them, and the entry is kept."
 ref = "src/claude_agent_sdk/_internal/session_mutations.py:601"
@@ -566,7 +556,7 @@ test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_splits_lin
 
 [behavior.import-non-object-lines]
 summary = "A transcript line that is valid JSON but not an object, on import"
-python = "The value is appended to the batch as is, and the import fails in the store (`AttributeError` in `InMemorySessionStore`)."
+python = "The value is appended to the batch as is. For the main transcript the import fails in the store (`AttributeError` when `InMemorySessionStore` folds the summary); a subagent transcript, which is not folded, stores the value as it is."
 rust = "The line is skipped with a warning and the rest of the transcript is imported. Invalid JSON still fails the import with `ErrorKind::JsonDecode`."
 ref = "src/claude_agent_sdk/_internal/session_import.py:138"
 anchor = 'batch.append(json.loads(line))'
@@ -817,7 +807,7 @@ test = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::the_run_ends_at
 [behavior.summary-created-at-typed]
 summary = "A `created_at` in a store summary that is not an integer"
 python = "`created_at` is passed through as stored: a float stays a float, a string stays a string."
-rust = "`SdkSessionInfo::created_at` is whole milliseconds: a float is cut to the millisecond, and a value that is not a finite number reads as `None`."
+rust = "`SdkSessionInfo::created_at` is whole milliseconds: a float is cut to the millisecond, and a value that is not a finite number of milliseconds within 9e15 of zero, or an integer outside `i64`, reads as `None`."
 ref = "src/claude_agent_sdk/_internal/session_summary.py:231"
 anchor = 'created_at=data.get("created_at"),'
 category = "rust-stricter"

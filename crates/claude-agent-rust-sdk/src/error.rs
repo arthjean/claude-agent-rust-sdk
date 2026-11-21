@@ -20,7 +20,10 @@
 //!   are told apart: [`ErrorKind::Spawn`], [`ErrorKind::NotConnected`],
 //!   [`ErrorKind::ConnectionClosed`], and [`ErrorKind::Unsupported`].
 //! - When an error has a [`source`](std::error::Error::source), its text
-//!   does not repeat it: the source carries the underlying error.
+//!   does not repeat it: the source carries the underlying error. The
+//!   exceptions are the texts upstream writes with the cause inside, kept
+//!   word for word: `Cannot write to process that exited with error: ...`
+//!   and `Failed to write to process stdin: ...`.
 //! - [`Error::stderr`] holds the last lines the CLI wrote to its error
 //!   output when they were captured (a [`StderrCallback`](crate::StderrCallback)
 //!   was set), where Python always says "Check stderr output for details".

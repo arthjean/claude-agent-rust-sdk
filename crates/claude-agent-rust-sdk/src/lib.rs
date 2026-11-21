@@ -86,7 +86,8 @@
 //! ```
 //!
 //! With the default `jsonschema` feature the build compiles about twice as
-//! many crates (109 against 57 without default features); turning it off
+//! many crates (96 against 49 without default features, counting normal
+//! and build dependencies on Linux, 2026-11-21); turning it off
 //! keeps the `serde` check of typed tools.
 //!
 //! # Platform support

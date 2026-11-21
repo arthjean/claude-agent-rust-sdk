@@ -2,10 +2,18 @@
 //! and the user database lookups they and the resume need.
 //!
 //! This is the only module of the crate allowed to contain `unsafe` code.
-//! Every `unsafe` block is a direct call to an operating-system function
-//! whose arguments are plain integers, handles, or buffers owned by this
-//! module, or the read of a user database entry that such a call filled
-//! in, while its buffer is alive.
+//! Every `unsafe` block is one of these:
+//!
+//! - a direct call to an operating-system function whose arguments are
+//!   plain integers, handles, C strings, or buffers owned by this module,
+//!   or the read of a user database entry that such a call filled in,
+//!   while its buffer is alive;
+//! - the registration of a `pre_exec` closure, which runs in the forked
+//!   child before `exec` and calls only async-signal-safe functions;
+//! - the registration with `atexit` of a function of this module that
+//!   takes no argument and never blocks;
+//! - on Windows, taking ownership of a handle the system just returned
+//!   (`OwnedHandle::from_raw_handle`), which nothing else holds.
 
 #![allow(unsafe_code)]
 

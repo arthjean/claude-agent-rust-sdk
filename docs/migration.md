@@ -61,8 +61,9 @@ The setters carry the names of the Python fields. A few of them take one entry
 at a time next to the form that takes the whole collection: `env_var` next to
 `env`, `extra_arg` next to `extra_args`, `mcp_server` next to `mcp_servers`,
 `hook` next to `hooks`, and `agent` next to `agents`. `build` checks the
-combinations Python checks at connect, such as `can_use_tool` together with
-`permission_prompt_tool_name`.
+combinations Python checks at connect that need no call to the session store,
+such as `can_use_tool` together with `permission_prompt_tool_name`; the store
+of `continue_conversation` is checked at connect, as in Python.
 
 ## Messages and content blocks
 

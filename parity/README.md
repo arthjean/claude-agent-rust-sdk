@@ -102,7 +102,7 @@ Before comparison, the harness replaces these values and nothing else.
 
 | Rule | Replacement | Reason |
 |---|---|---|
-| Random suffix of a control request id | `req_<n>_<8 hex digits>` becomes `req_<n>_<random>` | Both SDKs draw 8 random hex digits per request (`_internal/query.py:746-749`); the counter is kept and compared. |
+| Random suffix of a control request id | `req_<n>_<8 hex digits>` becomes `req_<n>_<random>` | Both SDKs draw 8 random hex digits per request (`_internal/query.py:774-775`); the counter is kept and compared. |
 | Temporary directory | The run's working directory, in each spelling (as created, canonical), becomes `<work>` | Each side runs in its own temporary directory. |
 | CLI binary | The path of `fake-claude` becomes `<cli>` | The path depends on the build directory. |
 | Path separators | In a string where one of the two replacements above applied, `\` becomes `/` | Windows paths use backslashes; the rule is limited to strings known to be paths. |
@@ -182,6 +182,7 @@ summary = "Where the CLI process is placed"
 python = "The CLI is spawned in the process group of the program."
 rust = "On Unix the CLI leads its own process group."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:828-836"
+anchor = "self._process = await anyio.open_process("
 category = "deliberate"
 reason = "A group of its own lets the SDK end the CLI and every process it started in one signal."
 test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_own_process_group @unix"

@@ -32,8 +32,8 @@
 //!   Python hands it to the store, and leaves out a subagent file named
 //!   only `.jsonl`, which Python imports under the subpath `subagents/`.
 //! - Reading a subagent from a store without `list_subkeys` returns
-//!   nothing for an agent id that is not one path segment (`.`, `..`, or
-//!   one holding `/`, `\`, or NUL); Python refuses only the empty id and
+//!   nothing for an agent id that is not one path segment (one holding
+//!   `/`, `\`, or NUL); Python refuses only the empty id and
 //!   lets the id reach the subpath the store loads.
 //! - The 1 MiB batch limit of an import counts the UTF-8 bytes of each
 //!   line, where Python counts its characters.

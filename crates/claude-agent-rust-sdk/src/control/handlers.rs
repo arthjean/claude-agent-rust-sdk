@@ -2,7 +2,8 @@
 //! callbacks, and messages for the in-process MCP servers.
 //!
 //! The handlers differ from upstream in one deliberate way: every request
-//! is answered, a malformed one with an error that names what is missing
+//! that carries an id and is not cancelled is answered, a malformed one
+//! with an error that names what is missing
 //! (`Missing required field in can_use_tool request: 'input'`), where
 //! upstream answers the bare `KeyError` text or, for a request without
 //! `request` or `subtype`, nothing at all

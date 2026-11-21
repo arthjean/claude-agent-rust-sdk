@@ -6,9 +6,9 @@
 //! - `connect` on a connected client closes the previous session before
 //!   the new one starts, where upstream leaves it running
 //!   (`[behavior.reconnect-closes-previous]`);
-//! - `disconnect` during a `connect` makes that `connect` fail at once,
-//!   where upstream's waits for the initialize timeout
-//!   (`[behavior.disconnect-during-connect]`);
+//! - `disconnect` during the initialize handshake of a `connect` makes
+//!   that `connect` fail at once, where upstream's waits for the initialize
+//!   timeout (`[behavior.disconnect-during-connect]`);
 //! - the counterpart of `async with` is [`ClaudeSdkClient::scoped`]; a
 //!   client dropped without `disconnect` closes its session on a detached
 //!   task (`[behavior.client-drop-closes-detached]`);
@@ -56,9 +56,15 @@ const NOT_CONNECTED: &str = "Not connected. Call connect() first.";
 /// is simpler.
 ///
 /// Every method takes `&self`, so one task can read messages while another
-/// sends a prompt or an interrupt. Every method other than
-/// [`connect`](Self::connect) and [`disconnect`](Self::disconnect) fails
-/// with [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) before the client is connected.
+/// sends a prompt or an interrupt. Before the client is connected, the
+/// prompt and control methods fail with
+/// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected), and a message stream yields that error
+/// when it is first polled. The exceptions: [`connect`](Self::connect),
+/// [`connect_with_prompt`](Self::connect_with_prompt), and
+/// [`scoped`](Self::scoped) connect; [`disconnect`](Self::disconnect) and
+/// [`options`](Self::options) never fail on that account; and
+/// [`server_info`](Self::server_info) returns `Ok(None)` during the
+/// handshake.
 ///
 /// Messages wait in a queue until they are read. While they wait, the
 /// control methods, hooks, and permission callbacks keep working, so an
@@ -193,8 +199,11 @@ impl ClaudeSdkClient {
     /// Returns the errors of the transport, [`ErrorKind::Config`](crate::ErrorKind::Config) for options
     /// the CLI cannot honor, [`ErrorKind::ControlTimeout`](crate::ErrorKind::ControlTimeout) when the CLI does not
     /// answer the handshake, and [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) when a hook
-    /// matcher asks to block on failure and the CLI cannot honor it. After
-    /// an error nothing stays running.
+    /// matcher asks to block on failure and the CLI cannot honor it. With a
+    /// session store and a resume, [`ErrorKind::SessionStore`](crate::ErrorKind::SessionStore) when a
+    /// store call fails or exceeds `load_timeout_ms`, and
+    /// [`ErrorKind::Io`](crate::ErrorKind::Io) when the resumed session cannot be written to disk.
+    /// After an error nothing stays running.
     pub async fn connect(&self) -> Result<()> {
         self.open(None).await
     }
@@ -511,8 +520,8 @@ impl ClaudeSdkClient {
 
     /// Returns the response of the CLI to the initialize handshake: the
     /// available commands, the output styles, and the capabilities. It is
-    /// `None` while [`connect`](Self::connect) is still waiting for that
-    /// response, as upstream returns `None`.
+    /// `None` while [`connect`](Self::connect) is in its initialize
+    /// handshake, waiting for that response, as upstream returns `None`.
     ///
     /// # Errors
     ///
@@ -586,10 +595,13 @@ impl ClaudeSdkClient {
     /// Ends the session and waits for the transport to close.
     ///
     /// It is safe on a client that never connected, and calling it again
-    /// does nothing. During a [`connect`](Self::connect) it closes the
-    /// session being opened, so the connect fails at once with
+    /// does nothing. During the initialize handshake of a
+    /// [`connect`](Self::connect) it closes the session being opened, so
+    /// the connect fails at once with
     /// [`ErrorKind::ConnectionClosed`](crate::ErrorKind::ConnectionClosed)
-    /// instead of waiting for the handshake to time out.
+    /// instead of waiting for the handshake to time out. Earlier, while the
+    /// connect still reads the session store for a resume, it waits for the
+    /// connect to finish and then closes the session it opened.
     ///
     /// # Errors
     ///

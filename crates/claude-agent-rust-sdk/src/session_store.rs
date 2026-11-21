@@ -8,16 +8,17 @@
 //! [`UnsupportedStoreOperation`]: the crate calls an optional method and
 //! takes that error as absence, as upstream takes an inherited method that
 //! raises `NotImplementedError`. [`SessionStore::capabilities`] is a hint
-//! read only where no call can be made, when options are built.
+//! the crate never reads; the conformance suite checks that it matches what
+//! the store does.
 //!
 //! The store contract differs from upstream in one deliberate way:
 //!
-//! - Python checks at option validation whether the store overrides
+//! - Python checks at connect whether the class of the store overrides
 //!   `list_sessions`, so `continue_conversation` with a store that does not
-//!   fails before the child starts. Rust cannot see an override, so that
-//!   check reads [`SessionStoreCapabilities::list_sessions`] from
-//!   [`SessionStore::capabilities`]: a store meant for
-//!   `continue_conversation` declares it.
+//!   fails before the child starts. Rust cannot see an override, so the
+//!   connect calls `list_sessions` (which the resume needs anyway) and takes
+//!   [`UnsupportedStoreOperation`] as its absence, with upstream's error
+//!   (`[behavior.store-declaration-for-continue]`).
 
 use std::fmt;
 use std::future::Future;
@@ -250,9 +251,8 @@ wire_enum! {
 /// Optional methods a [`SessionStore`] declares it implements.
 ///
 /// The declaration is a hint: an optional method is always called, and its
-/// [`UnsupportedStoreOperation`] error is what marks it absent. Only the
-/// validation of `continue_conversation`, which runs before any call can
-/// be made, reads [`list_sessions`](Self::list_sessions).
+/// [`UnsupportedStoreOperation`] error is what marks it absent. The crate
+/// never reads it; the conformance suite checks it against the store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub struct SessionStoreCapabilities {
