@@ -45,7 +45,7 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 ## Deliberately different
 
-73 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 63 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
+74 differences are reviewed and accepted: 8 on the wire and 2 in what the application observes, found by `cargo xtask parity-diff`, and 64 in behavior, each shown by a Rust test. They are listed in `parity/differences.toml`.
 
 ### Deliberate choices (38)
 
@@ -131,7 +131,7 @@ Rust keeps going, or keeps the data, where Python fails or drops it.
 | A CLI whose version is not the tested one | Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version. (upstream `src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1153-1175`) | Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`, once per process for each path and version. | Without a bundled CLI, the installed one can be any release; an older one exits with an error on an option it does not know, and the warning names the cause. | `crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once` |
 | A block other than text, tool use, and tool result in a user message | The parser reads only `text`, `tool_use`, and `tool_result` blocks of a user message and drops the others. (upstream `src/claude_agent_sdk/_internal/message_parser.py:104-130`) | Every other block is kept as `ContentBlock::Unknown` with its raw JSON, with none of its fields required. | A newer CLI must not make an older program lose data. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::a_user_message_reads_only_the_blocks_upstream_reads_and_keeps_the_rest_raw` |
 
-### Rust refuses what Python accepts (7)
+### Rust refuses what Python accepts (8)
 
 Rust returns an error for input Python lets through.
 
@@ -143,6 +143,7 @@ Rust returns an error for input Python lets through.
 | A session identifier followed by a newline | Accepted: `re.match` with a `$` anchor also matches before a final newline. (upstream `src/claude_agent_sdk/_internal/sessions.py:45-48`) | Refused, as any string that is not exactly a UUID. | The identifier becomes a file name; a newline in it names a file the CLI never wrote. | `crates/claude-agent-rust-sdk/src/lib.rs::sessions::tests::a_session_id_followed_by_a_newline_is_refused` |
 | An agent id that is not one path segment, read from a store without `list_subkeys` | Only an empty id is refused; `x/../../secret` becomes part of the subpath the store loads. (upstream `src/claude_agent_sdk/_internal/sessions.py:2206`) | An id that holds `/`, `\`, or NUL returns no message, and nothing is loaded. With `list_subkeys`, as upstream, the subagent is found by the last segment of a listed subkey, so the check does not apply. | An adapter that maps subpaths to files would otherwise read outside the subagents of the session; no agent id the CLI writes has a separator. | `crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::an_agent_id_that_is_not_one_segment_loads_nothing` |
 | A required message field of the wrong JSON type | Any value is accepted and handed over. (upstream `src/claude_agent_sdk/_internal/message_parser.py:315-318`) | Parsing fails with `Invalid field in <kind> message: '<field>' (expected <type>, got <type>)`. | A typed field cannot hold a value of another type; the error names the field instead of failing later. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::required_field_of_the_wrong_type_is_an_error` |
+| An in-process tool whose arguments are a type that is not an object | The `input_schema` given to `tool` is listed, and the handler receives the arguments as a dictionary, whatever the declared type. (upstream `src/claude_agent_sdk/__init__.py:277`) | `create_sdk_mcp_server` returns `Error::Config` naming the tool and the server when a typed tool takes a type that cannot be read from a JSON object (`String`, a sequence, an enum of unit variants); `serde_json::Value`, a map, `()`, and structs are accepted. | The arguments of every call are a JSON object, so such a tool would answer every call with an error; refusing it when the server is built names the tool instead. | `crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::a_typed_tool_whose_arguments_cannot_be_an_object_is_a_config_error` |
 | User message content that is neither text nor a list | Any value is accepted as the content. (upstream `src/claude_agent_sdk/_internal/message_parser.py:139-145`) | Parsing fails with `Invalid user content (expected str or list, got <type>)`. | `UserContent` is either text or blocks. | `crates/claude-agent-rust-sdk/tests/message_parser.rs::user_content_that_is_neither_text_nor_a_list_is_an_error` |
 
 ### Python defects the port does not copy (3)

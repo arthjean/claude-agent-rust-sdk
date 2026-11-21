@@ -54,6 +54,15 @@ pub(super) fn input_schema_of<Args: JsonSchema>() -> Value {
     Value::Object(typed)
 }
 
+/// Whether the schema of `Args` describes no object, so that
+/// [`input_schema_of`] lists it as an object that states no property.
+pub(super) fn describes_no_object<Args: JsonSchema>() -> bool {
+    let Value::Object(mut root) = root_schema_of::<Args>() else {
+        return true;
+    };
+    !merge_alternatives(&mut root) && !describes_an_object(&root)
+}
+
 /// Whether `Args` reads only `null`, as `()` and a unit struct do: such a
 /// tool takes no argument, and whatever object the model sends is passed
 /// to it as `null`, as upstream hands a tool of schema `{}` any keys.

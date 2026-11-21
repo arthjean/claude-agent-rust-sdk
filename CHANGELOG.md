@@ -9,6 +9,7 @@
 
 ### Changed
 
+- `create_sdk_mcp_server` refuses with `Error::Config` a typed tool whose argument type cannot be read from a JSON object (`String`, a `Vec`, an enum of unit variants), which failed every call before.
 - The `Debug` output of `ClaudeAgentOptions`, `McpStdioServerConfig`, and `McpRemoteServerConfig` prints the keys of `env`, `extra_args`, and `headers` with a placeholder for each value, and inline JSON `settings` as a placeholder, so logging options with `{:?}` no longer leaks API keys or tokens.
 - The warning that the CLI is older or newer than the tested version is logged once per process for each CLI path and version, instead of once per session.
 - `serde_json/preserve_order` is turned on by the new `preserve-order` feature, on by default, instead of unconditionally: a program that needs sorted `serde_json` maps can turn it off with `default-features = false`. Without it the crate works the same, and the keys of the JSON it writes come out sorted. A build that already set `default-features = false` loses key order until it adds `preserve-order`.

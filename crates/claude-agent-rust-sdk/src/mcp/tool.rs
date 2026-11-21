@@ -407,6 +407,10 @@ pub struct SdkMcpTool {
     handler: Arc<ErasedHandler>,
     #[cfg(feature = "jsonschema")]
     validator: Arc<Validator>,
+    /// Set for a typed tool whose arguments can never be read from the
+    /// object every call sends; [`create_sdk_mcp_server`](crate::create_sdk_mcp_server)
+    /// refuses it.
+    never_readable: bool,
 }
 
 impl SdkMcpTool {
@@ -432,7 +436,11 @@ impl SdkMcpTool {
     /// type whose schema describes no object (`serde_json::Value`, a scalar,
     /// a sequence, an enum of unit variants) is listed with the schema of an
     /// object that states no property; use [`SdkMcpTool::raw`] to describe
-    /// the arguments of such a tool by hand. A tool that takes no argument
+    /// the arguments of such a tool by hand. Such a type must still read
+    /// from an object, as `serde_json::Value` does: a `String`, a sequence,
+    /// or an enum of unit variants never can, so
+    /// [`create_sdk_mcp_server`](crate::create_sdk_mcp_server) refuses a tool
+    /// built on one instead of failing every call. A tool that takes no argument
     /// can take `()` or a unit struct: the object the CLI sends, empty or
     /// not, is read as `null` for them, as upstream passes a tool of schema
     /// `{}` whatever keys the model sends.
@@ -447,6 +455,9 @@ impl SdkMcpTool {
         let input_schema = schema::input_schema_of::<Args>();
         let read_schema = input_schema.clone();
         let no_arguments = schema::takes_no_arguments::<Args>();
+        let never_readable = !no_arguments
+            && schema::describes_no_object::<Args>()
+            && serde_json::from_value::<Args>(Value::Object(serde_json::Map::new())).is_err();
         let handler = move |mut arguments: Value| -> BoxFuture<'static, _> {
             if no_arguments && arguments.is_object() {
                 arguments = Value::Null;
@@ -476,6 +487,7 @@ impl SdkMcpTool {
             input_schema,
             annotations: None,
             handler: Arc::new(handler),
+            never_readable,
         }
     }
 
@@ -529,7 +541,13 @@ impl SdkMcpTool {
             input_schema,
             annotations: None,
             handler: Arc::new(handler),
+            never_readable: false,
         })
+    }
+
+    /// Whether no call can ever reach the handler, see `never_readable`.
+    pub(crate) fn never_readable(&self) -> bool {
+        self.never_readable
     }
 
     /// Sets the annotations of the tool.

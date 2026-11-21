@@ -574,6 +574,43 @@ fn raw_schema_whose_type_is_not_object_is_a_config_error() {
     }
 }
 
+/// Unit variants only: its schema is a list of strings, not an object.
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum Direction {
+    Up,
+    Down,
+}
+
+#[test]
+fn a_typed_tool_whose_arguments_cannot_be_an_object_is_a_config_error() {
+    fn tool<Args: JsonSchema + serde::de::DeserializeOwned + Send + 'static>() -> SdkMcpTool {
+        SdkMcpTool::typed::<Args>("never_callable", "Never callable", |_| async {
+            Ok(ToolResult::text("unreachable"))
+        })
+    }
+    for (kind, broken) in [
+        ("String", tool::<String>()),
+        ("Vec<i64>", tool::<Vec<i64>>()),
+        ("Direction", tool::<Direction>()),
+    ] {
+        let Err(error) = create_sdk_mcp_server("calc", None, [broken]) else {
+            panic!("{kind}: a tool no call can reach was accepted");
+        };
+        assert_eq!(error.kind(), ErrorKind::Config, "{kind}");
+        let message = error.to_string();
+        assert!(message.contains("'never_callable'"), "{kind}: {message}");
+        assert!(message.contains("'calc'"), "{kind}: {message}");
+    }
+    for accepted in [
+        tool::<Value>(),
+        tool::<()>(),
+        tool::<std::collections::HashMap<String, i64>>(),
+    ] {
+        create_sdk_mcp_server("calc", None, [accepted]).unwrap();
+    }
+}
+
 #[test]
 fn two_tools_with_the_same_name_are_a_config_error() {
     let outcome = create_sdk_mcp_server("calc", None, [add(), noop("other"), add()]);

@@ -733,3 +733,13 @@ anchor = "class ClaudeAgentOptions:"
 category = "deliberate"
 reason = "These values hold API keys and tokens, and `{:?}` ends up in logs and panic messages; the keys stay visible so the output still shows what is set."
 test = "crates/claude-agent-rust-sdk/tests/options.rs::debug_output_names_secrets_without_printing_them"
+
+[behavior.typed-tool-unreadable-arguments]
+summary = "An in-process tool whose arguments are a type that is not an object"
+python = "The `input_schema` given to `tool` is listed, and the handler receives the arguments as a dictionary, whatever the declared type."
+rust = "`create_sdk_mcp_server` returns `Error::Config` naming the tool and the server when a typed tool takes a type that cannot be read from a JSON object (`String`, a sequence, an enum of unit variants); `serde_json::Value`, a map, `()`, and structs are accepted."
+ref = "src/claude_agent_sdk/__init__.py:277"
+anchor = "def tool("
+category = "rust-stricter"
+reason = "The arguments of every call are a JSON object, so such a tool would answer every call with an error; refusing it when the server is built names the tool instead."
+test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::a_typed_tool_whose_arguments_cannot_be_an_object_is_a_config_error"

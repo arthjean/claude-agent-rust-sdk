@@ -83,7 +83,9 @@ const REQUEST_CANCELLED: i64 = -32800;
 ///
 /// # Errors
 ///
-/// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when two tools have the same name.
+/// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when two tools
+/// have the same name, or when a typed tool takes arguments of a type that
+/// cannot be read from a JSON object (see [`SdkMcpTool::typed`]).
 pub fn create_sdk_mcp_server(
     name: impl Into<String>,
     version: Option<&str>,
@@ -119,6 +121,14 @@ impl SdkMcpServer {
             {
                 return Err(Error::config(format!(
                     "SDK MCP server '{name}' has two tools named '{}'",
+                    definition.name()
+                )));
+            }
+            if definition.never_readable() {
+                return Err(Error::config(format!(
+                    "tool '{}' of SDK MCP server '{name}' takes arguments of a type that \
+                     cannot be read from a JSON object, which every call sends; use a \
+                     struct, or SdkMcpTool::raw",
                     definition.name()
                 )));
             }
