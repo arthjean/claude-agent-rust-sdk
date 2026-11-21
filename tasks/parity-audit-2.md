@@ -200,3 +200,22 @@ exclusion. No mapping was wrong; 23 findings, each checked and applied:
   divergence: Rust untracks a group only where it sends the SIGTERM the
   upstream hook would send), and the setup of five end-to-end tests (empty
   setting sources, default model, PowerShell named with Bash).
+
+Second, source-level pass on the entries the first reviews had judged by
+name (every exclusion, the hand-built MCP server entries, the session
+summary and conformance entries, the transport OTel and stderr entries):
+
+- New divergence found and fixed: with a global W3C propagator, a span with
+  no trace state sent `TRACESTATE=""` to the CLI (the propagator of
+  `opentelemetry_sdk` writes an empty header, the Python one writes none).
+  `otel.rs::inherited_trace_variables_are_replaced_by_the_fresh_values` now
+  requires the variable absent; red before the fix.
+- 7 exclusions mapped to the Rust test that shows the behavior (six
+  `derived-client-app` cases of `TestPrecedence`, the MCP tool that outlives
+  its cancellation).
+- 4 named tests extended: no warning after a cancelled MCP call, the refusal
+  text and warning of a request from an rmcp server to the client, a second
+  call after a server notification, the sidechain flag and the two-command
+  fold of a session summary (new lib test).
+- Notes reworded or added: skills from a non-list iterator, OTel without the
+  `otel` feature, the example adapter round trips.

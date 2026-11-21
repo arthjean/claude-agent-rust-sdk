@@ -1321,6 +1321,7 @@ async fn request_id_already_in_flight_is_refused_without_reaching_the_tool() {
 
 #[tokio::test(start_paused = true)]
 async fn cancelled_notification_ends_the_running_tool_call() {
+    let (warnings, _guard) = Warnings::install();
     let started = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicUsize::new(0));
     let client = SdkMcpClient::connected(server([blocked("slow", &started, &dropped)])).await;
@@ -1355,6 +1356,7 @@ async fn cancelled_notification_ends_the_running_tool_call() {
     );
     assert_eq!(dropped.load(Ordering::SeqCst), 1);
     assert_eq!(client.list_tools("srv").await[0]["name"], "slow");
+    assert_eq!(warnings.all(), Vec::<String>::new());
 }
 
 #[tokio::test(start_paused = true)]

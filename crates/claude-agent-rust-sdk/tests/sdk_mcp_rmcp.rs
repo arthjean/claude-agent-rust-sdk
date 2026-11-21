@@ -321,11 +321,14 @@ async fn request_id_in_flight_is_refused_and_a_late_response_is_dropped() {
 
 #[tokio::test(start_paused = true)]
 async fn server_traffic_to_the_client_is_dropped_answered_or_refused() {
+    let (warnings, _guard) = common::capture::Warnings::install();
     let notes = Notes::default();
     let client = SdkMcpClient::connected(notes.config()).await;
 
-    let announced = client.call_tool("srv", "announce", json!({})).await;
-    assert_eq!(texts(&announced), ["announced"]);
+    for _ in 0..2 {
+        let announced = client.call_tool("srv", "announce", json!({})).await;
+        assert_eq!(texts(&announced), ["announced"]);
+    }
     let frames = client.transport.written_frames();
     assert!(
         frames
@@ -343,8 +346,15 @@ async fn server_traffic_to_the_client_is_dropped_answered_or_refused() {
     };
     assert!(refusal.starts_with("refused: "), "{refusal}");
     assert!(
-        refusal.contains("-32601") || refusal.contains("not supported for SDK servers"),
+        refusal.contains("not supported for SDK servers"),
         "{refusal}"
+    );
+    let logged = warnings.all();
+    assert!(
+        logged
+            .iter()
+            .any(|line| line.contains("sent a roots/list request to the client")),
+        "{logged:?}"
     );
     client.close().await;
 }

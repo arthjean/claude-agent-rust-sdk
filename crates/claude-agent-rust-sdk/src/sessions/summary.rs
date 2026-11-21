@@ -323,6 +323,34 @@ mod tests {
     }
 
     #[test]
+    fn the_first_entry_sets_the_sidechain_and_the_first_command_waits_for_a_real_prompt() {
+        let key = SessionKey::new("p", "s");
+        let sidechain = fold_session_summary(
+            None,
+            &key,
+            &entries(&[
+                json!({"type": "x", "timestamp": "2024-01-01T00:00:00Z", "isSidechain": true}),
+            ]),
+        );
+        assert_eq!(sidechain.data["is_sidechain"], true);
+
+        let user = |content: &str| json!({"type": "user", "message": {"content": content}});
+        let commands = fold_session_summary(
+            None,
+            &key,
+            &entries(&[
+                user("<command-name>/init</command-name> stuff"),
+                user("<command-name>/second</command-name>"),
+            ]),
+        );
+        assert_ne!(commands.data.get("first_prompt_locked"), Some(&json!(true)));
+        assert_eq!(commands.data["command_fallback"], "/init");
+        let locked = fold_session_summary(Some(&commands), &key, &entries(&[user("now real")]));
+        assert_eq!(locked.data["first_prompt"], "now real");
+        assert_eq!(locked.data["first_prompt_locked"], true);
+    }
+
+    #[test]
     fn sidechain_and_empty_summaries_give_no_info() {
         let key = SessionKey::new("p", "s");
         let sidechain = fold_session_summary(

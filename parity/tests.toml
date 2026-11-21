@@ -102,12 +102,12 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestPrecedence::test_replaces_a_derived_label_inherited_from_an_outer_session" = { excluded = "derived-client-app", note = "Rust removes the inherited label and never sets a new one." }
 "TestPrecedence::test_removes_an_inherited_derived_label_on_opt_out" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order" }
 "TestPrecedence::test_derives_nothing_for_a_cli_below_the_minimum" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Every pinned CLI is below the derivation minimum; Rust derives nothing and removes the inherited label, as the test shows with an ambient `outer-app`." }
-"TestPrecedence::test_derives_nothing_for_a_cli_of_unknown_version" = { excluded = "derived-client-app" }
-"TestPrecedence::test_derives_nothing_for_a_cli_other_than_the_bundled_one" = { excluded = "derived-client-app" }
-"TestPrecedence::test_derives_nothing_for_a_binary_older_than_the_pin" = { excluded = "derived-client-app" }
-"TestPrecedence::test_derives_nothing_with_no_recorded_version" = { excluded = "derived-client-app" }
-"TestPrecedence::test_derives_nothing_for_an_unreadable_recorded_version" = { excluded = "derived-client-app" }
-"TestPrecedence::test_derives_nothing_without_a_bundled_cli" = { excluded = "derived-client-app" }
+"TestPrecedence::test_derives_nothing_for_a_cli_of_unknown_version" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
+"TestPrecedence::test_derives_nothing_for_a_cli_other_than_the_bundled_one" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
+"TestPrecedence::test_derives_nothing_for_a_binary_older_than_the_pin" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
+"TestPrecedence::test_derives_nothing_with_no_recorded_version" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
+"TestPrecedence::test_derives_nothing_for_an_unreadable_recorded_version" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
+"TestPrecedence::test_derives_nothing_without_a_bundled_cli" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::layers_apply_in_the_upstream_order", note = "Rust derives no label for any CLI, as upstream for this one, and removes the inherited label; the test shows it with an ambient `outer-app`." }
 "TestPrecedence::test_a_failed_scan_does_not_stop_connect" = { excluded = "derived-client-app" }
 
 [tests."tests/test_close_cancellation.py"]
@@ -173,7 +173,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestConformance::test_store_implements_required_methods" = { excluded = "example-store-adapters" }
 "TestConformance::test_rejects_unsafe_table_name" = { excluded = "example-store-adapters" }
 "TestJsonbOrdering::test_load_is_deep_equal_not_byte_equal" = { excluded = "example-store-adapters" }
-"TestRoundTrip::test_mirror_then_resume" = { excluded = "example-store-adapters" }
+"TestRoundTrip::test_mirror_then_resume" = { excluded = "example-store-adapters", note = "These round trips also run the SDK mirror batcher and the resume through the adapter. Rust covers both against its own stores: tests/transcript_mirror.rs, tests/session_resume.rs, and tests/session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries for a store that reorders keys. The resume writes each loaded entry in the order the store returns its keys, as upstream `_write_jsonl` does." }
 
 [tests."tests/test_example_redis_session_store.py"]
 "TestConformance::test_conformance" = { excluded = "example-store-adapters" }
@@ -189,7 +189,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestDelete::test_targeted_with_subpath" = { excluded = "example-store-adapters" }
 "TestListSubkeys::test_scoped_by_session" = { excluded = "example-store-adapters" }
 "TestPrefixNormalization::test_no_double_colon_artifact" = { excluded = "example-store-adapters" }
-"TestRoundTrip::test_mirror_then_resume" = { excluded = "example-store-adapters" }
+"TestRoundTrip::test_mirror_then_resume" = { excluded = "example-store-adapters", note = "These round trips also run the SDK mirror batcher and the resume through the adapter. Rust covers both against its own stores: tests/transcript_mirror.rs, tests/session_resume.rs, and tests/session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries for a store that reorders keys. The resume writes each loaded entry in the order the store returns its keys, as upstream `_write_jsonl` does." }
 
 [tests."tests/test_example_redis_session_store_live.py"]
 "TestLiveConformance::test_conformance" = { excluded = "example-store-adapters" }
@@ -218,8 +218,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 "test_list_subkeys_extracts_unique_subpaths" = { excluded = "example-store-adapters" }
 "test_list_subkeys_filters_traversal_segments" = { excluded = "example-store-adapters" }
 "test_prefix_normalization" = { excluded = "example-store-adapters" }
-"test_materialize_round_trip" = { excluded = "example-store-adapters" }
-"test_batcher_50_entries" = { excluded = "example-store-adapters" }
+"test_materialize_round_trip" = { excluded = "example-store-adapters", note = "These round trips also run the SDK mirror batcher and the resume through the adapter. Rust covers both against its own stores: tests/transcript_mirror.rs, tests/session_resume.rs, and tests/session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries for a store that reorders keys. The resume writes each loaded entry in the order the store returns its keys, as upstream `_write_jsonl` does." }
+"test_batcher_50_entries" = { excluded = "example-store-adapters", note = "These round trips also run the SDK mirror batcher and the resume through the adapter. Rust covers both against its own stores: tests/transcript_mirror.rs, tests/session_resume.rs, and tests/session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries for a store that reorders keys. The resume writes each loaded entry in the order the store returns its keys, as upstream `_write_jsonl` does." }
 
 [tests."tests/test_example_s3_session_store_live.py"]
 "test_live_conformance" = { excluded = "example-store-adapters" }
@@ -503,7 +503,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "test_server_that_fails_stays_stopped_until_the_cli_initializes_again" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp_rmcp.rs::server_that_fails_its_handshake_stays_stopped_until_a_new_initialize", "crates/claude-agent-rust-sdk/src/lib.rs::mcp::rmcp_bridge::tests::server_that_fails_after_a_good_handshake_stays_stopped_until_a_new_initialize"] }
 "test_late_response_for_a_caller_that_gave_up_is_dropped" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp_rmcp.rs::request_id_in_flight_is_refused_and_a_late_response_is_dropped", "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::control_cancel_request_lets_the_tool_finish_and_keeps_its_id_reserved_until_then"] }
 "test_input_schema_that_is_a_plain_class_lists_as_an_empty_object" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_whose_argument_type_has_no_object_schema_lists_an_empty_object_schema" }
-"test_tool_that_outlives_its_cancellation_does_not_break_the_server" = { excluded = "python-runtime", note = "A Python handler can suppress the cancellation exception and return anyway; a native tool future is dropped at cancellation and cannot outlive it." }
+"test_tool_that_outlives_its_cancellation_does_not_break_the_server" = { rust = ["crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::cancelled_notification_ends_the_running_tool_call", "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::rmcp_servers::rmcp_server_keeps_serving_after_a_cancelled_call_that_ignores_its_cancellation"], note = "A native tool future is dropped at cancellation and cannot outlive it; the tests show what upstream checks: the cancelled call is answered with an error, the server keeps serving, and nothing is logged. The rmcp test covers a handler that ignores its cancellation." }
 "test_cancelling_a_hand_built_servers_call_never_stops_the_server" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::rmcp_servers::rmcp_server_keeps_serving_after_a_cancelled_call_that_ignores_its_cancellation", note = "The cancelled call is answered with `Request cancelled` when the cancellation is forwarded, where upstream answers when the handler ends." }
 "test_request_from_server_to_client_is_refused_at_once" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp_rmcp.rs::server_traffic_to_the_client_is_dropped_answered_or_refused" }
 "test_ping_from_server_to_client_is_answered" = { rust = "crates/claude-agent-rust-sdk/tests/sdk_mcp_rmcp.rs::server_traffic_to_the_client_is_dropped_answered_or_refused" }
@@ -746,10 +746,10 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestFoldSessionSummary::test_last_wins_overwrite" = { rust = "crates/claude-agent-rust-sdk/tests/session_summary.rs::a_later_title_or_branch_replaces_the_earlier_one_within_a_batch_and_across_folds" }
 "TestFoldSessionSummary::test_mtime_not_derived_from_entries" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::folds_set_once_and_last_wins_fields" }
 "TestFoldSessionSummary::test_tag_set_and_clear" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::only_a_tag_entry_sets_or_clears_the_tag", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::fold_reproduces_the_python_reference"] }
-"TestFoldSessionSummary::test_sidechain_from_first_entry" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::sidechain_and_empty_summaries_give_no_info" }
+"TestFoldSessionSummary::test_sidechain_from_first_entry" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::sidechain_and_empty_summaries_give_no_info", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::the_first_entry_sets_the_sidechain_and_the_first_command_waits_for_a_real_prompt"] }
 "TestFoldSessionSummary::test_sidechain_latched_when_first_entry_lacks_timestamp" = { rust = "crates/claude-agent-rust-sdk/tests/session_summary.rs::sidechain_latches_from_a_first_entry_without_a_timestamp" }
 "TestFoldSessionSummary::test_first_prompt_skips_meta_tool_result_and_compact" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::the_first_prompt_skips_meta_compact_summary_and_tool_result_entries", "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::fold_reproduces_the_python_reference"] }
-"TestFoldSessionSummary::test_first_prompt_command_fallback" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::folds_set_once_and_last_wins_fields", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::sidechain_and_empty_summaries_give_no_info"] }
+"TestFoldSessionSummary::test_first_prompt_command_fallback" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::folds_set_once_and_last_wins_fields", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::sidechain_and_empty_summaries_give_no_info", "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::the_first_entry_sets_the_sidechain_and_the_first_command_waits_for_a_real_prompt"] }
 "TestFoldSessionSummary::test_first_prompt_skip_pattern" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::fold_reproduces_the_python_reference" }
 "TestFoldSessionSummary::test_first_prompt_truncated" = { rust = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::fold_reproduces_the_python_reference" }
 "TestFoldSessionSummary::test_prev_is_not_mutated" = { excluded = "python-aliasing", note = "fold_session_summary takes the previous summary by shared reference and returns an owned one." }
@@ -1086,7 +1086,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestSubprocessCLITransport::test_build_command_skills_rejects_non_string_names" = { excluded = "python-typing", note = "Skills::List holds Vec<String>; a non-string name does not compile." }
 "TestSubprocessCLITransport::test_build_command_skills_rejects_wildcard_suffix_names" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::other_invalid_skill_names_are_rejected_with_their_reason" }
 "TestSubprocessCLITransport::test_build_command_skills_rejects_a_bare_string" = { excluded = "python-typing", note = "Skills is an enum (All or List); a bare string is not a Skills value." }
-"TestSubprocessCLITransport::test_build_command_skills_rejects_non_list_iterables" = { excluded = "python-typing", note = "Skills::list collects any iterator into the one Vec<String> that both the arguments and the initialize request read." }
+"TestSubprocessCLITransport::test_build_command_skills_rejects_non_list_iterables" = { excluded = "python-typing", note = "Upstream refuses a tuple, set, or generator because such a value builds the Skill rules but is dropped from the initialize request. Skills::list collects any iterator into the one Vec<String> that both the arguments and the initialize request read, so nothing is lost, and a value that is not an iterator of strings does not compile." }
 "TestSubprocessCLITransport::test_build_command_skills_rejects_bare_wildcard" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::other_invalid_skill_names_are_rejected_with_their_reason" }
 "TestSubprocessCLITransport::test_build_command_skills_rejects_unpaired_trailing_backslash" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::other_invalid_skill_names_are_rejected_with_their_reason" }
 "TestSubprocessCLITransport::test_build_command_skills_rejects_consecutive_backslashes" = { rust = "crates/claude-agent-rust-sdk/tests/command.rs::other_invalid_skill_names_are_rejected_with_their_reason" }
@@ -1106,7 +1106,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestSubprocessCLITransport::test_sdk_reads_session_state_unless_caller_chose" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::session_state_frames_are_requested_unless_the_caller_chose" }
 "TestSubprocessCLITransport::test_otel_trace_context_propagated_to_subprocess" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::the_active_context_reaches_the_cli_with_upper_case_names" }
 "TestSubprocessCLITransport::test_otel_trace_context_does_not_override_user_env" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::trace_variables_set_in_the_options_are_never_overwritten" }
-"TestSubprocessCLITransport::test_otel_trace_context_noop_without_opentelemetry" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::without_an_active_span_no_trace_variable_is_added" }
+"TestSubprocessCLITransport::test_otel_trace_context_noop_without_opentelemetry" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::without_an_active_span_no_trace_variable_is_added", note = "Upstream runs without the opentelemetry package. The Rust counterpart is a build without the `otel` feature, where `active_trace_context` returns nothing (src/transport/environment.rs) and no OpenTelemetry code is compiled; the named test shows the same outcome with the feature on and no active span." }
 "TestSubprocessCLITransport::test_otel_trace_context_overwrites_inherited_env" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::inherited_trace_variables_are_replaced_by_the_fresh_values" }
 "TestSubprocessCLITransport::test_otel_no_active_span_preserves_inherited_env" = { rust = "crates/claude-agent-rust-sdk/tests/otel.rs::without_an_active_span_inherited_trace_variables_are_left_untouched" }
 "TestSubprocessCLITransport::test_otel_baggage_only_carrier_preserves_inherited_env" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::environment::tests::without_a_trace_parent_inherited_trace_variables_are_left_untouched" }
