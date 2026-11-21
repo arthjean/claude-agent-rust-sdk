@@ -11,6 +11,7 @@
 - The transcript mirror matches frames under the real path of a linked config directory even when its `projects` directory does not exist yet at connect, as `[behavior.mirror-canonical-projects-dir]` states.
 - A `CLAUDE_CONFIG_DIR` that is not UTF-8 is used byte for byte, as Python reads it, instead of falling back to `~/.claude`. Without the variable and a home directory, no path relative to the working directory is read: the session functions find nothing, and a connect with a session store or a resume from a store fails with `ErrorKind::Spawn` (`[behavior.no-home-directory]`).
 - A resume from a store reads the macOS Keychain only when `CLAUDE_CONFIG_DIR` is unset, as upstream: an empty value set in the process keeps the Keychain out.
+- `get_subagent_messages_from_store` checks the agent id only on the direct path, when the store does not list its subkeys, and only for a separator or NUL, as `[behavior.store-agent-id-segment]` states: `.` and `..` name one segment once prefixed with `agent-`.
 
 ## 0.2.0 - 2026-11-20
 

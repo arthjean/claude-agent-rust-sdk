@@ -330,12 +330,13 @@ pub async fn get_session_messages_from_store<S: SessionStore + ?Sized>(
     ))
 }
 
-/// Whether an agent id is one path segment. Without `list_subkeys` the id
-/// becomes part of the subpath a store loads, so an id carrying a
-/// separator, `.`, `..`, or NUL could name a key outside the subagents of
-/// the session in an adapter that maps subpaths to files.
+/// Whether an agent id stays one path segment once prefixed with
+/// `agent-`. Without `list_subkeys` the id becomes part of the subpath a
+/// store loads, so an id carrying a separator or NUL could name a key
+/// outside the subagents of the session in an adapter that maps subpaths
+/// to files. `.` and `..` are safe there: `agent-..` is one segment.
 fn is_single_segment(agent_id: &str) -> bool {
-    !agent_id.is_empty() && !matches!(agent_id, "." | "..") && !agent_id.contains(['/', '\\', '\0'])
+    !agent_id.contains(['/', '\\', '\0'])
 }
 
 fn agent_id_of(subpath: &str) -> Option<&str> {
@@ -378,9 +379,10 @@ pub async fn list_subagents_from_store<S: SessionStore + ?Sized>(
 /// Reads the conversation of a subagent from a store, like
 /// [`get_subagent_messages`](crate::get_subagent_messages).
 ///
-/// The subagent is found among the subkeys when the store lists them,
-/// otherwise at `subagents/agent-<id>`; an id that is not a single path
-/// segment finds nothing. The parent ids come from its
+/// The subagent is found among the subkeys when the store lists them, by
+/// the last segment of each, as upstream; otherwise at
+/// `subagents/agent-<id>`, where an id holding a separator or NUL loads
+/// nothing. An empty id finds nothing. The parent ids come from its
 /// `agent_metadata` entry, the store's copy of the `.meta.json` sidecar.
 ///
 /// # Errors
@@ -400,7 +402,7 @@ pub async fn get_subagent_messages_from_store<S: SessionStore + ?Sized>(
     let Some(session_id) = validate_uuid(session_id) else {
         return Ok(Vec::new());
     };
-    if !is_single_segment(agent_id) {
+    if agent_id.is_empty() {
         return Ok(Vec::new());
     }
     let project_key = sanitize_path(&project_path_of(directory.as_deref()));
@@ -409,7 +411,11 @@ pub async fn get_subagent_messages_from_store<S: SessionStore + ?Sized>(
         .list_subkeys(&SessionListSubkeysKey::new(project_key.clone(), session_id))
         .await
     {
-        Err(error) if is_unsupported(&error) => {}
+        Err(error) if is_unsupported(&error) => {
+            if !is_single_segment(agent_id) {
+                return Ok(Vec::new());
+            }
+        }
         Err(error) => {
             return Err(Error::session_store(
                 "Session store list_subkeys failed",

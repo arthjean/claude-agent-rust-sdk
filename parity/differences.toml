@@ -607,7 +607,7 @@ test = "crates/claude-agent-rust-sdk/tests/session_store_helpers.rs::import_skip
 [behavior.store-agent-id-segment]
 summary = "An agent id that is not one path segment, read from a store without `list_subkeys`"
 python = "Only an empty id is refused; `x/../../secret` becomes part of the subpath the store loads."
-rust = "An id that is `.`, `..`, or holds `/`, `\\`, or NUL returns no message, and the store is not called."
+rust = "An id that holds `/`, `\\`, or NUL returns no message, and nothing is loaded. With `list_subkeys`, as upstream, the subagent is found by the last segment of a listed subkey, so the check does not apply."
 ref = "src/claude_agent_sdk/_internal/sessions.py:2206"
 anchor = 'if not agent_id:'
 category = "rust-stricter"

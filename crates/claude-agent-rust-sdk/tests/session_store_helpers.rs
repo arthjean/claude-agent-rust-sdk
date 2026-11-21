@@ -1031,7 +1031,7 @@ async fn an_agent_id_that_is_not_one_segment_loads_nothing() {
         )
         .await
         .unwrap();
-    for agent in ["", ".", "..", "x/../../secret", r"x\..\secret", "a\0b"] {
+    for agent in ["", "x/../../secret", r"x\..\secret", "a\0b"] {
         let messages = get_subagent_messages_from_store(
             &store,
             &id,
@@ -1053,6 +1053,35 @@ async fn an_agent_id_that_is_not_one_segment_loads_nothing() {
     .unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(store.loads.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_store_that_lists_its_subkeys_finds_any_agent_id_by_its_last_segment() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let store = InMemorySessionStore::new();
+    let id = new_id();
+    let key = SessionKey::new(project_key_for_directory(directory), id.as_str());
+    for agent in [".", ".."] {
+        store
+            .append(
+                &key.clone().with_subpath(format!("subagents/agent-{agent}")),
+                &[entry(
+                    json!({"type": "user", "uuid": "u1", "message": {"content": "task"}}),
+                )],
+            )
+            .await
+            .unwrap();
+        let messages = get_subagent_messages_from_store(
+            &store,
+            &id,
+            agent,
+            SessionMessagesOptions::new().directory(project.path()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(messages.len(), 1, "{agent:?}");
+    }
 }
 
 fn sidechain(session_id: &str) -> SessionStoreEntry {
