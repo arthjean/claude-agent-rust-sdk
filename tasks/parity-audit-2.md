@@ -81,7 +81,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | Id | Title | Status | Proof / note |
 |---|---|---|---|
 | D1 | Non-string `request_id` gets no answer | done | Any JSON request_id is echoed as sent; handlers tracked by its JSON text (5 and "5" distinct, as Python dict keys). `control_protocol.rs::a_request_id_that_is_not_a_string_is_answered_with_the_same_value`, red before (no answer). |
-| D2 | Handler with a reused id survives `close()` | todo | |
+| D2 | Handler with a reused id survives `close()` | done | Handler tasks are also tracked in `state.tasks`, which close aborts. `control_protocol.rs::closing_stops_both_handlers_of_a_reused_request_id`, red before (1 of 2 stopped). |
 | D3 | Callback panic text replaced by a fixed message | todo | |
 | D4 | `HookOutput::to_wire` falls back to `{}` on serialization failure | todo | |
 | D5 | Run end decided before the mirror flush | todo | |

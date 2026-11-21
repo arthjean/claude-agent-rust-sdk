@@ -8,8 +8,8 @@
 //!   'input'`), where upstream answers the bare `KeyError` text or, for a
 //!   request without `request` or `subtype`, nothing at all
 //!   (`[behavior.malformed-control-request-body]`);
-//! - a panic of an application callback becomes an error answer with a
-//!   fixed text, where an exception upstream is answered with its text.
+//! - a panic of an application callback becomes an error answer with the
+//!   message of the panic, as an exception is answered with its text.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -89,10 +89,10 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
                 "request_id": id,
                 "error": error,
             }),
-            Err(_) => json!({
+            Err(panic) => json!({
                 "subtype": "error",
                 "request_id": id,
-                "error": "The control request handler panicked",
+                "error": panic_text(panic.as_ref()),
             }),
         };
         let frame = json!({"type": "control_response", "response": response});
@@ -107,6 +107,16 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
         state.tasks.retain(|task| !task.is_finished());
         state.tasks.push(task.abort_handle());
     }
+}
+
+/// The text of a panic, as upstream answers with `str(e)` of an exception:
+/// the message of `panic!`, or a fixed text for a payload that is not one.
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|text| (*text).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "The control request handler panicked".to_owned())
 }
 
 /// Aborts the handler of a control request, if it is still running.

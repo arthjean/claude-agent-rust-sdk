@@ -1606,3 +1606,27 @@ async fn closing_stops_both_handlers_of_a_reused_request_id() {
     }
     assert_eq!(dropped.load(Ordering::SeqCst), 2);
 }
+
+/// Upstream answers an exception of a callback with `str(e)`; a panic is
+/// answered with its message.
+#[tokio::test(start_paused = true)]
+async fn a_callback_that_panics_is_answered_with_the_message_of_the_panic() {
+    let options = ClaudeAgentOptions::builder()
+        .can_use_tool(|_tool_name, _input, _context| async {
+            panic!("the policy file is missing");
+        })
+        .build()
+        .unwrap();
+    let transport = cli();
+    let _client = connected(&transport, options).await;
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": "perm-panic",
+        "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {}},
+    }));
+    settle().await;
+    assert_eq!(
+        response_to(&transport, "perm-panic").unwrap()["error"],
+        "the policy file is missing"
+    );
+}
