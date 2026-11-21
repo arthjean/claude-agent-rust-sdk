@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- On Unix, a program that leaves through `exit` (returning from `main`, `std::process::exit`) with a session still open gives the process group of each CLI `SIGTERM` from an exit hook, as the Python SDK does from `atexit`, instead of leaving it running (on macOS, which has no parent-death signal) or leaving its background processes behind (on Linux).
 - A CLI started with the `user` option holds the supplementary groups of that user, from the group database, instead of none when the parent is privileged.
 - A `task_progress` message whose `usage` is not an object fails to parse with `Invalid field in system message: 'usage'`, as any required field of the wrong type does, instead of reading as zero counts.
 - An optional message or block field whose value the typed field cannot hold (`api_error_status: "529"`, `errors: ["boom", {"code": 529}]`) keeps the value as sent in `extra` (or `message_extra`), where it was dropped.

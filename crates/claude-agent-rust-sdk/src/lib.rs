@@ -95,8 +95,10 @@
 //! session, unless it leaves the group (`setsid` on Unix): on Unix it gets
 //! `SIGTERM` when the CLI exits, and `SIGKILL` 5 s later if it is still
 //! running; on Windows it is terminated at once. When the program
-//! returns from `main` with a session still open, the CLI gets `SIGTERM` on
-//! Unix, so it writes the end of its transcript before it exits.
+//! returns from `main` or calls `std::process::exit` with a session still
+//! open, the process group of the CLI gets `SIGTERM` on Unix from an exit
+//! hook, as from the `atexit` hook of the Python SDK, so the CLI writes the
+//! end of its transcript before it exits.
 //!
 //! The tasks a session spawns run in the `tracing` span that is current
 //! when the session connects, so what a permission callback, a hook, an

@@ -137,7 +137,7 @@ test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_ow
 [behavior.process-tree-ended]
 summary = "Processes the CLI started"
 python = "Only the direct child is signaled, and an atexit hook cleans up at interpreter exit."
-rust = "The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux. A process the agent starts in the background (`nohup server &`) is in that tree and ends with the session too, unless it leaves the group (`setsid`). On Unix, what is left in the group when the CLI exits gets `SIGTERM`, then `SIGKILL` 5 s later if it is still running, so it can clean up; on Windows the job is terminated at once. When the runtime stops with a session open, the Unix group gets `SIGTERM`, as the Python atexit hook sends to the child."
+rust = "The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux. A process the agent starts in the background (`nohup server &`) is in that tree and ends with the session too, unless it leaves the group (`setsid`). On Unix, what is left in the group when the CLI exits gets `SIGTERM`, then `SIGKILL` 5 s later if it is still running, so it can clean up; on Windows the job is terminated at once. When the runtime stops with a session open, or the program leaves through `exit` (returning from `main`, `std::process::exit`) without closing it, the Unix group gets `SIGTERM`, as the Python atexit hook sends to the child; an abort runs no hook in either SDK."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:72-82"
 anchor = "p.send_signal(signal.SIGTERM)"
 category = "rust-more-robust"

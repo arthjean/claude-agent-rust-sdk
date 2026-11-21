@@ -331,6 +331,103 @@ fn host_process_for_the_parent_death_test() {
     std::process::abort();
 }
 
+#[cfg(unix)]
+const EXIT_HOST_VARIABLE: &str = "CLAUDE_AGENT_RUST_SDK_TEST_EXIT_HOST";
+#[cfg(unix)]
+const BACKGROUND_WRAPPER: &str = "claude-with-a-background-server";
+
+/// Opens a session through a wrapper whose background server traps
+/// `SIGTERM`, waits until the server is up, then leaves through
+/// `std::process::exit`, which runs no destructor.
+#[cfg(unix)]
+#[test]
+fn host_process_for_the_exit_test() {
+    let Some(scenario) = std::env::var_os(EXIT_HOST_VARIABLE) else {
+        return;
+    };
+    let scenario = PathBuf::from(scenario);
+    let directory = scenario.parent().unwrap().to_path_buf();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let options = common::options_for(&scenario)
+        .cli_path(directory.join(BACKGROUND_WRAPPER))
+        .build()
+        .unwrap();
+    let (transport, _) = runtime.block_on(connected(options));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(directory.join("ready")).is_ok_and(|text| text.ends_with('\n')) {
+        assert!(
+            Instant::now() < deadline,
+            "the background server never started"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::mem::forget(transport);
+    std::mem::forget(runtime);
+    std::process::exit(0);
+}
+
+/// The background server is not the direct child of the program, so the
+/// parent-death signal of Linux does not reach it: only the exit hook,
+/// which signals the whole group, lets it clean up.
+#[cfg(unix)]
+#[test]
+fn a_program_that_exits_without_closing_gives_its_sessions_sigterm() {
+    let fake = Fake::new(json!({"steps": [{"wait_for_eof": true}]}));
+    let directory = fake.scenario.parent().unwrap().to_path_buf();
+    let marker = directory.join("cleaned");
+    let ready = directory.join("ready");
+    let server = directory.join("server-pid");
+    let wrapper = directory.join(BACKGROUND_WRAPPER);
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nsh -c 'echo $$ > \"{}\"; trap \"echo cleaned > {}; exit 0\" TERM; echo ready > \"{}\"; while :; do sleep 1 & wait $!; done' &\nexec \"{}\" \"$@\"\n",
+            server.display(),
+            marker.display(),
+            ready.display(),
+            fake_claude().display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut host = std::process::Command::new(std::env::current_exe().unwrap());
+    host.args([
+        "host_process_for_the_exit_test",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+    ]);
+    host.env(EXIT_HOST_VARIABLE, &fake.scenario);
+    let status = host.status().unwrap();
+    assert!(status.success(), "the host process exits with 0");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let cleaned = loop {
+        if std::fs::read_to_string(&marker).ok().as_deref() == Some("cleaned\n") {
+            break true;
+        }
+        if Instant::now() >= deadline {
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    if !cleaned && let Ok(pid) = std::fs::read_to_string(&server) {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", pid.trim()])
+            .status();
+    }
+    assert!(
+        cleaned,
+        "the background server outlived the program without SIGTERM"
+    );
+}
+
 #[cfg(any(windows, target_os = "linux"))]
 #[test]
 fn the_process_dies_when_its_parent_dies_abruptly() {

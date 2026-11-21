@@ -18,7 +18,6 @@ python-mcp-library = "Tests the bridge to the Python `mcp` package; the native d
 python-aliasing = "Checks defensive copies of shared mutable objects, which Rust ownership rules out."
 python-pickle = "Checks pickling and copying of exception objects."
 python-warnings = "Checks the filter and deduplication mechanics of the Python `warnings` module."
-python-atexit-registry = "Tests the registry of live children and its atexit reaper; the port ends children with a Job Object or a parent-death signal and keeps no registry."
 no-sdk-code = "Asserts only on literals defined in the test file and calls no SDK code."
 packaging = "Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine."
 example-store-adapters = "Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal)."
@@ -110,8 +109,8 @@ upstream-repository = "Checks files of the upstream repository itself."
 [tests."tests/test_close_cancellation.py"]
 "test_close_under_cancellation_still_reaps_child" = { rust = "crates/claude-agent-rust-sdk/tests/shutdown.rs::close_runs_to_completion_when_its_future_is_dropped" }
 "test_cancelled_client_context_leaves_no_child" = { rust = ["crates/claude-agent-rust-sdk/tests/run_end_subprocess.rs::a_client_whose_disconnect_is_cancelled_leaves_no_process", "crates/claude-agent-rust-sdk/tests/stress.rs::two_hundred_cycles_half_of_them_cancelled_leave_no_process"] }
-"test_still_running_child_stays_tracked_for_atexit_reaper" = { excluded = "python-atexit-registry", note = "The exit-time guarantee itself is asserted by crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_dies_when_its_parent_dies_abruptly." }
-"test_reaped_child_is_untracked" = { excluded = "python-atexit-registry", note = "Reaping on a normal close is asserted by crates/claude-agent-rust-sdk/tests/shutdown.rs::close_ends_a_cooperative_process_without_escalating; only the registry bookkeeping has no counterpart." }
+"test_still_running_child_stays_tracked_for_atexit_reaper" = { rust = "crates/claude-agent-rust-sdk/tests/shutdown.rs::a_program_that_exits_without_closing_gives_its_sessions_sigterm @unix" }
+"test_reaped_child_is_untracked" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::process::sys::imp::tests::a_group_is_tracked_for_the_exit_hook_until_it_is_swept @unix" }
 "test_fake_cli_speaks_the_protocol" = { rust = ["crates/fake-claude/tests/cli.rs::version_flag_prints_the_version", "crates/fake-claude/tests/cli.rs::without_a_scenario_it_speaks_the_protocol_until_stdin_closes"] }
 
 [tests."tests/test_download_cli.py"]
@@ -1141,7 +1140,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestSubprocessCLITransport::test_stderr_line_split_across_chunks_is_reassembled" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::stderr_line_split_across_chunks_is_reassembled" }
 "TestSubprocessCLITransport::test_stderr_line_without_newline_is_flushed_at_buffer_limit" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::stderr_line_without_newline_is_flushed_at_the_buffer_limit" }
 "TestSubprocessCLITransport::test_stderr_pending_line_is_flushed_when_task_is_cancelled" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::transport::subprocess::tests::stderr_pending_line_is_flushed_when_the_task_is_stopped" }
-"TestAtexitChildCleanup::test_kill_active_children_terminates_process" = { rust = ["crates/claude-agent-rust-sdk/tests/shutdown.rs::dropping_the_runtime_kills_the_process", "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_dies_when_its_parent_dies_abruptly @linux+windows"], note = "Same guarantee by another mechanism: upstream reaps tracked children from an atexit handler; Rust relies on the process group, the Job Object, and the parent-death signal. The second test is compiled on Windows and Linux only." }
+"TestAtexitChildCleanup::test_kill_active_children_terminates_process" = { rust = ["crates/claude-agent-rust-sdk/tests/shutdown.rs::dropping_the_runtime_kills_the_process", "crates/claude-agent-rust-sdk/tests/shutdown.rs::a_program_that_exits_without_closing_gives_its_sessions_sigterm @unix", "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_dies_when_its_parent_dies_abruptly @linux+windows"], note = "Upstream signals tracked children from an atexit handler; on Unix Rust signals the tracked process groups from an exit hook too, and adds the Job Object on Windows and the parent-death signal on Linux, which also cover an abort. The exit-hook test is compiled on Unix, the parent-death test on Windows and Linux." }
 "TestWindowsBatchScriptRefusal::test_explicit_bat_cli_path_is_refused" = { rust = ["crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::batch_scripts_are_recognized_under_every_spelling", "crates/claude-agent-rust-sdk/tests/transport.rs::a_batch_script_is_refused_on_windows_and_nothing_is_spawned @windows"], note = "The second test is compiled on Windows only." }
 "TestWindowsBatchScriptRefusal::test_suffix_tricks_are_refused" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::batch_scripts_are_recognized_under_every_spelling" }
 "TestWindowsBatchScriptRefusal::test_native_exe_is_allowed_on_windows" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::native_executables_are_not_batch_scripts" }

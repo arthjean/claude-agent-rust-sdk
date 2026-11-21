@@ -220,6 +220,21 @@ mod imp {
             assert!(path.split(':').any(|entry| entry == "/usr/bin"), "{path}");
         }
 
+        #[tokio::test]
+        async fn a_group_is_tracked_for_the_exit_hook_until_it_is_swept() {
+            let mut command = Command::new("sleep");
+            command.arg("30");
+            prepare(&mut command);
+            let mut child = command.spawn().unwrap();
+            let mut tree = ProcessTree::attach(&child);
+            let group = tree.group.unwrap();
+            assert!(exit_registry::tracked(group));
+            tree.kill(&mut child);
+            child.wait().await.unwrap();
+            tree.sweep(std::time::Duration::from_millis(100));
+            assert!(!exit_registry::tracked(group));
+        }
+
         #[test]
         fn the_groups_of_a_user_are_the_ones_the_group_database_lists_for_it() {
             let name = current_user_name().expect("the user database has the test user");
@@ -301,6 +316,9 @@ mod imp {
                 .id()
                 .and_then(|id| libc::pid_t::try_from(id).ok())
                 .filter(|group| *group >= FIRST_SIGNALABLE_GROUP);
+            if let Some(group) = group {
+                exit_registry::track(group);
+            }
             Self { group }
         }
 
@@ -323,6 +341,7 @@ mod imp {
             let Some(group) = self.group.take() else {
                 return;
             };
+            exit_registry::untrack(group);
             if !signal_group(group, libc::SIGTERM) {
                 return;
             }
@@ -350,6 +369,65 @@ mod imp {
     impl Drop for ProcessTree {
         fn drop(&mut self) {
             self.signal(libc::SIGTERM);
+            if let Some(group) = self.group {
+                exit_registry::untrack(group);
+            }
+        }
+    }
+
+    /// The process groups still alive, which get `SIGTERM` when the
+    /// program exits through `exit` (returning from `main` or
+    /// `std::process::exit`), as the `atexit` hook of the Python SDK
+    /// signals its live children. Destructors do not run on that path, so
+    /// without it a CLI the program did not close would be orphaned, on
+    /// macOS above all, which has no parent-death signal. An abort or a
+    /// kill of the program runs no hook, as in Python.
+    pub(crate) mod exit_registry {
+        use std::collections::BTreeSet;
+        use std::sync::{Mutex, Once, PoisonError, TryLockError};
+
+        static LIVE: Mutex<BTreeSet<libc::pid_t>> = Mutex::new(BTreeSet::new());
+        static HOOK: Once = Once::new();
+
+        /// Records a live group, installing the exit hook on first use.
+        pub(crate) fn track(group: libc::pid_t) {
+            HOOK.call_once(|| unsafe {
+                libc::atexit(end_live_groups);
+            });
+            LIVE.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(group);
+        }
+
+        /// Forgets a group that has ended or been signaled.
+        pub(crate) fn untrack(group: libc::pid_t) {
+            LIVE.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&group);
+        }
+
+        /// Whether a group is recorded.
+        #[cfg(test)]
+        pub(crate) fn tracked(group: libc::pid_t) -> bool {
+            LIVE.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains(&group)
+        }
+
+        /// Runs at exit. It never blocks: when another thread holds the
+        /// registry while the program exits, the groups are left to the
+        /// parent-death signal where the system has one.
+        extern "C" fn end_live_groups() {
+            let live = match LIVE.try_lock() {
+                Ok(live) => live,
+                Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+                Err(TryLockError::WouldBlock) => return,
+            };
+            for group in live.iter() {
+                unsafe {
+                    libc::killpg(*group, libc::SIGTERM);
+                }
+            }
         }
     }
 
