@@ -149,3 +149,27 @@ against the code and upstream. Findings, each verified before acting:
 | Docs: `build()` checks, `capabilities()` "read at build", client method failures, `connect` errors, `disconnect` timing, `permission_prompt_tool_name` "forced to stdio", `load_timeout_ms` scope, agent-id segments, error sources, `unsafe` kinds, crate counts, AGENTS.md pinned copies and coverage exclusions, parity README ref and example, CHANGELOG wording and 7 missing entries | All corrected |
 
 U5 proven on the macOS code path (see its row).
+
+## Red-before verification (mechanical, 2026-11-21)
+
+Script: for every branch commit that changes the library source, a scratch
+worktree takes the commit, puts back the parent's `src/` (a lib test module
+is grafted onto the parent's file), and runs the tests the commit adds or
+changes. 57 commits checked:
+
+- 49 red against the parent source (a test fails, or does not compile
+  because the fix adds the API it calls).
+- Green by design, the commit fixes no behavior: `f563acf` (m20, error text
+  documentation), `6c7ead2` (m24, ledger entries), `db215af` (m27 test gaps),
+  `19e98fc` and `f40be43` (tests added for claims the code already met).
+- Checked by hand, each red with the fix taken out at HEAD:
+  - `aad356b` (U1, SIGCONT): `a_stopped_member_of_the_group_ends_on_terminate` fails without the `killpg(SIGCONT)`.
+  - `6fad5bf` (control response without a request id): `a_control_response_whose_response_is_not_an_object_is_ignored_and_the_session_goes_on` fails without the warn.
+  - `d469030` (D13): the test first asserted only the stored entries (green before); it now asserts the warning and fails without it.
+  - `19f10b0` (M7): `serde_json_key_order_is_a_feature_of_the_library_its_dependents_can_turn_off` fails on the parent's manifests (the script only reverted `src/`).
+  - `ffab1a8` (run-as-user groups): the root branch of `the_process_runs_as_the_requested_user` runs in no CI job. Run as root in a user namespace (`podman unshare`, `nobody` mapped): green at HEAD; on the parent source it fails with "the child does not hold the groups of nobody" (`[]` against `[65534]`).
+- Not red by construction: `710be8f` (M1, new `mcp/surface.rs` module, red
+  before through the differential cases `mcp-protocol-edges`,
+  `mcp-tool-content`, `mcp-cancel`); `76437ff` (D4) and `3904aee` (D30),
+  whose failure branch no input can reach (every `HookOutput` field
+  serializes; the exit error is set after the exit code is known).
