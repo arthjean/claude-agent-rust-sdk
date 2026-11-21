@@ -230,3 +230,6 @@ this branch passed the whole list. Fixed by cutting the list to
 `sysconf(_SC_NGROUPS_MAX)` before the fork (lib test
 `the_groups_given_to_the_child_never_exceed_what_the_system_allows`); the
 failing macOS run is the red-before, the next run the proof.
+
+Second run, on `a7528b7`: all 19 jobs pass, the quality gates on Linux,
+macOS, and Windows included (the macOS run-as-user test with them).
