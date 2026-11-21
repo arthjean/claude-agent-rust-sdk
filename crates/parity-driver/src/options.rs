@@ -19,7 +19,10 @@
 //!   its wire form (`continue`, `hookSpecificOutput`, `async`, ...).
 //! - `mcp_servers` entries with `"type": "sdk"`: `{"type": "sdk",
 //!   "version": "1.0.0", "tools": [{"name", "description", "input_schema",
-//!   "annotations", "result": {"content": [...], "is_error": false}}]}`.
+//!   "annotations", "result": {"content": [...], "is_error": false}}]}`,
+//!   where a content block is text, an image, a resource link, or an
+//!   embedded resource; a tool with `"raise": "text"` fails with that
+//!   text, and one with `"wait": true` never returns.
 //! - `stderr`: `true` registers a callback that journals each line.
 //! - `session_store`: `"memory"` uses an in-memory store that journals
 //!   each append.
@@ -400,6 +403,8 @@ fn sdk_tool(field: &Field<'_>, server: &str, tool: &Value) -> Result<SdkMcpTool,
         .cloned()
         .ok_or_else(|| field.malformed())?;
     let result = tool_result(field, tool.get("result"))?;
+    let failure = text("raise");
+    let waits = tool.get("wait").and_then(Value::as_bool).unwrap_or(false);
     let (server, tool_name) = (server.to_owned(), name.clone());
     let mut definition = SdkMcpTool::raw(name, description, schema, move |arguments| {
         journal::write(
@@ -411,7 +416,16 @@ fn sdk_tool(field: &Field<'_>, server: &str, tool: &Value) -> Result<SdkMcpTool,
             ]),
         );
         let result = result.clone();
-        async move { Ok(result) }
+        let failure = failure.clone();
+        async move {
+            if let Some(failure) = failure {
+                return Err(failure.into());
+            }
+            if waits {
+                std::future::pending::<()>().await;
+            }
+            Ok(result)
+        }
     })
     .map_err(|error| Failure::Failed(error.to_string()))?;
     if let Some(annotations) = tool.get("annotations").and_then(Value::as_object) {
@@ -459,6 +473,19 @@ fn tool_result(field: &Field<'_>, result: Option<&Value>) -> Result<ToolResult, 
                 text("data").ok_or_else(|| field.malformed())?,
                 text("mimeType").ok_or_else(|| field.malformed())?,
             ),
+            Some("resource_link") => {
+                ToolContent::resource_link_parts(text("name"), text("uri"), text("description"))
+            }
+            Some("resource") => {
+                let resource = block.get("resource").ok_or_else(|| field.malformed())?;
+                let part = |key: &str| resource.get(key).and_then(Value::as_str).map(str::to_owned);
+                let uri = part("uri").unwrap_or_default();
+                match (part("text"), part("blob")) {
+                    (Some(text), _) => ToolContent::text_resource(uri, text),
+                    (None, Some(blob)) => ToolContent::blob_resource(uri, blob),
+                    (None, None) => return Err(field.malformed()),
+                }
+            }
             other => {
                 return Err(Failure::Unsupported(format!(
                     "tool content type {}",

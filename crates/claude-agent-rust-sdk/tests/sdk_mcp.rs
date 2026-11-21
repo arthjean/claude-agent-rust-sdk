@@ -626,8 +626,10 @@ async fn initialize_reports_server_info_capabilities_and_the_negotiated_version(
     assert_eq!(result["protocolVersion"], PROTOCOL_VERSION);
     assert_eq!(
         result["capabilities"],
-        json!({"experimental": {}, "tools": {"listChanged": false}})
+        json!({"tools": {"listChanged": false}})
     );
+    let keys: Vec<&String> = result.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["capabilities", "protocolVersion", "serverInfo"]);
 
     let mut unknown_version = initialize_params();
     unknown_version["protocolVersion"] = json!("1999-01-01");
@@ -686,6 +688,8 @@ async fn messages_are_routed_to_the_server_registered_under_the_options_key() {
         ),
     ])
     .await;
+    client.initialize("first").await;
+    client.initialize("second").await;
     assert_eq!(client.list_tools("first").await[0]["name"], "one");
     assert_eq!(client.list_tools("second").await[0]["name"], "two");
 
@@ -704,9 +708,29 @@ async fn unknown_server_is_a_jsonrpc_error_naming_it() {
 #[tokio::test(start_paused = true)]
 async fn unsupported_method_is_a_jsonrpc_method_not_found() {
     let client = SdkMcpClient::connected(server([])).await;
-    let response = client.request("srv", "resources/list", json!({})).await;
-    assert_eq!(response["error"]["code"], -32601);
-    assert!(response.get("result").is_none());
+    for method in ["resources/list", "no/such", "notifications/initialized"] {
+        let response = client.request("srv", method, json!({})).await;
+        assert_eq!(
+            response["error"],
+            json!({"code": -32601, "message": "Method not found", "data": method}),
+            "{response}"
+        );
+        assert!(response.get("result").is_none());
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_request_before_initialize_is_refused_but_ping_is_answered() {
+    let client = SdkMcpClient::start([("srv", server([noop("noop")]))]).await;
+    let refused = client.request("srv", "tools/list", json!({})).await;
+    assert_eq!(
+        refused["error"],
+        json!({"code": -32602, "message": "Invalid request parameters", "data": ""})
+    );
+    let pong = client.request("srv", "ping", json!({})).await;
+    assert_eq!(pong["result"], json!({}));
+    client.initialize("srv").await;
+    assert_eq!(client.list_tools("srv").await.len(), 1);
 }
 
 #[tokio::test(start_paused = true)]
@@ -780,7 +804,8 @@ async fn initialize_without_its_required_params_is_jsonrpc_invalid_params_as_ups
     integer_version["protocolVersion"] = json!(5);
     let response = client.request("srv", "initialize", integer_version).await;
     assert_eq!(
-        response["result"]["protocolVersion"], "2025-11-25",
+        response["error"],
+        json!({"code": -32602, "message": "Invalid request parameters", "data": ""}),
         "{response}"
     );
     let response = client.request("srv", "initialize", complete).await;
@@ -910,7 +935,7 @@ async fn tools_list_wire_format_lists_what_upstream_lists() {
 
     let plain = tool("add");
     let keys: Vec<&String> = plain.as_object().unwrap().keys().collect();
-    assert_eq!(keys, ["name", "description", "inputSchema"]);
+    assert_eq!(keys, ["description", "inputSchema", "name"]);
     assert_eq!(plain["description"], "Add two numbers");
     assert_eq!(plain["inputSchema"]["required"], json!(["a", "b"]));
 
@@ -1247,7 +1272,7 @@ async fn cancelled_notification_ends_the_running_tool_call() {
 
     let response = client.answer(&call).await;
     assert_eq!(response["id"], 77);
-    assert_eq!(response["error"]["code"], 0);
+    assert_eq!(response["error"]["code"], -32800);
     assert!(
         response["error"]["message"]
             .as_str()
@@ -1866,7 +1891,7 @@ mod rmcp_servers {
             json!({
                 "jsonrpc": "2.0",
                 "id": 31,
-                "error": {"code": 0, "message": "Request cancelled"},
+                "error": {"code": -32800, "message": "Request cancelled"},
             })
         );
         while threaded.cancelled.load(Ordering::SeqCst) == 0 {
@@ -1910,7 +1935,7 @@ mod rmcp_servers {
 
         let reply = client.answer(&blocking).await;
         assert_eq!(reply["id"], 21);
-        assert_eq!(reply["error"]["code"], 0);
+        assert_eq!(reply["error"]["code"], -32800);
         assert_eq!(reply["error"]["message"], "Request cancelled");
         assert!(reply.get("result").is_none());
 

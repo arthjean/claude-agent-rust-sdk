@@ -7,9 +7,15 @@
 //! the CLI, later messages are answered with an error naming the server and
 //! the cause, until a new `initialize` starts it again.
 //!
-//! A request the CLI cancels is answered here, with the error `Request
-//! cancelled`: `rmcp` passes the cancellation on to the handler and then
-//! sends no response for that request, whatever the handler returns.
+//! A request the CLI cancels is answered here, with the error `-32800
+//! Request cancelled`, as the Python SDK answers it under `mcp` 2.x: `rmcp`
+//! passes the cancellation on to the handler and then sends no response
+//! for that request, whatever the handler returns.
+//!
+//! The results of `initialize`, `ping`, `tools/list`, and `tools/call` are
+//! shaped as `mcp` 2.x shapes the results of a server built with the
+//! Python `mcp` package (see [`surface`](super::surface)); the results of
+//! other methods are passed on as `rmcp` writes them.
 //!
 //! Nothing carries traffic the server initiates to the CLI: notifications
 //! are dropped, a `ping` is answered here, and every other request is
@@ -35,9 +41,9 @@ use crate::types::BoxFuture;
 pub(crate) use super::server::SHUTDOWN_GRACE;
 
 const METHOD_NOT_FOUND: i64 = -32601;
-/// The code of the answer to a cancelled call: the Python `mcp` package
-/// (1.x, which upstream runs) answers `0`, not the `-32800` of MCP 2.
-const REQUEST_CANCELLED: i64 = 0;
+/// The code of the answer to a call cancelled by `notifications/cancelled`,
+/// as the Python SDK writes it under `mcp` 2.x (`_mcp_compat.py`).
+const REQUEST_CANCELLED: i64 = -32800;
 
 #[derive(Debug, thiserror::Error)]
 #[error("the in-process MCP channel is closed")]
@@ -377,6 +383,10 @@ fn deliver(
         let pending = lock(state).pending.remove(&key);
         match pending {
             Some(pending) => {
+                let mut payload = payload;
+                if let Some(result) = payload.get_mut("result") {
+                    *result = super::surface::shape_result(&pending.method, result.take());
+                }
                 if pending.waiter.send(Ok(payload)).is_err() {
                     tracing::debug!(
                         "Dropping a late response to request {key} from SDK MCP server '{name}'"

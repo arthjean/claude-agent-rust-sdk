@@ -8,6 +8,7 @@
 
 ### Changed
 
+- In-process MCP servers answer as the Python SDK does under `mcp` 2.x, the version `pip install` resolves: the `initialize` result declares no `experimental` capability, an integer `protocolVersion` and a request other than `initialize` or `ping` before the handshake are refused with `-32602`, an unknown method gets `-32601 Method not found` with the method as `data`, a cancelled call gets `-32800`, and results are written with the keys of the MCP schema first, in byte order, without the keys it does not define (annotation keys set with `ToolAnnotations::extra` stay). The differential harness now runs against `mcp` 2.3.0; `docs/parity.md` lists what differs under `mcp` 1.x.
 - A hook input with a missing or `null` `session_id`, `transcript_path`, `cwd`, or `tool_use_id` stays typed, with an empty string, instead of becoming `HookInput::Unknown`; an input that still does not match its event is logged at warn level instead of debug.
 
 ### Fixed

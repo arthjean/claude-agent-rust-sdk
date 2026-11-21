@@ -264,26 +264,6 @@ category = "rust-more-robust"
 reason = "A panic is the Rust counterpart of the exception Python turns into an error result."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::handler_panic_is_an_error_result_and_the_server_carries_on"
 
-[behavior.mcp-unknown-method]
-summary = "An MCP method the in-process server does not implement"
-python = "The `mcp` package answers `-32601 Method not found` for a method MCP defines that the server does not serve (`resources/list`, `prompts/list`), and `-32602 Invalid request parameters` for a name MCP does not define."
-rust = "The answer is `-32601 Method not found: <method>` in both cases."
-ref = "src/claude_agent_sdk/_internal/sdk_mcp_bridge.py:185-190"
-anchor = "raise_exceptions=False,"
-category = "deliberate"
-reason = "`-32601` is the code JSON-RPC 2.0 defines for an unknown method, and the Rust server has no list of MCP method names to tell the two cases apart; the CLI treats both as an error."
-test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::unsupported_method_is_a_jsonrpc_method_not_found"
-
-[behavior.mcp-before-initialize]
-summary = "An MCP request before `initialize`"
-python = "The `mcp` package refuses it."
-rust = "The in-process server answers it."
-ref = "src/claude_agent_sdk/_internal/sdk_mcp_bridge.py:185-190"
-anchor = "raise_exceptions=False,"
-category = "deliberate"
-reason = "The CLI always initializes first, so the check would only reject a well-formed request."
-test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::messages_are_routed_to_the_server_registered_under_the_options_key"
-
 [behavior.full-schema-detection]
 summary = "A raw tool schema without `properties`"
 python = "A schema counts as complete only with both `type` and `properties`; `{\"type\": \"object\"}` is read as a table of argument names and sent rewritten."
@@ -713,3 +693,13 @@ anchor = 'await self.transport.write(json.dumps(control_request)'
 category = "rust-more-robust"
 reason = "The crate documents that a control request fails with `ControlTimeout` when the CLI does not answer in time; a CLI that does not read its input does not answer either."
 test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::a_control_request_whose_write_never_completes_times_out"
+
+[behavior.tool-annotation-extra-keys]
+summary = "Annotation keys MCP does not define, set on an in-process tool"
+python = "Under `mcp` 2.x, which `pip install` resolves, `ToolAnnotations` ignores keys it does not define and the result model of `tools/list` drops any that remain, so they never reach the CLI; under `mcp` 1.x they are listed."
+rust = "The keys set with `ToolAnnotations::extra` are listed after the defined ones, as under `mcp` 1.x."
+ref = "src/claude_agent_sdk/__init__.py:606-617"
+anchor = '"annotations": tool_def.annotations,'
+category = "deliberate"
+reason = "The program set the keys to send them; the Rust type has no other way to carry a hint MCP adds later, and the CLI ignores a key it does not know. Everything the SDK writes itself is shaped as `mcp` 2.x shapes it."
+test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::an_annotation_key_the_crate_does_not_model_is_listed_and_a_modeled_one_wins"

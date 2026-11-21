@@ -1,12 +1,20 @@
 //! Native MCP server: the JSON-RPC dispatcher that serves a set of tools
 //! without any MCP library.
 //!
-//! The `initialize` result declares the capabilities the Python SDK's
-//! server declares through the `mcp` 1.x package: `experimental` empty and
-//! `tools` with `listChanged` false, so the CLI receives the same handshake
-//! from both SDKs.
+//! It answers as the Python SDK's server answers through the `mcp` 2.x
+//! package, which the Python SDK installs by default and its main CI job
+//! requires: the `initialize` result declares `tools` with `listChanged`
+//! false and nothing else, a request other than `initialize` and `ping`
+//! before the handshake is refused with `-32602`, an unknown method gets
+//! `-32601 Method not found` with the method name as `data`, a call
+//! cancelled by `notifications/cancelled` gets `-32800 Request cancelled`,
+//! and every result is shaped by [`surface`](super::surface) as `mcp` 2.x
+//! shapes it. Under `mcp` 1.x the Python SDK answers these four cases
+//! otherwise (an `experimental` capability, `0` for a cancelled call,
+//! `-32602` for a name MCP does not define); `docs/parity.md` lists them.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -33,9 +41,9 @@ pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 const INTERNAL_ERROR: i64 = -32603;
-/// The code of the answer to a cancelled call: the Python `mcp` package
-/// (1.x, which upstream runs) answers `0`, not the `-32800` of MCP 2.
-const REQUEST_CANCELLED: i64 = 0;
+/// The code of the answer to a call cancelled by `notifications/cancelled`,
+/// as the Python SDK writes it under `mcp` 2.x (`_mcp_compat.py`).
+const REQUEST_CANCELLED: i64 = -32800;
 
 /// Creates an MCP server that runs inside this process and serves these
 /// tools to the CLI over the control channel.
@@ -124,14 +132,12 @@ impl SdkMcpServer {
         })
     }
 
-    /// Answers the handshake. Its parameters are checked as the `mcp`
-    /// package checks them: a `protocolVersion` string or integer, a `capabilities`
+    /// Answers the handshake. Its parameters are checked as the `mcp` 2.x
+    /// package checks them: a `protocolVersion` string, a `capabilities`
     /// object, and a `clientInfo` with a `name` and a `version`.
     fn initialize(&self, params: &Value) -> std::result::Result<Value, RpcError> {
         let client = params.get("clientInfo");
-        let well_formed = params
-            .get("protocolVersion")
-            .is_some_and(|version| version.is_string() || version.is_i64() || version.is_u64())
+        let well_formed = params.get("protocolVersion").is_some_and(Value::is_string)
             && params.get("capabilities").is_some_and(Value::is_object)
             && client
                 .and_then(|client| client.get("name"))
@@ -151,7 +157,7 @@ impl SdkMcpServer {
             .unwrap_or(LATEST_PROTOCOL_VERSION);
         Ok(json!({
             "protocolVersion": negotiated,
-            "capabilities": {"experimental": {}, "tools": {"listChanged": false}},
+            "capabilities": {"tools": {"listChanged": false}},
             "serverInfo": {"name": self.name, "version": self.version},
         }))
     }
@@ -169,10 +175,24 @@ impl SdkMcpServer {
     }
 
     async fn dispatch(&self, method: &str, params: &Value) -> std::result::Result<Value, RpcError> {
+        self.answer(method, params)
+            .await
+            .map(|result| super::surface::shape_result(method, result))
+    }
+
+    async fn answer(&self, method: &str, params: &Value) -> std::result::Result<Value, RpcError> {
         match method {
             "initialize" => self.initialize(params),
             "ping" => Ok(json!({})),
-            "tools/list" => Ok(self.list_tools()),
+            "tools/list" => {
+                if params
+                    .get("cursor")
+                    .is_some_and(|cursor| !cursor.is_string())
+                {
+                    return Err(invalid_params("the cursor of tools/list must be a string"));
+                }
+                Ok(self.list_tools())
+            }
             "tools/call" => {
                 let name = params
                     .get("name")
@@ -191,8 +211,8 @@ impl SdkMcpServer {
             }
             other => Err(RpcError {
                 code: METHOD_NOT_FOUND,
-                message: format!("Method not found: {other}"),
-                data: None,
+                message: "Method not found".to_owned(),
+                data: Some(Value::from(other)),
             }),
         }
     }
@@ -286,6 +306,10 @@ impl Drop for Reservation {
 pub(crate) struct NativeSession {
     server: Arc<SdkMcpServer>,
     in_flight: Arc<InFlight>,
+    /// Whether an `initialize` request has been answered with a result.
+    /// Before, only `initialize` and `ping` are served, as `mcp` refuses
+    /// any other request of a session that has not been initialized.
+    initialized: Arc<AtomicBool>,
 }
 
 impl NativeSession {
@@ -293,6 +317,7 @@ impl NativeSession {
         Self {
             server,
             in_flight: Arc::default(),
+            initialized: Arc::default(),
         }
     }
 
@@ -321,6 +346,12 @@ impl NativeSession {
             }
             return Ok(None);
         };
+        if !matches!(method, "initialize" | "ping") && !self.initialized.load(Ordering::SeqCst) {
+            return Ok(Some(response(
+                id,
+                Err(invalid_params("a request before initialize")),
+            )));
+        }
 
         let key = id.to_string();
         let (cancel, cancelled) = oneshot::channel();
@@ -339,6 +370,7 @@ impl NativeSession {
             key,
         };
         let server = Arc::clone(&self.server);
+        let initialized = Arc::clone(&self.initialized);
         let method = method.to_owned();
         let params = params.clone();
         let call = crate::caller_context::spawn(async move {
@@ -351,6 +383,9 @@ impl NativeSession {
                 }),
                 outcome = server.dispatch(&method, &params) => outcome,
             };
+            if method == "initialize" && outcome.is_ok() {
+                initialized.store(true, Ordering::SeqCst);
+            }
             drop(reservation);
             outcome
         });

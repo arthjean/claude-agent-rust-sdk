@@ -12,6 +12,7 @@ mod bridge;
 pub(crate) mod rmcp_bridge;
 mod schema;
 pub(crate) mod server;
+mod surface;
 mod tool;
 
 pub(crate) use bridge::McpBridges;

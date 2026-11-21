@@ -70,7 +70,7 @@ Callbacks cannot travel as data, so a case declares canned ones, and each journa
 
 - `can_use_tool` is a decision: `{"behavior": "allow", "updated_input": {...}, "updated_permissions": ...}`, where `updated_permissions` is absent, a list of permission updates in their wire form, or `"suggestions"` to send back as updates the suggestions the callback received (so a case checks both how the SDK parses suggestions and how it writes updates); `{"behavior": "deny", "message": "...", "interrupt": false}`; or `{"behavior": "wait"}`, which never answers, so that the CLI can cancel the request.
 - `hooks` maps an event to matchers whose `hooks` list holds hook outputs in their wire form (`continue`, `async`, `hookSpecificOutput`). A hook callback is named `<event>/<matcher index>/<hook index>` in the journal.
-- An `mcp_servers` entry of type `sdk` declares an in-process server whose tools return fixed content: `{"type": "sdk", "version": "1.0.0", "tools": [{"name", "description", "input_schema", "annotations", "result": {"content": [...], "is_error": false}}]}`.
+- An `mcp_servers` entry of type `sdk` declares an in-process server whose tools return fixed content: `{"type": "sdk", "version": "1.0.0", "tools": [{"name", "description", "input_schema", "annotations", "result": {"content": [...], "is_error": false}}]}`. A content block is text, an image, a resource link, or an embedded resource; a tool with `"raise": "text"` fails with that text instead, and one with `"wait": true` never returns, so that the CLI can cancel the call.
 - `stderr: true` registers a callback that journals each line, and `session_store: "memory"` uses an in-memory store that journals each append.
 - `cli_path` is set by the drivers.
 
@@ -211,7 +211,7 @@ Setting a field is not enough: a case covers a field only when the field's effec
 
 ## Python dependencies
 
-`requirements.txt` pins every package the Python driver imports, with hashes, for `pip install --require-hashes`. It is compiled from `requirements.in`, which states the upstream ranges with `mcp` held to the 1.x line (the 2.x line is not covered):
+`requirements.txt` pins every package the Python driver imports, with hashes, for `pip install --require-hashes`. It is compiled from `requirements.in`, which states the upstream ranges with `mcp` held to the 2.x line: the newest major upstream allows, the one `pip install` resolves and upstream's main test job requires. The answers of the Python SDK under `mcp` 1.x that differ are listed in `docs/parity.md`:
 
 ```sh
 uv pip compile parity/requirements.in --generate-hashes --python-version 3.13 -o parity/requirements.txt

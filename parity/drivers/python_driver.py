@@ -229,16 +229,29 @@ def hooks(events: dict[str, Any]) -> dict[str, Any]:
 
 def tool_content(block: dict[str, Any]) -> dict[str, Any]:
     """Check one canned content block of a tool result."""
-    if block.get("type") not in ("text", "image"):
+    if block.get("type") not in ("text", "image", "resource_link", "resource"):
         raise Unsupported(f"tool content type {block.get('type', '(none)')}")
     return block
 
 
-def tool_handler(server: str, tool: str, response: dict[str, Any]) -> Any:
-    """Return a tool handler that journals its arguments and returns ``response``."""
+def tool_handler(server: str, tool: str, definition: dict[str, Any]) -> Any:
+    """Return a tool handler that journals its arguments, then returns the
+    canned result, raises the ``raise`` text, or, with ``wait``, never
+    returns."""
+    result = definition.get("result", {})
+    response = {
+        "content": [tool_content(block) for block in result.get("content", [])],
+        "is_error": result.get("is_error", False),
+    }
 
     async def handler(arguments: Any) -> Any:
         journal("tool", server=server, tool=tool, arguments=arguments)
+        if "raise" in definition:
+            raise RuntimeError(definition["raise"])
+        if definition.get("wait"):
+            import anyio
+
+            await anyio.sleep_forever()
         return response
 
     return handler
@@ -278,18 +291,13 @@ def sdk_server(name: str, config: dict[str, Any]) -> Any:
 
     tools = []
     for definition in config.get("tools", []):
-        result = definition.get("result", {})
-        response = {
-            "content": [tool_content(block) for block in result.get("content", [])],
-            "is_error": result.get("is_error", False),
-        }
         annotations = definition.get("annotations")
         tools.append(
             SdkMcpTool(
                 name=definition["name"],
                 description=definition.get("description", ""),
                 input_schema=definition["input_schema"],
-                handler=tool_handler(name, definition["name"], response),
+                handler=tool_handler(name, definition["name"], definition),
                 annotations=ToolAnnotations(**annotations) if annotations is not None else None,
             )
         )

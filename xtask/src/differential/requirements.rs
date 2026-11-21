@@ -7,14 +7,16 @@
 //! fails, naming the package, when one of them is not pinned, when its pin
 //! is outside the range upstream allows, or when a pinned package carries
 //! no hash. Environment markers are evaluated for the Python version of the
-//! job, [`JOB_PYTHON`]. `mcp` must also stay on the 1.x line the job covers.
+//! job, [`JOB_PYTHON`]. `mcp` must also stay on the 2.x line the job covers:
+//! the newest major upstream allows, which `pip install` resolves and the
+//! main test job of upstream requires.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Python version of the differential job.
 pub const JOB_PYTHON: (u64, u64) = (3, 13);
-const HELD_MAJOR_LINES: [(&str, u64); 1] = [("mcp", 1)];
+const HELD_MAJOR_LINES: [(&str, u64); 1] = [("mcp", 2)];
 
 fn normalize(name: &str) -> String {
     name.trim().to_lowercase().replace(['_', '.'], "-")
@@ -272,7 +274,7 @@ dependencies = [
 
     #[test]
     fn pins_within_the_upstream_ranges_pass() {
-        let pins = pins(&locked("1.30.0", true)).unwrap();
+        let pins = pins(&locked("2.3.0", true)).unwrap();
         assert_eq!(pins.len(), 3);
         assert!(pins.values().all(|pin| pin.hashed));
         let problems = check(&dependencies(PYPROJECT).unwrap(), &pins).unwrap();
@@ -281,24 +283,27 @@ dependencies = [
 
     #[test]
     fn a_pin_outside_the_range_fails_naming_the_package() {
-        let pins = pins(&locked("1.20.0", true)).unwrap();
+        let pins = pins(&locked("3.1.0", true)).unwrap();
         let problems = check(&dependencies(PYPROJECT).unwrap(), &pins).unwrap();
         assert_eq!(
             problems,
-            ["mcp: pinned at 1.20.0, outside the range upstream allows (`mcp>=1.23.0,<3.0.0`)"]
+            [
+                "mcp: pinned at 3.1.0, outside the range upstream allows (`mcp>=1.23.0,<3.0.0`)",
+                "mcp: pinned at 3.1.0, but the differential job covers the 2.x line only",
+            ]
         );
     }
 
     #[test]
     fn a_missing_pin_a_second_major_line_and_a_missing_hash_fail() {
-        let mut pins = pins(&locked("2.1.0", false)).unwrap();
+        let mut pins = pins(&locked("1.30.0", false)).unwrap();
         pins.remove("jsonschema");
         let problems = check(&dependencies(PYPROJECT).unwrap(), &pins).unwrap();
         assert_eq!(
             problems,
             [
                 "jsonschema: required by upstream as `jsonschema>=4.20.0` but not pinned",
-                "mcp: pinned at 2.1.0, but the differential job covers the 1.x line only",
+                "mcp: pinned at 1.30.0, but the differential job covers the 2.x line only",
                 "anyio: pinned at 4.16.0 without a hash",
             ]
         );
