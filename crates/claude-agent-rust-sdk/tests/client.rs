@@ -473,3 +473,29 @@ async fn failed_connect_leaves_nothing_running() {
     client.disconnect().await.unwrap();
     assert_eq!(transport.close_count(), 1);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_consumer_waiting_in_receive_messages_ends_when_the_client_disconnects() {
+    let transport = cli();
+    let client = connected(&transport, default_options()).await;
+    let consume = async {
+        let mut messages = client.receive_messages();
+        let mut count = 0;
+        while let Some(message) = messages.next().await {
+            message.unwrap();
+            count += 1;
+        }
+        count
+    };
+    let disconnect = async {
+        settle().await;
+        client.disconnect().await.unwrap();
+    };
+    let (count, ()) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        tokio::join!(consume, disconnect)
+    })
+    .await
+    .expect("the consumer is released by the disconnect");
+    assert_eq!(count, 0);
+    assert_eq!(transport.close_count(), 1);
+}

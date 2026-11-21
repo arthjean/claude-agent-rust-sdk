@@ -203,9 +203,18 @@ async fn result_with_a_tracked_task_in_flight_keeps_stdin_open() {
 async fn shells_and_monitors_never_defer_the_close() {
     for task_type in ["local_bash", "monitor_mcp", "remote_agent"] {
         let run = Run::start(options_with_hook()).await;
-        run.emit([task_started("task-1", task_type), result("done")])
-            .await;
+        run.emit([
+            assistant("Starting it"),
+            task_started("task-1", task_type),
+            background_tasks_changed(json!([{"task_id": "task-1", "task_type": task_type}])),
+            result("done"),
+        ])
+        .await;
         assert!(!run.stdin_is_open(), "{task_type}");
+        let messages = tokio::time::timeout(Duration::from_secs(10), run.messages())
+            .await
+            .expect("the query ends once stdin is closed");
+        assert_eq!(result_texts(&messages), ["done"], "{task_type}");
     }
 }
 
@@ -635,11 +644,19 @@ async fn empty_or_failing_input_stream_still_closes_stdin() {
     let run = Run::start_with(empty, options_with_hook()).await;
     assert!(written(&run.transport, "user").is_empty());
     assert!(!run.stdin_is_open());
+    let messages = tokio::time::timeout(Duration::from_secs(5), run.messages())
+        .await
+        .expect("the query ends");
+    assert!(messages.is_empty(), "{messages:?}");
 
     let fails_at_once = Prompt::try_stream(stream::iter([Err::<Value, _>("no prompt today")]));
     let run = Run::start_with(fails_at_once, options_with_hook()).await;
     assert!(written(&run.transport, "user").is_empty());
     assert!(!run.stdin_is_open());
+    let messages = tokio::time::timeout(Duration::from_secs(5), run.messages())
+        .await
+        .expect("the query ends");
+    assert!(messages.is_empty(), "{messages:?}");
 
     let fails_after_one = Prompt::try_stream(stream::iter([
         Ok(Value::from(InputMessage::user("first"))),

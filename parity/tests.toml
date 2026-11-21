@@ -417,7 +417,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestQueryTrioBackend::test_spawn_task_and_cancel_under_trio" = { excluded = "python-runtime" }
 "TestQueryTrioBackend::test_close_from_different_task_under_trio" = { excluded = "python-runtime" }
 "TestQueryTrioBackend::test_receive_messages_unblocks_on_close_under_trio" = { excluded = "python-runtime" }
-"TestQueryTrioBackend::test_receive_messages_unblocks_on_close_under_asyncio" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::receive_messages_ends_at_a_message_that_does_not_parse_and_a_new_call_resumes" }
+"TestQueryTrioBackend::test_receive_messages_unblocks_on_close_under_asyncio" = { rust = "crates/claude-agent-rust-sdk/tests/client.rs::a_consumer_waiting_in_receive_messages_ends_when_the_client_disconnects" }
 "TestQueryTrioBackend::test_buffered_messages_drain_after_close_asyncio" = { rust = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::closing_the_session_stops_handlers_and_fails_pending_requests" }
 "TestQueryTrioBackend::test_buffered_messages_drain_after_close_trio" = { excluded = "python-runtime" }
 "TestControlCancelRequest::test_cancel_request_cancels_inflight_hook" = { rust = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::cancel_request_aborts_the_handler_which_writes_no_response" }
