@@ -28,7 +28,7 @@ location = "env CLAUDE_CODE_ENTRYPOINT"
 python = '"sdk-py"'
 rust = '"sdk-rs"'
 category = "deliberate"
-reason = "Each SDK names itself to the CLI, which reports the entrypoint in its telemetry (subprocess_cli.py:767 sets sdk-py)."
+reason = "Each SDK names itself to the CLI (subprocess_cli.py:767 sets sdk-py), and sending sdk-py would report Rust sessions as Python ones. CLI 2.1.329 does not know sdk-rs: it treats the session as no SDK, so the model sees the extra claude-code-guide agent, API requests carry the client platform of the interactive CLI, and telemetry counts another client (docs/validation/entrypoint-label.md). Only the CLI can close this; until then every Rust session differs from a Python one there."
 
 [wire.sdk-version]
 case = "*"

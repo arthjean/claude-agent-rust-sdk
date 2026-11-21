@@ -72,3 +72,28 @@ the user's machine, which is the distribution question of prerequisite A1
 stack to the supply chain of every build that turns the feature on.
 Recommendation: build it once A1 is settled, as a feature of this crate
 rather than a separate binary.
+
+## B1 and A1: the entrypoint label
+
+Measured (`docs/validation/entrypoint-label.md`): CLI 2.1.329 knows `sdk-ts`,
+`sdk-py`, and `sdk-cli` only. With `sdk-rs` the `init` message lists the
+`claude-code-guide` agent a Python session does not get, API requests carry
+the client platform of the interactive CLI, and telemetry counts another
+client. Done on the branch: the ledger entry states these effects, and an
+end-to-end test (`a_session_with_the_sdk_rs_entrypoint_lists_the_agent_a_python_session_does_not`)
+pins the agent difference for the next real run. `sdk-py` is never sent.
+
+Remaining choice, until the CLI knows `sdk-rs` (A1):
+
+- **Keep `sdk-rs`.** Honest and distinct in telemetry, which is what A1 asks
+  Anthropic to support, but every switch above differs from Python.
+- **Send `sdk-cli` (recommended as the interim).** It is the label the CLI
+  gives itself when an SDK starts it without one, so it claims nothing that
+  is not true. Measured: the `init` agents match Python, and the code reading
+  shows the SDK switches and the client platform match too. Two differences
+  remain: one set of request attributes chosen for `sdk-ts` and `sdk-py`
+  only, and telemetry that counts the session as `sdk-cli` instead of a Rust
+  SDK. Changing it is one constant (`transport/environment.rs`), the policy
+  test that pins it, the README paragraph on billing (A3), and the ledger
+  entry; it should follow the conversation with Anthropic, since it changes
+  how they would count Rust sessions.
