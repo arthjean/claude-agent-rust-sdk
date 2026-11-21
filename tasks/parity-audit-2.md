@@ -30,7 +30,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | Id | Title | Status | Proof / note |
 |---|---|---|---|
 | M1 | In-process MCP server follows `mcp` 1.x, upstream installs 2.x | todo | |
-| M2 | Incomplete hook input becomes `Unknown` silently; example fails open | todo | |
+| M2 | Incomplete hook input becomes `Unknown` silently; example fails open | done | Base fields and `tool_use_id` lenient (absent or null is empty), warn log, `HookInput::tool_name()`/`tool_input()` read typed and `Unknown`, `hooks` example denies what it cannot check. `types.rs::a_hook_input_missing_metadata_the_callback_does_not_need_stays_typed` (Unknown before, as the audit probe showed), `the_tool_of_a_hook_input_is_read_even_when_the_input_is_unknown`; `[behavior.hook-input-shape]` rewritten. |
 | M3 | Message types do not implement `Serialize` | todo | |
 | M4 | In-process MCP tools run outside the caller context | done | MCP calls spawned through `caller_context::spawn` (`src/mcp/server.rs`); `caller_context.rs::in_process_tools_run_in_the_span_of_the_caller_that_connected`, red before. |
 | M5 | Process group gets SIGKILL with no grace at normal exit | todo | |
@@ -55,7 +55,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m12 | macOS: no parent-death signal, no exit cleanup | todo | |
 | m13 | Subagent read via store: id check too broad, applied with `list_subkeys` | done | Check moved to the direct path, separators and NUL only; ledger entry rewritten; `session_store_helpers.rs::a_store_that_lists_its_subkeys_finds_any_agent_id_by_its_last_segment`, red before. |
 | m14 | Non-UTF-8 `CLAUDE_CONFIG_DIR` falls back to `~/.claude` | done | `var_os`, kept byte for byte; no home gives no directory (`[behavior.no-home-directory]`); `sessions.rs::a_config_dir_whose_name_is_not_utf8_is_read_as_python_reads_it` (Linux), red before (listed `~/.claude`). |
-| m15 | Mirror real-path alias only when `projects/` exists at start | done | `is_dir()` condition removed; `mirror::tests::a_frame_under_the_real_path_is_mirrored_when_the_projects_directory_does_not_exist_yet`, red before. |
+| m15 | Mirror real-path alias only when `projects/` exists at start | done | `is_dir()` condition removed; `mirror::tests::real_path_frames_are_mirrored_before_the_projects_directory_exists`, red before. |
 | m16 | Windows drive guard on subpaths accepts ASCII letters only | done | Any second character `:` is a drive, as `ntpath.splitdrive` (probed on Python 3.15: `1:foo`, `é:foo`, `::x`); `resume::tests::a_subpath_with_any_drive_prefix_is_rejected_as_ntpath_splitdrive_does`, red before. |
 | m17 | `SdkMcpTool::typed` accepts argument types that fail every call | todo | |
 | m18 | `can_use_tool` shadowed warning not filterable, emitted before validation | todo | |
