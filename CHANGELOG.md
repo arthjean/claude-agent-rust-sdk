@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- A CLI started with the `user` option holds the supplementary groups of that user, from the group database, instead of none when the parent is privileged.
 - A `task_progress` message whose `usage` is not an object fails to parse with `Invalid field in system message: 'usage'`, as any required field of the wrong type does, instead of reading as zero counts.
 - An optional message or block field whose value the typed field cannot hold (`api_error_status: "529"`, `errors: ["boom", {"code": 529}]`) keeps the value as sent in `extra` (or `message_extra`), where it was dropped.
 - On Unix, the processes left in the group of the CLI when it exits get `SIGTERM`, and `SIGKILL` only 5 s later if they are still running, instead of `SIGKILL` at once, so a server the agent started in the background can clean up.

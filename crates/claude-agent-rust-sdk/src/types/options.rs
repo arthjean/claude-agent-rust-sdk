@@ -90,8 +90,9 @@ pub struct ClaudeAgentOptions {
     /// event are dispatched concurrently by the CLI.
     pub hooks: Option<IndexMap<HookEvent, Vec<HookMatcher>>>,
     /// Name of the operating-system user the CLI process runs as. The
-    /// process takes the user id and the primary group id of that user,
-    /// and no supplementary group when this process is privileged. The
+    /// process takes the user id, the primary group, and the supplementary
+    /// groups of that user, as `sudo -u` gives them (an unprivileged
+    /// process cannot set groups and keeps its own). The
     /// environment is not changed: set `HOME` through `env` when the CLI
     /// must read that user's configuration. Unix only: switching to
     /// another user needs the privilege to do so, and connecting fails on

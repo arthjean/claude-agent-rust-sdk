@@ -713,3 +713,13 @@ anchor = "class AssistantMessage:"
 category = "deliberate"
 reason = "Rust has no `asdict`; the frame is what a program relays, logs, or replays to a test, and the only JSON form the parser reads back, so serialization and deserialization are inverse."
 test = "crates/claude-agent-rust-sdk/tests/message_serde.rs::every_message_read_from_the_cli_serializes_back_to_its_frame"
+
+[behavior.run-as-user-groups]
+summary = "The groups of the CLI process started with the `user` option"
+python = "`Popen(user=...)` only switches the user id: the child keeps the group and the supplementary groups of the parent, root's when the parent is root."
+rust = "The child takes the user id, the primary group, and the supplementary groups the group database lists for the user, as `sudo -u` gives them."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:835"
+anchor = "user=self._options.user,"
+category = "deliberate"
+reason = "A CLI meant to run as an unprivileged user must not hold root's groups, and needs the groups of that user (`docker`, for example) to use what it may use."
+test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the_requested_user @unix"

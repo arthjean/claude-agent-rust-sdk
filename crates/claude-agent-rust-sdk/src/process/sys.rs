@@ -27,18 +27,91 @@ mod imp {
     const USER_LOOKUP_BUFFER_START: usize = 1024;
     const USER_LOOKUP_BUFFER_LIMIT: usize = 1024 * 1024;
 
-    /// Makes the child run with the user id and the primary group id of the
-    /// named user. The name is looked up in the user database; nothing is
-    /// spawned here.
+    /// Makes the child run as the named user: its user id, its primary
+    /// group, and its supplementary groups, as `sudo -u` or a login gives
+    /// them. The user and its groups are looked up in the databases here,
+    /// before the fork; nothing is spawned.
     ///
-    /// The group is set as well as the user so that a privileged parent
-    /// does not leave its own group on the child. When the parent may
-    /// change groups, the standard library also clears the supplementary
-    /// groups before it switches the user.
+    /// The standard library switches the user before the closures of
+    /// `pre_exec` run and clears the supplementary groups of a privileged
+    /// parent, so the child would lose groups such as `docker`. The switch
+    /// is made in one closure instead, registered before the others of the
+    /// crate so the parent-death signal is armed after it (Linux clears
+    /// that signal when the credentials change): `setgroups`, then
+    /// `setgid`, then `setuid` (see [`switch_user`]).
     pub(crate) fn run_as_user(command: &mut Command, user: &str) -> io::Result<()> {
         let (user_id, group_id) = user_ids(user)?;
-        command.gid(group_id).uid(user_id);
+        let name = CString::new(user).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidInput, format!("unknown user: {user}"))
+        })?;
+        let groups = supplementary_groups(&name, group_id)?;
+        unsafe {
+            command.pre_exec(move || switch_user(user_id, group_id, &groups));
+        }
         Ok(())
+    }
+
+    /// Runs in the forked child before `exec`. It only calls `setgroups`,
+    /// `getuid`, `getgid`, `setgid`, and `setuid`, which are
+    /// async-signal-safe, reads a list built before the fork, and
+    /// allocates nothing.
+    ///
+    /// `setgroups` is always tried, so a parent with the capability to set
+    /// groups but not root uses it too. It may only be refused (`EPERM`)
+    /// when the child keeps the user and group it already has: a parent
+    /// able to change the identity but not the groups would otherwise hand
+    /// its own groups to another user, so the spawn fails instead.
+    fn switch_user(
+        user_id: libc::uid_t,
+        group_id: libc::gid_t,
+        groups: &[libc::gid_t],
+    ) -> io::Result<()> {
+        if unsafe { libc::setgroups(groups.len() as _, groups.as_ptr()) } != 0 {
+            let error = io::Error::last_os_error();
+            let same_identity =
+                unsafe { libc::getuid() } == user_id && unsafe { libc::getgid() } == group_id;
+            if error.raw_os_error() != Some(libc::EPERM) || !same_identity {
+                return Err(error);
+            }
+        }
+        if unsafe { libc::setgid(group_id) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if unsafe { libc::setuid(user_id) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// The groups of a user, its primary group included, from the group
+    /// database with `getgrouplist`, growing the list until it fits. The
+    /// name and the list outlive each call.
+    pub(crate) fn supplementary_groups(
+        name: &std::ffi::CStr,
+        group_id: libc::gid_t,
+    ) -> io::Result<Vec<libc::gid_t>> {
+        let mut capacity: usize = 64;
+        loop {
+            let mut groups: Vec<libc::gid_t> = vec![0; capacity];
+            let mut count = libc::c_int::try_from(capacity).unwrap_or(libc::c_int::MAX);
+            let status = unsafe {
+                libc::getgrouplist(
+                    name.as_ptr(),
+                    group_id as _,
+                    groups.as_mut_ptr().cast(),
+                    &raw mut count,
+                )
+            };
+            let filled = usize::try_from(count).unwrap_or(0);
+            if status >= 0 && filled <= capacity {
+                groups.truncate(filled);
+                return Ok(groups);
+            }
+            if capacity >= USER_LOOKUP_BUFFER_LIMIT {
+                return Err(io::Error::other("the user belongs to too many groups"));
+            }
+            capacity = (capacity * 2).max(filled);
+        }
     }
 
     /// Looks a name up in the user database with `getpwnam_r`; the name
@@ -145,6 +218,29 @@ mod imp {
         fn the_system_search_path_names_usr_bin() {
             let path = system_search_path().expect("the system has a search path");
             assert!(path.split(':').any(|entry| entry == "/usr/bin"), "{path}");
+        }
+
+        #[test]
+        fn the_groups_of_a_user_are_the_ones_the_group_database_lists_for_it() {
+            let name = current_user_name().expect("the user database has the test user");
+            let (_, group_id) = user_ids(&name).unwrap();
+            let c_name = CString::new(name.clone()).unwrap();
+            let mut groups = supplementary_groups(&c_name, group_id).unwrap();
+            groups.sort_unstable();
+            groups.dedup();
+            let listed = std::process::Command::new("id")
+                .args(["-G", &name])
+                .output()
+                .unwrap();
+            let mut expected: Vec<libc::gid_t> = String::from_utf8(listed.stdout)
+                .unwrap()
+                .split_whitespace()
+                .map(|id| id.parse().unwrap())
+                .collect();
+            expected.sort_unstable();
+            expected.dedup();
+            assert_eq!(groups, expected);
+            assert!(groups.contains(&group_id));
         }
 
         #[test]

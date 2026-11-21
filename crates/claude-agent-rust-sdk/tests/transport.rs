@@ -778,8 +778,9 @@ fn command_output(program: &str, arguments: &[&str]) -> String {
 
 /// Starts the CLI as `nobody`.
 ///
-/// As root, the child runs with the user id and the primary group of
-/// `nobody`, and on Linux with no supplementary group. Without privilege
+/// As root, the child runs with the user id, the primary group, and on
+/// Linux the groups the group database lists for `nobody`, as `id -G`
+/// prints them, not those of root. Without privilege
 /// the change of identity cannot succeed, so the test checks the spawn is
 /// refused with a permission error: a child that starts anyway was never
 /// asked to change user or group.
@@ -835,7 +836,20 @@ async fn the_process_runs_as_the_requested_user() {
             .lines()
             .find_map(|line| line.strip_prefix("Groups:"))
             .unwrap();
-        assert_eq!(groups.trim(), "", "supplementary groups were kept");
+        let sorted = |text: &str| {
+            let mut ids: Vec<u32> = text
+                .split_whitespace()
+                .map(|id| id.parse().unwrap())
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+        assert_eq!(
+            sorted(groups),
+            sorted(&command_output("id", &["-G", user])),
+            "the child does not hold the groups of {user}"
+        );
     }
     transport.close().await.unwrap();
 }
