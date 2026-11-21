@@ -109,6 +109,17 @@ impl ServerHandler for Notes {
         let arguments = Value::Object(request.arguments.unwrap_or_default());
         match request.name.as_ref() {
             "echo" => text_result(arguments.to_string()),
+            "raw" => {
+                let result: CallToolResult = model(json!({
+                    "content": [
+                        {"type": "text", "text": "verbatim"},
+                        {"type": "audio", "data": "UklGRg==", "mimeType": "audio/wav"},
+                    ],
+                    "structuredContent": {"tool": "raw", "arguments": arguments},
+                    "isError": false,
+                }));
+                Ok(result.into())
+            }
             "gate" => {
                 let name = arguments["name"].as_str().unwrap_or_default().to_owned();
                 self.gate(&name).notified().await;
@@ -164,12 +175,28 @@ async fn rmcp_handler_is_served_with_everything_it_implements() {
     assert_eq!(info["serverInfo"]["name"], "notes");
     assert_eq!(info["serverInfo"]["version"], "0.3.0");
     assert_eq!(info["protocolVersion"], PROTOCOL_VERSION);
+    assert!(info["capabilities"]["tools"].is_object(), "{info}");
+    assert!(info["capabilities"]["resources"].is_object(), "{info}");
 
     let tools = client.list_tools("srv").await;
     assert_eq!(tools[0]["name"], "echo");
 
     let echoed = client.call_tool("srv", "echo", json!({"text": "hi"})).await;
     assert_eq!(texts(&echoed), [r#"{"text":"hi"}"#]);
+
+    let raw = client.call_tool("srv", "raw", json!({"n": 7})).await;
+    assert_eq!(
+        raw["content"],
+        json!([
+            {"type": "text", "text": "verbatim"},
+            {"type": "audio", "data": "UklGRg==", "mimeType": "audio/wav"},
+        ])
+    );
+    assert_eq!(
+        raw["structuredContent"],
+        json!({"tool": "raw", "arguments": {"n": 7}})
+    );
+    assert_eq!(raw["isError"], false);
 
     let resources = client.request("srv", "resources/list", json!({})).await;
     assert_eq!(

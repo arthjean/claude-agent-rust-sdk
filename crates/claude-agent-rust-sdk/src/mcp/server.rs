@@ -426,7 +426,12 @@ impl NativeSession {
     /// Ends the session: cancels every request still running and waits for
     /// them to stop, for at most [`SHUTDOWN_GRACE`].
     pub(crate) async fn close(&self) {
-        let deadline = Instant::now() + SHUTDOWN_GRACE;
+        self.close_within(SHUTDOWN_GRACE).await;
+    }
+
+    /// [`close`](Self::close) with the wait bounded by `grace`.
+    async fn close_within(&self, grace: Duration) {
+        let deadline = Instant::now() + grace;
         let cancels: Vec<_> = self
             .in_flight
             .calls()
@@ -448,10 +453,94 @@ impl NativeSession {
                     "SDK MCP server '{}' still had a tool running {} s after being closed; no \
                      longer waiting for it",
                     self.server.name,
-                    SHUTDOWN_GRACE.as_secs()
+                    grace.as_secs()
                 );
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::test_capture::Warnings;
+
+    /// A tool that blocks its worker thread cannot see the cancellation, so
+    /// the close stops waiting for it once the grace is spent, warns, and
+    /// returns; the tool's answer, when it comes, still releases its id.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_close_stops_waiting_for_a_tool_that_ignores_cancellation_after_the_grace() {
+        let (warnings, _guard) = Warnings::install();
+        let (started_tx, started) = mpsc::channel::<()>();
+        let (release, released) = mpsc::channel::<()>();
+        let started_tx = Mutex::new(started_tx);
+        let released = Arc::new(Mutex::new(released));
+        let tool = SdkMcpTool::raw("stuck", "Blocks its thread", json!({}), move |_| {
+            let _ = started_tx.lock().unwrap().send(());
+            let released = Arc::clone(&released);
+            async move {
+                let _ = released
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(30));
+                Ok(crate::ToolResult::text("late"))
+            }
+        })
+        .unwrap();
+        let server = Arc::new(
+            SdkMcpServer::new("blocking".to_owned(), "1.0.0".to_owned(), vec![tool]).unwrap(),
+        );
+        let session = Arc::new(NativeSession::new(server));
+        session
+            .handle(&json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0"},
+                },
+            }))
+            .await
+            .unwrap();
+        let call = tokio::spawn({
+            let session = Arc::clone(&session);
+            async move {
+                session
+                    .handle(&json!({
+                        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                        "params": {"name": "stuck", "arguments": {}},
+                    }))
+                    .await
+            }
+        });
+        let begun =
+            tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(10)))
+                .await
+                .unwrap();
+        assert!(begun.is_ok(), "{:?}", call.await);
+
+        let before = std::time::Instant::now();
+        session.close_within(Duration::from_millis(200)).await;
+        let waited = before.elapsed();
+        assert!(waited >= Duration::from_millis(200), "{waited:?}");
+        assert!(waited < Duration::from_secs(5), "{waited:?}");
+        assert!(
+            warnings
+                .all()
+                .iter()
+                .any(|warning| warning.contains("'blocking' still had a tool running")),
+            "{:?}",
+            warnings.all()
+        );
+
+        release.send(()).unwrap();
+        let answer = call.await.unwrap().unwrap().unwrap();
+        assert_eq!(answer["result"]["content"][0]["text"], "late");
+        assert!(session.in_flight.calls().is_empty());
     }
 }
