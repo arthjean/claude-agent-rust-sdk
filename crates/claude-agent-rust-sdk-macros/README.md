@@ -9,7 +9,7 @@ requires this crate at its own exact version:
 
 ```toml
 [dependencies]
-claude-agent-rust-sdk = { version = "0.2", features = ["macros"] }
+claude-agent-rust-sdk = { version = "0.3", features = ["macros"] }
 ```
 
 The attribute is documented with the library:

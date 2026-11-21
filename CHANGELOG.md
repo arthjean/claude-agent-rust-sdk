@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-21
+
+Upstream: Python SDK 0.2.187, CLI 2.1.330
+
 ### Added
 
 - `Error::result_error_with_message`, the counterpart of `ResultError(message, data, exit_code)`, for an error result with a message of the caller's choosing.
