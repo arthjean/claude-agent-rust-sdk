@@ -1566,3 +1566,43 @@ async fn a_request_id_that_is_not_a_string_is_answered_with_the_same_value() {
     assert!(ids.contains(&json!(5)), "{ids:?}");
     assert!(ids.contains(&json!("5")), "{ids:?}");
 }
+
+/// Upstream's close cancels every task it spawned, so two handlers that
+/// share a request id both stop; the second must not hide the first.
+#[tokio::test(start_paused = true)]
+async fn closing_stops_both_handlers_of_a_reused_request_id() {
+    let dropped = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    struct CountOnDrop(Arc<std::sync::atomic::AtomicUsize>);
+    impl Drop for CountOnDrop {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let blocking = {
+        let dropped = Arc::clone(&dropped);
+        HookCallback::new(move |_input, _tool_use_id, _context| {
+            let guard = CountOnDrop(Arc::clone(&dropped));
+            async move {
+                let _guard = guard;
+                std::future::pending::<()>().await;
+                Ok(HookOutput::default())
+            }
+        })
+    };
+    let options = ClaudeAgentOptions::builder()
+        .hook("PreToolUse", HookMatcher::new().hook(blocking))
+        .build()
+        .unwrap();
+    let transport = cli();
+    let client = connected(&transport, options).await;
+    transport.push_frame(hook_request("same", "hook_0"));
+    transport.push_frame(hook_request("same", "hook_0"));
+    settle().await;
+    assert_eq!(dropped.load(Ordering::SeqCst), 0);
+
+    client.disconnect().await.unwrap();
+    for _ in 0..5 {
+        settle().await;
+    }
+    assert_eq!(dropped.load(Ordering::SeqCst), 2);
+}

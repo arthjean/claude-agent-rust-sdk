@@ -26,7 +26,8 @@ use crate::types::{
 const MISSING_PERMISSION_CALLBACK: &str = "canUseTool callback is not provided";
 
 /// Starts one handler task for a control request and tracks it by request
-/// id, so a cancel request can abort it.
+/// id, so a cancel request can abort it, and with the other tasks of the
+/// session, so closing stops it even when a later request reused its id.
 ///
 /// A cancelled handler writes no response: the CLI has already abandoned
 /// the request. Cancellation stops the application callback only; once the
@@ -55,8 +56,9 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
         state.inflight.insert(request_id.clone(), (number, cancel));
         number
     };
+    let tracker = Arc::clone(shared);
     let shared = Arc::clone(shared);
-    crate::caller_context::spawn(async move {
+    let task = crate::caller_context::spawn(async move {
         let request = frame.get("request").cloned().unwrap_or(Value::Null);
         let outcome = tokio::select! {
             biased;
@@ -98,6 +100,13 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
             tracing::debug!("Could not answer control request {request_id}: {error}");
         }
     });
+    let mut state = tracker.state();
+    if state.closed {
+        task.abort();
+    } else {
+        state.tasks.retain(|task| !task.is_finished());
+        state.tasks.push(task.abort_handle());
+    }
 }
 
 /// Aborts the handler of a control request, if it is still running.

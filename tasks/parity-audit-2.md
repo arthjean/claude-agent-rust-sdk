@@ -80,7 +80,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 
 | Id | Title | Status | Proof / note |
 |---|---|---|---|
-| D1 | Non-string `request_id` gets no answer | todo | |
+| D1 | Non-string `request_id` gets no answer | done | Any JSON request_id is echoed as sent; handlers tracked by its JSON text (5 and "5" distinct, as Python dict keys). `control_protocol.rs::a_request_id_that_is_not_a_string_is_answered_with_the_same_value`, red before (no answer). |
 | D2 | Handler with a reused id survives `close()` | todo | |
 | D3 | Callback panic text replaced by a fixed message | todo | |
 | D4 | `HookOutput::to_wire` falls back to `{}` on serialization failure | todo | |
