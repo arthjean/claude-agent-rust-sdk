@@ -147,4 +147,52 @@ three systems. Recommendation for the proposal: present the differential
 harness and the ledgers as what makes the port reviewable (each difference
 from Python is measured, classified, and tested), offer to keep maintaining
 them, and propose running `e2e.yml` on every push with Anthropic's
-credentials once adopted.
+credentials once adopted. Since this run, the `offline-cli` job of `ci.yml`
+already runs the pinned CLI on every push without credentials (handshake,
+options in the init message, the `sdk-rs` agent list, project directory
+names), so only the turns that need the model wait for those credentials.
+
+## m34: shape of the public surface, and the native MCP dispatcher
+
+Three questions, all of them public API, so none was changed in this run.
+
+**Flat root.** `src/lib.rs` re-exports every type at the root
+(`pub use types::*`, about 200 names), the way `claude_agent_sdk` exports
+its `__all__`. A Rust reviewer may ask for modules instead
+(`claude_agent_rust_sdk::{messages, hooks, options, mcp, sessions}`).
+Options:
+
+1. Keep the flat root. Ported code reads like the Python it comes from,
+   and `docs/migration.md` maps one name to one name.
+2. Group into modules and keep the root re-exports as the compatibility
+   path (`#[doc(no_inline)]`). Additive, no break, but two paths per name.
+3. Group into modules and drop the root re-exports in a 0.x minor release.
+   Cleanest docs, breaks every user.
+
+Recommendation: 2, decided with Anthropic during the review, since it costs
+nothing now and can be done in one commit before 1.0.
+
+**Synchronous disk readers.** `list_sessions`, `get_session_info`, and the
+other disk readers block and return `Vec` or `Option`, ignoring I/O errors.
+This is upstream's contract (synchronous functions, `except OSError` that
+skips the file: `_internal/sessions.py:153`, `:182`, `:379`), so it is parity,
+not a defect. If a reviewer asks for errors, the additive answer is a
+`try_` variant returning `Result` next to each reader; an async variant is
+not needed, since the `*_from_store` readers already are.
+
+**Native MCP dispatcher.** Upstream serves an in-process server through the
+`mcp` library "rather than re-implemented here"
+(`_internal/sdk_mcp_bridge.py:1-10`). The crate does both: a server built
+with `create_sdk_mcp_server` runs on a native dispatcher
+(`src/mcp/server.rs`), and a hand-written `rmcp::ServerHandler` runs on rmcp
+itself (feature `rmcp`, `McpServerConfig::sdk_rmcp`). The reasons for the
+native default: it keeps rmcp out of the default build (109 crates in the
+normal dependency tree without the feature, 138 with it), and the dispatcher
+only has to serve `initialize`, `ping`, `tools/list`, `tools/call`, and
+`notifications/cancelled`. The cost is the one M1 measured: the answers
+must follow the protocol library upstream pins, which moved when `mcp` 2.x
+changed its errors. The guard is the differential harness, which runs the
+MCP cases against both `mcp` 1.x and 2.x. Options: keep it (recommended,
+with the harness as the argument), or route `create_sdk_mcp_server` through
+rmcp when the feature is on and keep the native path only without it.
+
