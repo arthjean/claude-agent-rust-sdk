@@ -211,9 +211,15 @@ fn is_tool_result_entry(entry: &Entry) -> bool {
         .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
 }
 
+/// `agentId: null` and a missing `agentId` are the same writer, as
+/// `dict.get` reads both as `None` upstream.
 fn same_writer(first: &Entry, second: &Entry) -> bool {
     truthy(first.get("isSidechain")) == truthy(second.get("isSidechain"))
-        && first.get("agentId") == second.get("agentId")
+        && agent_id(first) == agent_id(second)
+}
+
+fn agent_id(entry: &Entry) -> Option<&Value> {
+    entry.get("agentId").filter(|value| !value.is_null())
 }
 
 fn timestamp_key(entry: &Entry) -> &str {
@@ -540,6 +546,15 @@ mod tests {
 
     fn user(id: &str, parent: Option<&str>) -> Entry {
         entry(json!({"type": "user", "uuid": id, "parentUuid": parent, "message": {"content": id}}))
+    }
+
+    #[test]
+    fn a_null_agent_id_and_a_missing_one_are_the_same_writer() {
+        let missing = entry(json!({"type": "user", "uuid": "a"}));
+        let null = entry(json!({"type": "user", "uuid": "b", "agentId": null}));
+        let named = entry(json!({"type": "user", "uuid": "c", "agentId": "x"}));
+        assert!(same_writer(&missing, &null));
+        assert!(!same_writer(&null, &named));
     }
 
     #[test]
