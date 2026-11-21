@@ -723,3 +723,13 @@ anchor = "user=self._options.user,"
 category = "deliberate"
 reason = "A CLI meant to run as an unprivileged user must not hold root's groups, and needs the groups of that user (`docker`, for example) to use what it may use."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::the_process_runs_as_the_requested_user @unix"
+
+[behavior.debug-redacts-secrets]
+summary = "Printing options or an MCP server configuration for debugging"
+python = "The `repr` of the dataclasses prints every field, the values of `env`, `extra_args`, and the headers of a remote server included."
+rust = "`Debug` prints the keys of `env`, `extra_args`, the `env` of a stdio server, the `headers` of a remote server, and the `env` and `headers` of a raw server configuration with `<redacted>` for each value, and `settings` or MCP servers given as inline JSON as `<redacted>`; paths and every other field are printed."
+ref = "src/claude_agent_sdk/types.py:2430"
+anchor = "class ClaudeAgentOptions:"
+category = "deliberate"
+reason = "These values hold API keys and tokens, and `{:?}` ends up in logs and panic messages; the keys stay visible so the output still shows what is set."
+test = "crates/claude-agent-rust-sdk/tests/options.rs::debug_output_names_secrets_without_printing_them"

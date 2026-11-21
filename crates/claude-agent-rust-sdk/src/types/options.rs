@@ -24,7 +24,7 @@ const SKILL_TOOL: &str = "Skill";
 /// Build a value with [`ClaudeAgentOptions::builder`]; the builder checks
 /// the combinations the CLI cannot honor. Every field has the default of
 /// the upstream Python SDK.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct ClaudeAgentOptions {
     /// Base set of available built-in tools. To restrict which tools run
@@ -150,6 +150,120 @@ pub struct ClaudeAgentOptions {
     /// Identifier of your application, such as `my-app/1.0.0`, sent on API
     /// requests.
     pub client_app: Option<String>,
+}
+
+/// Prints every field, with the values of `env` and `extra_args`, and
+/// `settings` given as inline JSON, replaced by `<redacted>`: they hold API
+/// keys and tokens. The destructuring lists every field, so a new field
+/// fails to compile until it is printed here.
+impl std::fmt::Debug for ClaudeAgentOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            tools,
+            allowed_tools,
+            system_prompt,
+            mcp_servers,
+            strict_mcp_config,
+            permission_mode,
+            continue_conversation,
+            resume,
+            session_id,
+            max_turns,
+            max_budget_usd,
+            disallowed_tools,
+            model,
+            fallback_model,
+            betas,
+            permission_prompt_tool_name,
+            cwd,
+            cli_path,
+            settings,
+            add_dirs,
+            env,
+            extra_args,
+            max_buffer_size,
+            stderr,
+            can_use_tool,
+            hooks,
+            user,
+            include_partial_messages,
+            include_hook_events,
+            forward_subagent_text,
+            verbatim_prompts,
+            fork_session,
+            resume_session_at,
+            resume_drops_turn,
+            agents,
+            setting_sources,
+            skills,
+            sandbox,
+            plugins,
+            max_thinking_tokens,
+            thinking,
+            effort,
+            output_format,
+            enable_file_checkpointing,
+            session_store,
+            session_store_flush,
+            load_timeout_ms,
+            task_budget,
+            client_app,
+        } = self;
+        f.debug_struct("ClaudeAgentOptions")
+            .field("tools", tools)
+            .field("allowed_tools", allowed_tools)
+            .field("system_prompt", system_prompt)
+            .field("mcp_servers", mcp_servers)
+            .field("strict_mcp_config", strict_mcp_config)
+            .field("permission_mode", permission_mode)
+            .field("continue_conversation", continue_conversation)
+            .field("resume", resume)
+            .field("session_id", session_id)
+            .field("max_turns", max_turns)
+            .field("max_budget_usd", max_budget_usd)
+            .field("disallowed_tools", disallowed_tools)
+            .field("model", model)
+            .field("fallback_model", fallback_model)
+            .field("betas", betas)
+            .field("permission_prompt_tool_name", permission_prompt_tool_name)
+            .field("cwd", cwd)
+            .field("cli_path", cli_path)
+            .field(
+                "settings",
+                &super::redact::RedactedSettings(settings.as_deref()),
+            )
+            .field("add_dirs", add_dirs)
+            .field("env", &super::redact::RedactedMap(env))
+            .field("extra_args", &super::redact::RedactedArguments(extra_args))
+            .field("max_buffer_size", max_buffer_size)
+            .field("stderr", stderr)
+            .field("can_use_tool", can_use_tool)
+            .field("hooks", hooks)
+            .field("user", user)
+            .field("include_partial_messages", include_partial_messages)
+            .field("include_hook_events", include_hook_events)
+            .field("forward_subagent_text", forward_subagent_text)
+            .field("verbatim_prompts", verbatim_prompts)
+            .field("fork_session", fork_session)
+            .field("resume_session_at", resume_session_at)
+            .field("resume_drops_turn", resume_drops_turn)
+            .field("agents", agents)
+            .field("setting_sources", setting_sources)
+            .field("skills", skills)
+            .field("sandbox", sandbox)
+            .field("plugins", plugins)
+            .field("max_thinking_tokens", max_thinking_tokens)
+            .field("thinking", thinking)
+            .field("effort", effort)
+            .field("output_format", output_format)
+            .field("enable_file_checkpointing", enable_file_checkpointing)
+            .field("session_store", session_store)
+            .field("session_store_flush", session_store_flush)
+            .field("load_timeout_ms", load_timeout_ms)
+            .field("task_budget", task_budget)
+            .field("client_app", client_app)
+            .finish()
+    }
 }
 
 impl Default for ClaudeAgentOptions {

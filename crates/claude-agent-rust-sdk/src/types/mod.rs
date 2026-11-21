@@ -12,6 +12,7 @@ mod hook;
 mod message;
 mod options;
 mod permission;
+mod redact;
 mod status;
 
 pub use config::*;

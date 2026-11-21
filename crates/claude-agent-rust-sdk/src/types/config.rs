@@ -439,7 +439,7 @@ impl AgentDefinition {
 ///
 /// It is written to the CLI without a `type` key, which the CLI reads as
 /// stdio.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct McpStdioServerConfig {
     /// Command to run.
@@ -490,8 +490,26 @@ impl McpStdioServerConfig {
 
 extra_field!(McpStdioServerConfig);
 
+/// Prints the values of `env` as `<redacted>`: they hold tokens.
+impl std::fmt::Debug for McpStdioServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            command,
+            args,
+            env,
+            extra,
+        } = self;
+        f.debug_struct("McpStdioServerConfig")
+            .field("command", command)
+            .field("args", args)
+            .field("env", &super::redact::optional_map(env.as_ref()))
+            .field("extra", extra)
+            .finish()
+    }
+}
+
 /// MCP server reached over a URL, with optional headers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct McpRemoteServerConfig {
     /// URL of the server.
@@ -588,7 +606,7 @@ impl McpSdkServerConfig {
 }
 
 /// MCP server configuration.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub enum McpServerConfig {
     /// A child process speaking over stdio.
@@ -703,7 +721,7 @@ fn serialize_extra<M: SerializeMap>(
 }
 
 /// MCP servers of a session.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub enum McpServers {
     /// Server configurations keyed by server name.
@@ -712,6 +730,39 @@ pub enum McpServers {
     Json(String),
     /// Path of a configuration file, passed to the CLI as is.
     Path(PathBuf),
+}
+
+/// Prints inline JSON as `<redacted>`, since it holds the environment and
+/// the headers of its servers; a path and a map are printed, the map
+/// through the redacting `Debug` of each configuration.
+impl std::fmt::Debug for McpServers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Map(servers) => f.debug_tuple("Map").field(servers).finish(),
+            Self::Json(_) => f
+                .debug_tuple("Json")
+                .field(&super::redact::Placeholder)
+                .finish(),
+            Self::Path(path) => f.debug_tuple("Path").field(path).finish(),
+        }
+    }
+}
+
+/// Prints the values of `env` and `headers` as `<redacted>`, for the typed
+/// configurations through their own `Debug` and for a raw one key by key.
+impl std::fmt::Debug for McpServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stdio(config) => f.debug_tuple("Stdio").field(config).finish(),
+            Self::Sse(config) => f.debug_tuple("Sse").field(config).finish(),
+            Self::Http(config) => f.debug_tuple("Http").field(config).finish(),
+            Self::Sdk(config) => f.debug_tuple("Sdk").field(config).finish(),
+            Self::Raw(raw) => f
+                .debug_tuple("Raw")
+                .field(&super::redact::RedactedRaw(raw))
+                .finish(),
+        }
+    }
 }
 
 impl McpServers {
@@ -784,6 +835,22 @@ impl SdkPluginConfig {
 }
 
 extra_field!(McpRemoteServerConfig);
+
+/// Prints the values of `headers` as `<redacted>`: they hold tokens.
+impl std::fmt::Debug for McpRemoteServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            url,
+            headers,
+            extra,
+        } = self;
+        f.debug_struct("McpRemoteServerConfig")
+            .field("url", url)
+            .field("headers", &super::redact::optional_map(headers.as_ref()))
+            .field("extra", extra)
+            .finish()
+    }
+}
 
 /// Network configuration of the sandbox.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

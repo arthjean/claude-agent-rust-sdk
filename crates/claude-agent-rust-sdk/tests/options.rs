@@ -953,3 +953,64 @@ fn skills_all_shadows_the_skill_tool() {
             .contains("invoked for: Read, Skill.")
     );
 }
+
+#[test]
+fn debug_output_names_secrets_without_printing_them() {
+    let options = ClaudeAgentOptions::builder()
+        .env([("ANTHROPIC_API_KEY", "sk-ant-secret-1")])
+        .extra_arg("api-token", Some("secret-2"))
+        .extra_arg("verbose", None)
+        .settings(r#"{"env": {"TOKEN": "secret-3"}}"#)
+        .mcp_server(
+            "stdio",
+            McpServerConfig::Stdio(
+                McpStdioServerConfig::new("server").env([("GITHUB_TOKEN", "secret-4")]),
+            ),
+        )
+        .mcp_server(
+            "remote",
+            McpServerConfig::Http(
+                McpRemoteServerConfig::new("https://example.test")
+                    .headers([("Authorization", "Bearer secret-5")]),
+            ),
+        )
+        .build()
+        .unwrap();
+    let printed = format!("{options:?}");
+    for secret in ["secret-1", "secret-2", "secret-3", "secret-4", "secret-5"] {
+        assert!(!printed.contains(secret), "{secret} printed: {printed}");
+    }
+    for name in [
+        "ANTHROPIC_API_KEY",
+        "api-token",
+        "verbose",
+        "GITHUB_TOKEN",
+        "Authorization",
+        "<redacted>",
+        "https://example.test",
+    ] {
+        assert!(printed.contains(name), "{name} missing: {printed}");
+    }
+
+    let path = ClaudeAgentOptions::builder()
+        .settings("/etc/claude/settings.json")
+        .build()
+        .unwrap();
+    assert!(format!("{path:?}").contains("/etc/claude/settings.json"));
+
+    let mut raw = serde_json::Map::new();
+    raw.insert("type".to_owned(), json!("websocket"));
+    raw.insert("headers".to_owned(), json!({"X-Api-Key": "secret-6"}));
+    let raw = McpServerConfig::Raw(raw);
+    let printed = format!("{raw:?}");
+    assert!(!printed.contains("secret-6"), "{printed}");
+    assert!(
+        printed.contains("X-Api-Key") && printed.contains("websocket"),
+        "{printed}"
+    );
+
+    let inline =
+        McpServers::Json(r#"{"mcpServers": {"a": {"env": {"T": "secret-7"}}}}"#.to_owned());
+    let printed = format!("{inline:?}");
+    assert!(!printed.contains("secret-7"), "{printed}");
+}
