@@ -32,7 +32,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | M1 | In-process MCP server follows `mcp` 1.x, upstream installs 2.x | todo | |
 | M2 | Incomplete hook input becomes `Unknown` silently; example fails open | todo | |
 | M3 | Message types do not implement `Serialize` | todo | |
-| M4 | In-process MCP tools run outside the caller context | todo | |
+| M4 | In-process MCP tools run outside the caller context | done | MCP calls spawned through `caller_context::spawn` (`src/mcp/server.rs`); `caller_context.rs::in_process_tools_run_in_the_span_of_the_caller_that_connected`, red before. |
 | M5 | Process group gets SIGKILL with no grace at normal exit | todo | |
 | M6 | No pinned CLI; reserved dir never filled; "newer" warning per session | todo | |
 | M7 | `serde_json/preserve_order` forced on the whole dependency graph | todo | |
@@ -41,9 +41,9 @@ evidence), `owner` (decision note written, waiting on the owner).
 
 | Id | Title | Status | Proof / note |
 |---|---|---|---|
-| m1 | Panicking prompt stream leaves stdin open | todo | |
+| m1 | Panicking prompt stream leaves stdin open | done | `catch_unwind` around `input.next()` in `stream_input`; `query.rs::a_prompt_stream_that_panics_closes_stdin_and_the_query_ends`, red before (stream stalled). |
 | m2 | `disconnect()` cannot interrupt a stuck `connect()` | todo | |
-| m3 | `is_retryable()` false for `terminal_reason == "api_error"` without status | todo | |
+| m3 | `is_retryable()` false for `terminal_reason == "api_error"` without status | done | `terminal_reason == "api_error"` with no status is retryable; `error::tests::an_api_error_result_without_a_status_is_retryable_as_upstream_documents`, red before. |
 | m4 | `continue_conversation` refused for a store that implements `list_sessions` undeclared | todo | |
 | m5 | Wrongly typed optional field is lost | todo | |
 | m6 | `task_progress` null/non-object `usage` read as zeros | todo | |
@@ -54,9 +54,9 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m11 | `user` option drops supplementary groups | todo | |
 | m12 | macOS: no parent-death signal, no exit cleanup | todo | |
 | m13 | Subagent read via store: id check too broad, applied with `list_subkeys` | todo | |
-| m14 | Non-UTF-8 `CLAUDE_CONFIG_DIR` falls back to `~/.claude` | todo | |
-| m15 | Mirror real-path alias only when `projects/` exists at start | todo | |
-| m16 | Windows drive guard on subpaths accepts ASCII letters only | todo | |
+| m14 | Non-UTF-8 `CLAUDE_CONFIG_DIR` falls back to `~/.claude` | done | `var_os`, kept byte for byte; no home gives no directory (`[behavior.no-home-directory]`); `sessions.rs::a_config_dir_whose_name_is_not_utf8_is_read_as_python_reads_it` (Linux), red before (listed `~/.claude`). |
+| m15 | Mirror real-path alias only when `projects/` exists at start | done | `is_dir()` condition removed; `mirror::tests::a_frame_under_the_real_path_is_mirrored_when_the_projects_directory_does_not_exist_yet`, red before. |
+| m16 | Windows drive guard on subpaths accepts ASCII letters only | done | Any second character `:` is a drive, as `ntpath.splitdrive` (probed on Python 3.15: `1:foo`, `é:foo`, `::x`); `resume::tests::a_subpath_with_any_drive_prefix_is_rejected_as_ntpath_splitdrive_does`, red before. |
 | m17 | `SdkMcpTool::typed` accepts argument types that fail every call | todo | |
 | m18 | `can_use_tool` shadowed warning not filterable, emitted before validation | todo | |
 | m19 | MCP schema validation: two unrecorded differences, one wrong entry | todo | |
@@ -93,7 +93,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D11 | Duplicate ids in a store listing page: one filled | todo | |
 | D12 | Float `created_at` refused by the session summary | todo | |
 | D13 | Mirror drops a non-object entry without a trace | todo | |
-| D14 | macOS: `CLAUDE_CONFIG_DIR=""` reads the Keychain | todo | |
+| D14 | macOS: `CLAUDE_CONFIG_DIR=""` reads the Keychain | done | Keychain read only when the variable is unset in the options and the process, as upstream `caller_config_dir is None`; `resume::tests::an_empty_config_dir_variable_of_the_process_keeps_the_keychain_out_as_upstream`. Home part of D15 done with m14. |
 | D15 | Sync `remove_dir_all` in a `Drop`; no home reads `./.claude` | todo | |
 | D16 | Conformance takes the first summary instead of the last | todo | |
 | D17 | `ToolContent::Resource.mime_type` never settable or sent | todo | |
