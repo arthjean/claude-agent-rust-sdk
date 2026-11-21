@@ -144,7 +144,10 @@ pub enum ToolContent {
     Resource {
         /// URI of the resource.
         uri: String,
-        /// MIME type of the resource.
+        /// MIME type of the resource, set with
+        /// [`with_mime_type`](ToolContent::with_mime_type). It stays with the
+        /// content and is not sent: the CLI gets the text alone, as upstream
+        /// flattens an embedded resource to a text block.
         mime_type: Option<String>,
         /// Contents of the resource.
         contents: ResourceContents,
@@ -210,6 +213,19 @@ impl ToolContent {
             mime_type: None,
             contents: ResourceContents::Blob(blob.into()),
         }
+    }
+
+    /// Sets the MIME type of an embedded resource; other blocks are
+    /// returned unchanged.
+    #[must_use]
+    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
+        if let Self::Resource {
+            mime_type: slot, ..
+        } = &mut self
+        {
+            *slot = Some(mime_type.into());
+        }
+        self
     }
 
     fn to_wire(&self) -> Option<Value> {

@@ -1071,10 +1071,15 @@ async fn tool_results_convert_each_content_type() {
         ),
         ToolContent::resource_link("Data", "file:///data.csv"),
         ToolContent::resource_link_parts(None, None, None),
-        ToolContent::text_resource("file:///notes.txt", "embedded notes"),
+        ToolContent::text_resource("file:///notes.txt", "embedded notes")
+            .with_mime_type("text/plain"),
         ToolContent::blob_resource("file:///archive.zip", "YmluYXJ5"),
         ToolContent::text("after"),
     ]);
+    assert!(matches!(
+        &mixed.content[5],
+        ToolContent::Resource { mime_type: Some(mime), .. } if mime == "text/plain"
+    ));
     let client = SdkMcpClient::connected(server([returning("mixed", mixed)])).await;
     let outcome = client.call_tool("srv", "mixed", json!({})).await;
     assert_eq!(
