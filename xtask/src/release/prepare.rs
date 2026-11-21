@@ -315,6 +315,22 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// A copy of the version `release prepare` no longer finds would make
+    /// the next release fail; this checkout must hold every one.
+    #[test]
+    fn every_version_copy_is_in_this_checkout() {
+        let repo = Repo {
+            root: repo::workspace_root(),
+        };
+        let version = repo.workspace_version().unwrap();
+        let current = Values {
+            version: version.to_string(),
+            minor: version.major_minor(),
+            ..Values::default()
+        };
+        repo::rewrite_copies(&repo, &VERSION_COPIES, &current, &current).unwrap();
+    }
+
     #[test]
     fn arguments_take_one_bump_and_the_options() {
         let parsed = parse(&["patch".to_owned(), "--dry-run".to_owned()]).unwrap();

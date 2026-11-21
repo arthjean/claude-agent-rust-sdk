@@ -37,7 +37,7 @@ pub const UPSTREAM_COPIES: [Pinned; 18] = [
     },
     Pinned {
         file: "README.md",
-        template: "against {cli}.",
+        template: "against {cli} and logs a warning",
     },
     Pinned {
         file: "docs/migration.md",
@@ -294,6 +294,26 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A copy the policy tests no longer find word for word would make the
+    /// next `upstream-sync` fail; this checkout must hold every one.
+    #[test]
+    fn every_upstream_copy_is_in_this_checkout() {
+        let repo = Repo {
+            root: repo::workspace_root(),
+        };
+        let current = Values {
+            sdk: repo.library_constant(repo::SDK_CONSTANT).unwrap(),
+            cli: repo.library_constant(repo::CLI_CONSTANT).unwrap(),
+            commit: repo
+                .git(&["rev-parse", &format!("HEAD:{}", repo::UPSTREAM)])
+                .unwrap()
+                .trim()
+                .to_owned(),
+            ..Values::default()
+        };
+        repo::rewrite_copies(&repo, &UPSTREAM_COPIES, &current, &current).unwrap();
+    }
 
     #[test]
     fn the_cli_version_is_read_from_its_module() {
