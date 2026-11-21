@@ -755,13 +755,6 @@ impl ControlSession {
     ) -> Result<(Self, Inbox)> {
         let shadowed = options.can_use_tool_shadowed_warning();
         let options = options.for_session()?;
-        if let Some(warning) = shadowed {
-            tracing::warn!(
-                target: CAN_USE_TOOL_SHADOWED_TARGET,
-                code = CAN_USE_TOOL_SHADOWED_CODE,
-                "{warning}"
-            );
-        }
         let materialized = match transport {
             None => materialize_resume_session(&options).await?,
             Some(_) => {
@@ -769,6 +762,13 @@ impl ControlSession {
                 None
             }
         };
+        if let Some(warning) = shadowed {
+            tracing::warn!(
+                target: CAN_USE_TOOL_SHADOWED_TARGET,
+                code = CAN_USE_TOOL_SHADOWED_CODE,
+                "{warning}"
+            );
+        }
         let Some(materialized) = materialized else {
             return Self::for_options(&options, transport);
         };

@@ -1462,3 +1462,45 @@ async fn a_streamed_prompt_reaches_a_cli_process_whose_answer_waits_for_stdin_to
     };
     assert_eq!(result.subtype, "success");
 }
+
+/// Stores only what is required, so `continue_conversation` cannot list.
+#[derive(Clone, Default)]
+struct AppendOnlyStore;
+
+impl claude_agent_rust_sdk::SessionStore for AppendOnlyStore {
+    async fn append(
+        &self,
+        _key: &claude_agent_rust_sdk::SessionKey,
+        _entries: &[claude_agent_rust_sdk::SessionStoreEntry],
+    ) -> Result<(), claude_agent_rust_sdk::SessionStoreError> {
+        Ok(())
+    }
+
+    async fn load(
+        &self,
+        _key: &claude_agent_rust_sdk::SessionKey,
+    ) -> Result<
+        Option<Vec<claude_agent_rust_sdk::SessionStoreEntry>>,
+        claude_agent_rust_sdk::SessionStoreError,
+    > {
+        Ok(None)
+    }
+}
+
+/// Upstream checks the session store and resumes before it configures the
+/// permission callback, which is where it warns: a connect the store check
+/// refuses logs no shadowing warning.
+#[tokio::test]
+async fn a_connect_refused_by_the_store_check_logs_no_shadowing_warning() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let options = with_permission_callback(fake.options())
+        .allowed_tools(["Read"])
+        .session_store(AppendOnlyStore)
+        .continue_conversation(true)
+        .build()
+        .unwrap();
+    let error = ClaudeSdkClient::new(options).connect().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Config, "{error}");
+    assert_eq!(shadowed_warnings(&warnings), Vec::<String>::new());
+}
