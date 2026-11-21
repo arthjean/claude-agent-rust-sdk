@@ -33,11 +33,11 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 | State | Upstream exports | Upstream tests |
 |---|---|---|
-| Implemented | 147 (92.5%) | 945 (80.2%) |
+| Implemented | 147 (92.5%) | 993 (81.0%) |
 | Adapted | 12 (7.5%) | 0 (0.0%) |
-| Not ported | 0 (0.0%) | 233 (19.8%) |
+| Not ported | 0 (0.0%) | 233 (19.0%) |
 | Pending | 0 (0.0%) | 0 (0.0%) |
-| Total | 159 | 1178 |
+| Total | 159 | 1226 |
 
 ### The differential harness
 

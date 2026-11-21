@@ -245,9 +245,10 @@ cargo xtask e2e                    run the end-to-end suite against the real CLI
 The parity ledgers live in [`parity/`](https://github.com/arthjean/claude-agent-rust-sdk/tree/main/parity): `surface.toml` lists every name
 of the `__all__` of the Python package (the names `claude_agent_sdk.testing` and
 `claude_agent_sdk.types` define outside it are not listed), and `tests.toml` lists every upstream unit test (under
-`tests/`), each with the Rust item that replaces it or the reason it is not
-ported. The upstream end-to-end tests (under `e2e-tests/`) are not listed;
-`crates/claude-agent-rust-sdk/tests/e2e` holds the Rust suite against the real CLI.
+`tests/`) and end-to-end test (under `e2e-tests/`), each with the Rust test that
+replaces it or the reason it is not ported. The Rust end-to-end suite,
+`crates/claude-agent-rust-sdk/tests/e2e`, runs against the real CLI with
+`cargo xtask e2e`.
 
 `cargo xtask parity-diff` measures parity instead of stating it: it plays every
 case of `parity/cases` through both SDKs against the scripted stand-in CLI and

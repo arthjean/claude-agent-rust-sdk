@@ -160,9 +160,15 @@ fn test_modules(directory: &Path, found: &mut Vec<PathBuf>) -> Result<(), String
     Ok(())
 }
 
+/// The unit tests under `tests/` and the end-to-end tests under
+/// `e2e-tests/`, each as `<module path>::<test>`.
 fn upstream_tests(upstream: &Path) -> Result<Vec<String>, String> {
     let mut modules = Vec::new();
     test_modules(&upstream.join("tests"), &mut modules)?;
+    let end_to_end = upstream.join("e2e-tests");
+    if end_to_end.is_dir() {
+        test_modules(&end_to_end, &mut modules)?;
+    }
     modules.sort();
     let mut tests = Vec::new();
     for module in modules {
@@ -375,8 +381,10 @@ fn test_problem(root: &Path, tests: &rust::Tests, path: &str) -> Option<&'static
     if !present {
         return Some("which does not exist");
     }
-    (tests.ignored.contains(bare) && !rust::ci_runs_ignored(root, bare))
-        .then_some("which is `#[ignore]`d and run by no step of the CI workflow")
+    (tests.ignored.contains(bare)
+        && !rust::ci_runs_ignored(root, bare)
+        && !rust::e2e_workflow_runs(root, bare))
+    .then_some("which is `#[ignore]`d and run by no step of the CI workflow")
 }
 
 fn missing_paths(

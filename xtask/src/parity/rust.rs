@@ -219,6 +219,18 @@ pub fn ci_runs_ignored(root: &Path, path: &str) -> bool {
     runs_ignored(&workflow, path)
 }
 
+/// The test target of the end-to-end suite that `cargo xtask e2e` runs.
+const E2E_TARGET: &str = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::";
+
+/// Whether the `#[ignore]`d test at `path` belongs to the end-to-end suite
+/// and `.github/workflows/e2e.yml` runs that suite with `cargo xtask e2e`,
+/// which passes `--test e2e -- --ignored`.
+pub fn e2e_workflow_runs(root: &Path, path: &str) -> bool {
+    path.starts_with(E2E_TARGET)
+        && std::fs::read_to_string(root.join(".github/workflows/e2e.yml"))
+            .is_ok_and(|workflow| workflow.contains("run: cargo xtask e2e"))
+}
+
 fn runs_ignored(workflow: &str, path: &str) -> bool {
     let Some((target, name)) = path.split_once("::") else {
         return false;
@@ -440,6 +452,21 @@ pub fn unresolved_paths(root: &Path, paths: &[&str]) -> Result<Vec<usize>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_ignored_end_to_end_test_counts_as_run_when_the_workflow_runs_the_suite() {
+        let root = tempfile::tempdir().unwrap();
+        let workflows = root.path().join(".github/workflows");
+        std::fs::create_dir_all(&workflows).unwrap();
+        let test = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hooks::a_hook_runs";
+        assert!(!e2e_workflow_runs(root.path(), test));
+        std::fs::write(workflows.join("e2e.yml"), "      - run: cargo xtask e2e\n").unwrap();
+        assert!(e2e_workflow_runs(root.path(), test));
+        assert!(!e2e_workflow_runs(
+            root.path(),
+            "crates/claude-agent-rust-sdk/tests/hooks.rs::a_hook_runs"
+        ));
+    }
 
     const STEP: &str = "      - run: |\n          KEY=1 cargo test -p sdk --all-features --test session_resume \\\n            keychain -- --ignored --nocapture\n";
 

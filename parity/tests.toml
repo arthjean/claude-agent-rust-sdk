@@ -1,6 +1,9 @@
-# Tests ledger: every unit test of the upstream SDK
-# (upstream/claude-agent-sdk-python/tests) with the Rust tests that assert
-# the same behavior, or the key of an `[exclusions]` reason.
+# Tests ledger: every unit test (upstream/claude-agent-sdk-python/tests)
+# and end-to-end test (upstream/claude-agent-sdk-python/e2e-tests) of the
+# upstream SDK with the Rust tests that assert the same behavior, or the
+# key of an `[exclusions]` reason. An `#[ignore]`d Rust test counts only
+# when a CI step runs it: a `cargo test ... -- --ignored` step of ci.yml,
+# or, for the end-to-end suite, `cargo xtask e2e` in e2e.yml.
 #
 # A Rust test is named `<target source file>::<test name>`, as printed by
 # `cargo xtask parity-tests`. A test compiled on one platform only carries a
@@ -1275,3 +1278,93 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestOlderCliWarning::test_warns_when_cli_predates_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
 "TestOlderCliWarning::test_no_warning_when_cli_supports_client_composed" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::verbatim_prompts_warns_on_a_cli_that_ignores_it" }
 "TestOlderCliWarning::test_no_warning_when_option_is_off" = { rust = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once" }
+
+# End-to-end tests under `e2e-tests/`, against the real CLI. Their Rust
+# counterparts are `#[ignore]`d and run by `cargo xtask e2e` in
+# `.github/workflows/e2e.yml`, which needs API credentials.
+
+[tests."e2e-tests/test_agents_and_settings.py"]
+"test_agent_definition" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::an_agent_definition_is_listed_in_the_init_message" }
+"test_agent_definition_with_query_function" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::an_agent_definition_works_with_the_query_function" }
+"test_large_agents_with_query_function" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::large_agent_definitions_work_with_the_query_function" }
+"test_filesystem_agent_loading" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::filesystem_agents_load_and_the_response_completes" }
+"test_setting_sources_default" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::default_setting_sources_load_the_local_settings" }
+"test_setting_sources_user_only" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::user_only_setting_sources_exclude_project_commands" }
+"test_setting_sources_project_included" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::listed_setting_sources_include_the_local_settings" }
+"test_large_agent_definitions_via_initialize" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::agents_and_settings::large_agent_definitions_are_sent_through_the_initialize_request" }
+
+[tests."e2e-tests/test_conversation_reset.py"]
+"test_clear_emits_conversation_reset" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::conversation_reset::clear_emits_a_conversation_reset_for_the_old_session" }
+
+[tests."e2e-tests/test_dynamic_control.py"]
+"test_set_permission_mode" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::dynamic_control::the_permission_mode_changes_during_a_session" }
+"test_set_model" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::dynamic_control::the_model_changes_during_a_session" }
+"test_interrupt" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::dynamic_control::an_interrupt_is_accepted_during_a_session" }
+
+[tests."e2e-tests/test_error_results.py"]
+"test_query_api_error_raises_result_error_with_payload" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::error_results::an_api_failure_ends_the_query_with_a_result_error_carrying_the_payload" }
+
+[tests."e2e-tests/test_forward_subagent_text.py"]
+"test_forward_subagent_text_delivers_attributed_text" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::forward_subagent_text::forwarded_subagent_text_is_attributed_to_the_agent_tool_use" }
+"test_subagent_text_not_forwarded_by_default" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::forward_subagent_text::subagent_text_is_not_forwarded_by_default" }
+
+[tests."e2e-tests/test_hook_events.py"]
+"test_pre_tool_use_hook_with_additional_context" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hook_events::a_pre_tool_use_hook_receives_the_tool_use_id_and_adds_context" }
+"test_post_tool_use_hook_with_tool_use_id" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hook_events::a_post_tool_use_hook_receives_the_tool_use_id" }
+"test_notification_hook" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hook_events::a_notification_hook_receives_typed_notifications" }
+"test_multiple_hooks_together" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hook_events::several_hook_events_are_registered_together" }
+
+[tests."e2e-tests/test_hooks.py"]
+"test_hook_with_permission_decision_and_reason" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hooks::a_hook_answers_with_a_permission_decision_and_a_reason" }
+"test_hook_with_continue_and_stop_reason" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hooks::a_hook_stops_the_run_with_continue_false_and_a_stop_reason" }
+"test_hook_with_additional_context" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::hooks::a_hook_adds_context_through_its_specific_output" }
+
+[tests."e2e-tests/test_include_partial_messages.py"]
+"test_include_partial_messages_stream_events" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::include_partial_messages::partial_messages_arrive_as_stream_events" }
+"test_include_partial_messages_thinking_deltas" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::include_partial_messages::thinking_is_streamed_through_deltas" }
+"test_partial_messages_disabled_by_default" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::include_partial_messages::partial_messages_are_off_by_default" }
+
+[tests."e2e-tests/test_message_origin.py"]
+"test_result_origin_and_uuid_round_trip_host_stamp" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::message_origin::the_result_echoes_the_origin_and_the_id_stamped_by_the_host" }
+
+[tests."e2e-tests/test_parallel_tool_session_reads.py"]
+"test_parallel_tool_calls_are_read_back_whole" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::parallel_tool_session_reads::parallel_tool_calls_are_read_back_whole" }
+
+[tests."e2e-tests/test_run_end.py"]
+"test_hook_run_ends_with_one_result" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::run_end::a_text_prompt_with_a_hook_ends_with_one_result" }
+"test_follow_up_turn_after_a_background_subagent_is_served" = { rust = ["crates/claude-agent-rust-sdk/tests/e2e/main.rs::run_end::the_follow_up_turn_is_served_when_the_caller_asks_for_the_state_frames", "crates/claude-agent-rust-sdk/tests/e2e/main.rs::run_end::the_follow_up_turn_is_served_when_the_sdk_asks_for_the_state_frames"] }
+
+[tests."e2e-tests/test_sdk_mcp_tools.py"]
+"test_sdk_mcp_tool_execution" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::sdk_mcp_tools::an_allowed_tool_is_executed" }
+"test_sdk_mcp_permission_enforcement" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::sdk_mcp_tools::a_disallowed_tool_is_never_executed" }
+"test_sdk_mcp_multiple_tools" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::sdk_mcp_tools::several_tools_of_one_server_are_executed" }
+"test_sdk_mcp_without_permissions" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::sdk_mcp_tools::a_tool_without_permission_is_not_executed" }
+
+[tests."e2e-tests/test_session_store_resume_settings.py"]
+"test_store_resume_applies_user_settings" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::session_store_resume_settings::a_store_resume_applies_the_user_settings" }
+
+[tests."e2e-tests/test_stderr_callback.py"]
+"test_stderr_callback_without_debug" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::stderr_callback::the_stderr_callback_receives_nothing_on_a_clean_run" }
+
+[tests."e2e-tests/test_structured_output.py"]
+"test_simple_structured_output" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::structured_output::a_flat_schema_is_filled_after_exploring_with_tools" }
+"test_nested_structured_output" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::structured_output::a_schema_with_nested_objects_and_arrays_is_filled" }
+"test_structured_output_with_enum" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::structured_output::an_enum_constraint_is_respected" }
+"test_structured_output_with_tools" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::structured_output::a_schema_is_filled_when_the_agent_uses_tools" }
+
+[tests."e2e-tests/test_subagent_session_reads.py"]
+"test_subagent_messages_carry_parent_tool_use_id" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::subagent_session_reads::subagent_messages_carry_the_id_of_the_tool_call_that_spawned_them" }
+
+[tests."e2e-tests/test_tool_permissions.py"]
+"test_permission_callback_gets_called" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::tool_permissions::the_permission_callback_is_called_for_a_command_that_is_not_read_only" }
+"test_query_async_iterable_prompt_with_only_can_use_tool" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::tool_permissions::a_streamed_prompt_with_only_a_permission_callback_keeps_stdin_open_for_the_verdict" }
+"test_query_string_prompt_with_can_use_tool" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::tool_permissions::a_text_prompt_works_with_a_permission_callback" }
+
+[tests."e2e-tests/test_truncating_resume.py"]
+"test_truncating_resume_with_matching_drops_turn_forks_cleanly" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::truncating_resume::a_fork_that_names_the_dropped_turn_succeeds_without_it" }
+"test_truncating_resume_with_wrong_drops_turn_is_refused" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::truncating_resume::a_fork_that_names_another_turn_is_refused" }
+
+[tests."e2e-tests/test_verbatim_prompts.py"]
+"test_at_path_is_expanded_by_default" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::verbatim_prompts::a_mentioned_path_is_expanded_by_default" }
+"test_query_string_prompt_is_not_expanded" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::verbatim_prompts::a_text_prompt_of_a_query_is_not_expanded" }
+"test_client_query_prompt_is_not_expanded" = { rust = "crates/claude-agent-rust-sdk/tests/e2e/main.rs::verbatim_prompts::a_prompt_sent_through_a_client_is_not_expanded" }
