@@ -374,7 +374,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      CLAUDE_CODE_VERSION: 2.1.329
+      CLAUDE_CODE_VERSION: 2.1.330
     steps:
       - uses: actions/checkout@v7.0.1
         with:

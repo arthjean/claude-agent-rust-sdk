@@ -115,7 +115,7 @@
 //! The crate does not bundle the CLI: it runs the `claude` executable
 //! already installed on the machine (see [`cli::find_cli`]), with the
 //! credentials of the person running the program. It is tested against CLI
-//! 2.1.329 ([`CLI_VERSION`]), warns when the installed CLI reports another
+//! 2.1.330 ([`CLI_VERSION`]), warns when the installed CLI reports another
 //! version, and warns that it may not work when it is older than
 //! 2.0.0 ([`MINIMUM_CLI_VERSION`]).
 //!
@@ -335,11 +335,11 @@ struct ReadmeExamples;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Version of the CLI this release is developed and tested against.
-pub const CLI_VERSION: &str = "2.1.329";
+pub const CLI_VERSION: &str = "2.1.330";
 
 /// Oldest CLI version the SDK supports. An older CLI still runs, with a
 /// logged warning.
 pub const MINIMUM_CLI_VERSION: &str = "2.0.0";
 
 /// Version of the upstream Python SDK this release is ported from.
-pub const UPSTREAM_SDK_VERSION: &str = "0.2.186";
+pub const UPSTREAM_SDK_VERSION: &str = "0.2.187";

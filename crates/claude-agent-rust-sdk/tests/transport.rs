@@ -596,7 +596,10 @@ async fn a_cli_older_or_newer_than_the_tested_version_warns_once() {
     assert_eq!(older.len(), 1, "{older:?}");
     assert!(
         older[0].starts_with("Claude Code 2.0.20 at ")
-            && older[0].contains("is older than 2.1.329"),
+            && older[0].contains(&format!(
+                "is older than {}",
+                claude_agent_rust_sdk::CLI_VERSION
+            )),
         "{}",
         older[0]
     );
@@ -610,7 +613,14 @@ async fn a_cli_older_or_newer_than_the_tested_version_warns_once() {
 
     let newer = version_warnings("99.99.99").await;
     assert_eq!(newer.len(), 1, "{newer:?}");
-    assert!(newer[0].contains("is newer than 2.1.329"), "{}", newer[0]);
+    assert!(
+        newer[0].contains(&format!(
+            "is newer than {}",
+            claude_agent_rust_sdk::CLI_VERSION
+        )),
+        "{}",
+        newer[0]
+    );
 }
 
 #[tokio::test]

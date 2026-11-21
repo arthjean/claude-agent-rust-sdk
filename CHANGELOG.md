@@ -26,6 +26,7 @@
 - `serde_json/preserve_order` is turned on by the new `preserve-order` feature, on by default, instead of unconditionally: a program that needs sorted `serde_json` maps can turn it off with `default-features = false`. Without it the crate works the same, and the keys of the JSON it writes come out sorted. A build that already set `default-features = false` loses key order until it adds `preserve-order`.
 - In-process MCP servers answer as the Python SDK does under `mcp` 2.x, the version `pip install` resolves: the `initialize` result declares no `experimental` capability, an integer `protocolVersion` and a request other than `initialize` or `ping` before the handshake are refused with `-32602`, an unknown method gets `-32601 Method not found` with the method as `data`, a cancelled call gets `-32800`, and results are written with the keys of the MCP schema first, in byte order, without the keys it does not define (annotation keys set with `ToolAnnotations::extra` stay). The differential harness now runs against `mcp` 2.3.0; `docs/parity.md` lists what differs under `mcp` 1.x.
 - A hook input with a missing or `null` `session_id`, `transcript_path`, `cwd`, or `tool_use_id` stays typed, with an empty string, instead of becoming `HookInput::Unknown`; an input that still does not match its event is logged at warn level instead of debug.
+- Upstream moved to Python SDK 0.2.187 and CLI 2.1.330.
 
 ### Fixed
 
