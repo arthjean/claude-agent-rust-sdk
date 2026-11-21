@@ -359,11 +359,10 @@ async fn reading_before_connecting_yields_one_connection_error() {
     transport.connect().await.unwrap();
     let first = transport.read_messages();
     let second = collect(transport.read_messages()).await;
-    assert!(
-        second[0]
-            .as_ref()
-            .err()
-            .is_some_and(Error::is_cli_connection)
+    assert_eq!(second.len(), 1, "{second:?}");
+    assert_eq!(
+        second[0].as_ref().err().map(Error::kind),
+        Some(ErrorKind::NotConnected)
     );
     drop(first);
     transport.close().await.unwrap();
@@ -1503,4 +1502,38 @@ async fn a_connect_refused_by_the_store_check_logs_no_shadowing_warning() {
     let error = ClaudeSdkClient::new(options).connect().await.unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Config, "{error}");
     assert_eq!(shadowed_warnings(&warnings), Vec::<String>::new());
+}
+
+/// Upstream decodes the error output of the CLI with `errors="replace"`:
+/// a line that is not UTF-8 reaches the callback with U+FFFD in place of
+/// the bad bytes, and the next line is read as usual.
+#[tokio::test]
+async fn a_stderr_line_that_is_not_utf8_reaches_the_callback_with_replacement_characters() {
+    let received = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = Arc::clone(&received);
+    let callback = StderrCallback::from_sync(move |line| {
+        sink.lock().unwrap().push(line.to_owned());
+    });
+    let fake = Fake::new(json!({
+        "steps": [
+            {"stderr": [98, 97, 100, 32, 255, 32, 98, 121, 116, 101, 10]},
+            {"stderr": "next line\n"},
+            {"wait_for_eof": true},
+        ],
+    }));
+    let transport = SubprocessTransport::new(fake.options().stderr(callback).build().unwrap());
+    transport.connect().await.unwrap();
+    let deadline = tokio::time::Instant::now() + common::STEP_LIMIT;
+    while received.lock().unwrap().len() < 2 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "stderr lines never arrived"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    transport.close().await.unwrap();
+    assert_eq!(
+        *received.lock().unwrap(),
+        ["bad \u{fffd} byte", "next line"]
+    );
 }

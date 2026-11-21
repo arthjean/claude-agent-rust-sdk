@@ -1078,6 +1078,34 @@ mod tests {
         }
     }
 
+    /// Upstream decodes the credentials strictly and fails on bytes that
+    /// are not UTF-8; they are read with replacement characters here, as
+    /// transcripts are, and the refresh token is still removed.
+    #[test]
+    fn credentials_that_are_not_utf8_are_copied_with_replacement_characters_and_redacted() {
+        let source = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let file = ".credentials.json";
+        std::fs::write(
+            source.path().join(file),
+            b"{\"claudeAiOauth\":{\"accessToken\":\"a\xff\",\"refreshToken\":\"r\"}}",
+        )
+        .unwrap();
+        let mut env = IndexMap::new();
+        env.insert(
+            "CLAUDE_CONFIG_DIR".to_owned(),
+            source.path().to_string_lossy().into_owned(),
+        );
+        env.insert("ANTHROPIC_API_KEY".to_owned(), "placeholder".to_owned());
+        copy_auth_files(target.path(), &env).unwrap();
+        let copied: Value =
+            serde_json::from_slice(&std::fs::read(target.path().join(file)).unwrap()).unwrap();
+        assert_eq!(
+            copied,
+            json!({"claudeAiOauth": {"accessToken": "a\u{fffd}"}})
+        );
+    }
+
     #[test]
     fn refresh_tokens_are_removed_and_the_rest_is_kept() {
         let credentials = json!({"claudeAiOauth": {"accessToken": "a", "refreshToken": "r", "expiresAt": 1}, "other": true});

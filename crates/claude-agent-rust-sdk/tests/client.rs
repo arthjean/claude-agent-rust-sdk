@@ -516,7 +516,7 @@ async fn disconnect_during_a_connect_closes_the_session_being_opened_at_once() {
         started.elapsed()
     );
     let error = connected.unwrap_err();
-    assert!(error.is_cli_connection(), "{error}");
+    assert_eq!(error.kind(), ErrorKind::ConnectionClosed, "{error}");
     disconnected.unwrap();
     assert!(transport.is_closed());
     assert_not_connected(client.interrupt().await, "interrupt");

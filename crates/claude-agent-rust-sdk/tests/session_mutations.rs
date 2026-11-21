@@ -670,6 +670,17 @@ fn fork_ends_on_a_cycle_of_progress_parents() {
     );
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].message["content"], "prompt");
+    let forked_user = std::fs::read_to_string(project.transcript(&fork))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|entry| entry["type"] == "user")
+        .unwrap();
+    assert_eq!(
+        forked_user["parentUuid"],
+        Value::Null,
+        "the forked message gets no parent"
+    );
 }
 
 #[test]

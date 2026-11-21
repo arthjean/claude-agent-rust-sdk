@@ -176,9 +176,9 @@ impl Player {
                 let _ = stdout.write_all(bytes);
                 let _ = stdout.flush();
             }
-            Step::Stderr(text) => {
+            Step::Stderr(bytes) => {
                 let mut stderr = std::io::stderr().lock();
-                let _ = stderr.write_all(text.as_bytes());
+                let _ = stderr.write_all(bytes);
                 let _ = stderr.flush();
             }
             Step::Expect { pattern, timeout } => return self.expect(pattern, *timeout),
