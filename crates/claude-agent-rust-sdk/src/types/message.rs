@@ -1125,3 +1125,227 @@ pub struct ConversationResetMessage {
     /// verbatim.
     pub extra: Map<String, Value>,
 }
+
+/// The frame a system message built in code starts from: its type and
+/// subtype, which serialization completes with the typed fields.
+fn system_frame(subtype: &str) -> Value {
+    serde_json::json!({"type": "system", "subtype": subtype})
+}
+
+impl GenericSystemMessage {
+    /// Creates a system message of a subtype the crate does not model,
+    /// with its raw frame.
+    #[must_use]
+    pub fn new(subtype: impl Into<String>, data: Value) -> Self {
+        Self {
+            subtype: subtype.into(),
+            data,
+        }
+    }
+}
+
+impl TaskStartedMessage {
+    /// Creates a `task_started` message with the fields upstream requires;
+    /// the optional ones start empty.
+    #[must_use]
+    pub fn new(
+        task_id: impl Into<String>,
+        description: impl Into<String>,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            subtype: "task_started".to_owned(),
+            data: system_frame("task_started"),
+            task_id: task_id.into(),
+            description: description.into(),
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            tool_use_id: None,
+            task_type: None,
+        }
+    }
+}
+
+impl TaskProgressMessage {
+    /// Creates a `task_progress` message with the fields upstream requires;
+    /// the optional ones start empty.
+    #[must_use]
+    pub fn new(
+        task_id: impl Into<String>,
+        description: impl Into<String>,
+        usage: TaskUsage,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            subtype: "task_progress".to_owned(),
+            data: system_frame("task_progress"),
+            task_id: task_id.into(),
+            description: description.into(),
+            usage,
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            tool_use_id: None,
+            last_tool_name: None,
+        }
+    }
+}
+
+impl TaskNotificationMessage {
+    /// Creates a `task_notification` message with the fields upstream
+    /// requires; the optional ones start empty.
+    #[must_use]
+    pub fn new(
+        task_id: impl Into<String>,
+        status: TaskNotificationStatus,
+        output_file: impl Into<String>,
+        summary: impl Into<String>,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            subtype: "task_notification".to_owned(),
+            data: system_frame("task_notification"),
+            task_id: task_id.into(),
+            status,
+            output_file: output_file.into(),
+            summary: summary.into(),
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            tool_use_id: None,
+            usage: None,
+        }
+    }
+}
+
+impl TaskUpdatedMessage {
+    /// Creates a `task_updated` message; `status` is read from the
+    /// `status` key of the patch, as the parser reads it.
+    #[must_use]
+    pub fn new(task_id: impl Into<String>, patch: Map<String, Value>) -> Self {
+        let status = patch
+            .get("status")
+            .and_then(Value::as_str)
+            .map(TaskUpdatedStatus::from);
+        Self {
+            subtype: "task_updated".to_owned(),
+            data: system_frame("task_updated"),
+            task_id: task_id.into(),
+            patch,
+            status,
+            session_id: None,
+            uuid: None,
+        }
+    }
+}
+
+impl MirrorErrorMessage {
+    /// Creates a `mirror_error` message for a store failure, with no key.
+    #[must_use]
+    pub fn new(error: impl Into<String>) -> Self {
+        Self {
+            subtype: "mirror_error".to_owned(),
+            data: system_frame("mirror_error"),
+            key: None,
+            error: error.into(),
+        }
+    }
+}
+
+impl HookEventMessage {
+    /// Creates a hook lifecycle message of a subtype such as
+    /// `hook_started` or `hook_response`.
+    #[must_use]
+    pub fn new(subtype: impl Into<String>, hook_event_name: impl Into<String>) -> Self {
+        let subtype = subtype.into();
+        Self {
+            data: system_frame(&subtype),
+            subtype,
+            hook_event_name: hook_event_name.into(),
+            session_id: None,
+            uuid: None,
+        }
+    }
+}
+
+impl DeferredToolUse {
+    /// Creates a deferred tool call.
+    #[must_use]
+    pub fn new(id: impl Into<String>, name: impl Into<String>, input: Value) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            input,
+        }
+    }
+}
+
+impl StreamEvent {
+    /// Creates a stream event with the fields upstream requires; the
+    /// optional ones start empty.
+    #[must_use]
+    pub fn new(uuid: impl Into<String>, session_id: impl Into<String>, event: Value) -> Self {
+        Self {
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            event,
+            parent_tool_use_id: None,
+            user_message_uuid: None,
+            user_message_uuids: None,
+            extra: Map::new(),
+        }
+    }
+}
+
+impl RateLimitInfo {
+    /// Creates rate limit information with a status; the optional fields
+    /// start empty and `raw` is an empty object.
+    #[must_use]
+    pub fn new(status: RateLimitStatus) -> Self {
+        Self {
+            status,
+            resets_at: None,
+            rate_limit_type: None,
+            utilization: None,
+            overage_status: None,
+            overage_resets_at: None,
+            overage_disabled_reason: None,
+            raw: Value::Object(Map::new()),
+        }
+    }
+}
+
+impl RateLimitEvent {
+    /// Creates a rate limit event.
+    #[must_use]
+    pub fn new(
+        rate_limit_info: RateLimitInfo,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            rate_limit_info,
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            extra: Map::new(),
+        }
+    }
+}
+
+impl ConversationResetMessage {
+    /// Creates a conversation reset message.
+    #[must_use]
+    pub fn new(
+        new_conversation_id: impl Into<String>,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            new_conversation_id: new_conversation_id.into(),
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            extra: Map::new(),
+        }
+    }
+}

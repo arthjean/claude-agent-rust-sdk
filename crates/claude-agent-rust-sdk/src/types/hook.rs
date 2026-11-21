@@ -1452,3 +1452,181 @@ impl HookMatcher {
         self
     }
 }
+
+impl PreToolUseHookInput {
+    /// Creates the input of a `PreToolUse` hook.
+    #[must_use]
+    pub fn new(
+        base: HookInputBase,
+        tool_name: impl Into<String>,
+        tool_input: Value,
+        tool_use_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            base,
+            tool_name: tool_name.into(),
+            tool_input,
+            tool_use_id: tool_use_id.into(),
+        }
+    }
+}
+
+impl PostToolUseHookInput {
+    /// Creates the input of a `PostToolUse` hook, with no duration.
+    #[must_use]
+    pub fn new(
+        base: HookInputBase,
+        tool_name: impl Into<String>,
+        tool_input: Value,
+        tool_response: Value,
+        tool_use_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            base,
+            tool_name: tool_name.into(),
+            tool_input,
+            tool_response,
+            tool_use_id: tool_use_id.into(),
+            duration_ms: None,
+        }
+    }
+}
+
+impl PostToolUseFailureHookInput {
+    /// Creates the input of a `PostToolUseFailure` hook; the optional
+    /// fields start empty.
+    #[must_use]
+    pub fn new(
+        base: HookInputBase,
+        tool_name: impl Into<String>,
+        tool_input: Value,
+        tool_use_id: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Self {
+        Self {
+            base,
+            tool_name: tool_name.into(),
+            tool_input,
+            tool_use_id: tool_use_id.into(),
+            error: error.into(),
+            is_interrupt: None,
+            duration_ms: None,
+        }
+    }
+}
+
+impl UserPromptSubmitHookInput {
+    /// Creates the input of a `UserPromptSubmit` hook.
+    #[must_use]
+    pub fn new(base: HookInputBase, prompt: impl Into<String>) -> Self {
+        Self {
+            base,
+            prompt: prompt.into(),
+        }
+    }
+}
+
+impl StopHookInput {
+    /// Creates the input of a `Stop` hook; the optional fields start
+    /// empty.
+    #[must_use]
+    pub fn new(base: HookInputBase, stop_hook_active: bool) -> Self {
+        Self {
+            base,
+            stop_hook_active,
+            last_assistant_message: None,
+            background_tasks: None,
+            session_crons: None,
+        }
+    }
+}
+
+impl SubagentStopHookInput {
+    /// Creates the input of a `SubagentStop` hook; the optional fields
+    /// start empty.
+    #[must_use]
+    pub fn new(
+        base: HookInputBase,
+        stop_hook_active: bool,
+        agent_transcript_path: impl Into<String>,
+    ) -> Self {
+        Self {
+            base,
+            stop_hook_active,
+            agent_transcript_path: agent_transcript_path.into(),
+            last_assistant_message: None,
+            background_tasks: None,
+            session_crons: None,
+        }
+    }
+}
+
+impl PreCompactHookInput {
+    /// Creates the input of a `PreCompact` hook, with no custom
+    /// instructions.
+    #[must_use]
+    pub fn new(base: HookInputBase, trigger: CompactTrigger) -> Self {
+        Self {
+            base,
+            trigger,
+            custom_instructions: None,
+        }
+    }
+}
+
+impl NotificationHookInput {
+    /// Creates the input of a `Notification` hook, with no title.
+    #[must_use]
+    pub fn new(
+        base: HookInputBase,
+        message: impl Into<String>,
+        notification_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            base,
+            message: message.into(),
+            title: None,
+            notification_type: notification_type.into(),
+        }
+    }
+}
+
+impl SubagentStartHookInput {
+    /// Creates the input of a `SubagentStart` hook.
+    #[must_use]
+    pub fn new(base: HookInputBase) -> Self {
+        Self { base }
+    }
+}
+
+impl PermissionRequestHookInput {
+    /// Creates the input of a `PermissionRequest` hook, with no
+    /// suggestions.
+    #[must_use]
+    pub fn new(base: HookInputBase, tool_name: impl Into<String>, tool_input: Value) -> Self {
+        Self {
+            base,
+            tool_name: tool_name.into(),
+            tool_input,
+            permission_suggestions: None,
+        }
+    }
+}
+
+impl HookInputBase {
+    /// Creates the shared fields of a hook input from the three upstream
+    /// requires; the optional ones start empty.
+    #[must_use]
+    pub fn new(
+        session_id: impl Into<String>,
+        transcript_path: impl Into<String>,
+        cwd: impl Into<String>,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            transcript_path: transcript_path.into(),
+            cwd: cwd.into(),
+            ..Self::default()
+        }
+    }
+}

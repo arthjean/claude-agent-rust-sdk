@@ -269,3 +269,132 @@ fn deserializing_a_frame_of_another_kind_or_an_invalid_frame_is_an_error() {
         "{error}"
     );
 }
+
+/// Every public message, hook input, and session type can be built from
+/// outside the crate, as upstream's dataclasses can, and what is built
+/// round-trips through the wire form.
+#[test]
+fn messages_and_hook_inputs_built_in_code_round_trip_through_the_wire() {
+    use claude_agent_rust_sdk::{
+        CompactTrigger, ConversationResetMessage, DeferredToolUse, GenericSystemMessage,
+        HookEventMessage, HookInput, HookInputBase, MirrorErrorMessage, NotificationHookInput,
+        PermissionRequestHookInput, PostToolUseFailureHookInput, PostToolUseHookInput,
+        PreCompactHookInput, PreToolUseHookInput, RateLimitEvent, RateLimitInfo, RateLimitStatus,
+        SessionMessage, SessionMessageType, StopHookInput, StreamEvent, SubagentStartHookInput,
+        SubagentStopHookInput, TaskNotificationMessage, TaskNotificationStatus,
+        TaskProgressMessage, TaskStartedMessage, TaskUpdatedMessage, TaskUsage,
+        UserPromptSubmitHookInput,
+    };
+
+    let mut started = TaskStartedMessage::new("t1", "Explore", "u1", "s");
+    started.task_type = Some("local_agent".to_owned());
+    let mut usage = TaskUsage::default();
+    usage.total_tokens = 10;
+    let mut patch = serde_json::Map::new();
+    patch.insert("status".to_owned(), json!("completed"));
+    let updated = TaskUpdatedMessage::new("t1", patch);
+    assert_eq!(
+        updated.status.as_ref().map(|status| status.as_str()),
+        Some("completed")
+    );
+    let messages = [
+        Message::System(SystemMessage::TaskStarted(started)),
+        Message::System(SystemMessage::TaskProgress(TaskProgressMessage::new(
+            "t1", "Explore", usage, "u2", "s",
+        ))),
+        Message::System(SystemMessage::TaskNotification(
+            TaskNotificationMessage::new(
+                "t1",
+                TaskNotificationStatus::Completed,
+                "/out",
+                "done",
+                "u3",
+                "s",
+            ),
+        )),
+        Message::System(SystemMessage::TaskUpdated(updated)),
+        Message::System(SystemMessage::MirrorError(MirrorErrorMessage::new(
+            "store down",
+        ))),
+        Message::System(SystemMessage::HookEvent(HookEventMessage::new(
+            "hook_started",
+            "PreToolUse",
+        ))),
+        Message::System(SystemMessage::Other(GenericSystemMessage::new(
+            "status",
+            json!({"type": "system", "subtype": "status", "status": "compacting"}),
+        ))),
+        Message::StreamEvent(StreamEvent::new(
+            "u4",
+            "s",
+            json!({"type": "message_start"}),
+        )),
+        Message::RateLimit(RateLimitEvent::new(
+            RateLimitInfo::new(RateLimitStatus::Allowed),
+            "u5",
+            "s",
+        )),
+        Message::ConversationReset(ConversationResetMessage::new("c2", "u6", "s")),
+    ];
+    for message in messages {
+        let wire = serde_json::to_value(&message).unwrap();
+        let read = parse_message(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&read).unwrap(), wire);
+        assert_eq!(
+            std::mem::discriminant(&read),
+            std::mem::discriminant(&message)
+        );
+    }
+
+    let base = HookInputBase::new("s", "/t.jsonl", "/w");
+    let inputs = [
+        HookInput::PreToolUse(PreToolUseHookInput::new(
+            base.clone(),
+            "Bash",
+            json!({"command": "ls"}),
+            "tu1",
+        )),
+        HookInput::PostToolUse(PostToolUseHookInput::new(
+            base.clone(),
+            "Bash",
+            json!({}),
+            json!("ok"),
+            "tu1",
+        )),
+        HookInput::PostToolUseFailure(PostToolUseFailureHookInput::new(
+            base.clone(),
+            "Bash",
+            json!({}),
+            "tu1",
+            "boom",
+        )),
+        HookInput::UserPromptSubmit(UserPromptSubmitHookInput::new(base.clone(), "hi")),
+        HookInput::Stop(StopHookInput::new(base.clone(), false)),
+        HookInput::SubagentStop(SubagentStopHookInput::new(base.clone(), true, "/a.jsonl")),
+        HookInput::PreCompact(PreCompactHookInput::new(
+            base.clone(),
+            CompactTrigger::Manual,
+        )),
+        HookInput::Notification(NotificationHookInput::new(
+            base.clone(),
+            "waiting",
+            "idle_prompt",
+        )),
+        HookInput::SubagentStart(SubagentStartHookInput::new(base.clone())),
+        HookInput::PermissionRequest(PermissionRequestHookInput::new(
+            base,
+            "Write",
+            json!({"path": "/x"}),
+        )),
+    ];
+    for input in inputs {
+        let wire = serde_json::to_value(&input).unwrap();
+        let read: HookInput = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(read, input, "{wire}");
+    }
+
+    let deferred = DeferredToolUse::new("tu1", "Bash", json!({}));
+    assert_eq!(deferred.name, "Bash");
+    let stored = SessionMessage::new(SessionMessageType::User, "u1", "s", json!({"role": "user"}));
+    assert_eq!(stored.parent_tool_use_id, None);
+}

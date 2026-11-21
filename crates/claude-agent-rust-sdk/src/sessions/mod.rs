@@ -189,6 +189,26 @@ pub(crate) fn validate_uuid(candidate: &str) -> Option<&str> {
     well_formed.then_some(candidate)
 }
 
+impl SessionMessage {
+    /// Creates a message of a stored transcript, with no parent.
+    #[must_use]
+    pub fn new(
+        r#type: SessionMessageType,
+        uuid: impl Into<String>,
+        session_id: impl Into<String>,
+        message: Value,
+    ) -> Self {
+        Self {
+            r#type,
+            uuid: uuid.into(),
+            session_id: session_id.into(),
+            message,
+            parent_tool_use_id: None,
+            parent_agent_id: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
