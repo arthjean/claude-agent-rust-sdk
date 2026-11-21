@@ -1421,3 +1421,57 @@ async fn hooks_under_notification_subagent_start_and_permission_request_are_regi
     }
     client.disconnect().await.unwrap();
 }
+
+/// A transport whose writes never complete once `stalled` is set, as a CLI
+/// that stopped reading its stdin leaves a full pipe.
+struct StallingTransport {
+    inner: claude_agent_rust_sdk::testing::MockTransport,
+    stalled: Arc<AtomicBool>,
+}
+
+impl claude_agent_rust_sdk::Transport for StallingTransport {
+    async fn connect(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.inner.connect().await
+    }
+
+    async fn write(&self, data: &str) -> claude_agent_rust_sdk::Result<()> {
+        if self.stalled.load(Ordering::SeqCst) {
+            std::future::pending::<()>().await;
+        }
+        self.inner.write(data).await
+    }
+
+    fn read_messages(&self) -> claude_agent_rust_sdk::MessageStream {
+        self.inner.read_messages()
+    }
+
+    async fn close(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.inner.close().await
+    }
+
+    fn is_ready(&self) -> bool {
+        self.inner.is_ready()
+    }
+
+    async fn end_input(&self) -> claude_agent_rust_sdk::Result<()> {
+        self.inner.end_input().await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_control_request_whose_write_never_completes_times_out() {
+    let stalled = Arc::new(AtomicBool::new(false));
+    let transport = StallingTransport {
+        inner: cli(),
+        stalled: Arc::clone(&stalled),
+    };
+    let client = ClaudeSdkClient::with_transport(default_options(), transport);
+    client.connect().await.unwrap();
+    stalled.store(true, Ordering::SeqCst);
+
+    let outcome = tokio::time::timeout(Duration::from_secs(3600), client.interrupt())
+        .await
+        .expect("interrupt waited past its control timeout");
+
+    assert_eq!(outcome.unwrap_err().kind(), ErrorKind::ControlTimeout);
+}

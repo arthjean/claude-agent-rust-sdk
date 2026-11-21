@@ -851,18 +851,19 @@ impl ControlSession {
             shared,
             request_id: &request_id,
         };
-        shared
-            .write_frame(&json!({
-                "type": "control_request",
-                "request_id": request_id,
-                "request": request,
-            }))
-            .await?;
-        match tokio::time::timeout(limit, response).await {
-            Ok(Ok(outcome)) => outcome,
-            Ok(Err(_)) => Err(session_closed()),
-            Err(_) => Err(Error::control_timeout(subtype)),
-        }
+        let exchange = async {
+            shared
+                .write_frame(&json!({
+                    "type": "control_request",
+                    "request_id": request_id,
+                    "request": request,
+                }))
+                .await?;
+            response.await.unwrap_or_else(|_| Err(session_closed()))
+        };
+        tokio::time::timeout(limit, exchange)
+            .await
+            .unwrap_or_else(|_| Err(Error::control_timeout(subtype)))
     }
 
     /// Writes one user message, marked as client composed when the session

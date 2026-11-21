@@ -703,3 +703,13 @@ anchor = 'return Path(unicodedata.normalize("NFC", str(Path.home() / ".claude"))
 category = "deliberate"
 reason = "The listing functions return a value, not a `Result`, and treat a missing directory as empty, as upstream does for a config directory that does not exist; the calls that return a `Result` fail as upstream does."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::without_the_variable_or_a_home_there_is_no_config_dir"
+
+[behavior.control-timeout-covers-write]
+summary = "A control request whose write to the CLI does not complete"
+python = "The write is awaited with no limit, then `anyio.fail_after(timeout)` bounds only the wait for the response: with a CLI that stopped reading its stdin, `interrupt()` waits forever."
+rust = "One timeout bounds the write and the wait together, so the call fails with `ErrorKind::ControlTimeout` after the limit (60 s, or the initialize timeout). The frame is queued whole and stays cancel-safe."
+ref = "src/claude_agent_sdk/_internal/query.py:788-792"
+anchor = 'await self.transport.write(json.dumps(control_request)'
+category = "rust-more-robust"
+reason = "The crate documents that a control request fails with `ControlTimeout` when the CLI does not answer in time; a CLI that does not read its input does not answer either."
+test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::a_control_request_whose_write_never_completes_times_out"

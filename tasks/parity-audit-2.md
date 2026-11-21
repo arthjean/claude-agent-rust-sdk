@@ -53,7 +53,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m10 | No `async with` equivalent; drop closes on a detached task | todo | |
 | m11 | `user` option drops supplementary groups | todo | |
 | m12 | macOS: no parent-death signal, no exit cleanup | todo | |
-| m13 | Subagent read via store: id check too broad, applied with `list_subkeys` | todo | |
+| m13 | Subagent read via store: id check too broad, applied with `list_subkeys` | done | Check moved to the direct path, separators and NUL only; ledger entry rewritten; `session_store_helpers.rs::a_store_that_lists_its_subkeys_finds_any_agent_id_by_its_last_segment`, red before. |
 | m14 | Non-UTF-8 `CLAUDE_CONFIG_DIR` falls back to `~/.claude` | done | `var_os`, kept byte for byte; no home gives no directory (`[behavior.no-home-directory]`); `sessions.rs::a_config_dir_whose_name_is_not_utf8_is_read_as_python_reads_it` (Linux), red before (listed `~/.claude`). |
 | m15 | Mirror real-path alias only when `projects/` exists at start | done | `is_dir()` condition removed; `mirror::tests::a_frame_under_the_real_path_is_mirrored_when_the_projects_directory_does_not_exist_yet`, red before. |
 | m16 | Windows drive guard on subpaths accepts ASCII letters only | done | Any second character `:` is a drive, as `ntpath.splitdrive` (probed on Python 3.15: `1:foo`, `é:foo`, `::x`); `resume::tests::a_subpath_with_any_drive_prefix_is_rejected_as_ntpath_splitdrive_does`, red before. |
