@@ -61,7 +61,10 @@
 //! - a cancel request stops the application callback and sends no response
 //!   for it; a response already being written is finished;
 //! - a callback that panics is answered with an error response, as a
-//!   Python callback that raises is.
+//!   Python callback that raises is;
+//! - a prompt stream that panics ends the input as one that yields an
+//!   error does, so stdin is closed as upstream closes it when the
+//!   iterable raises.
 
 mod handlers;
 mod initialize;
@@ -84,10 +87,11 @@ fn truthy(value: Option<&Value>) -> bool {
 mod tests;
 
 use std::collections::{HashMap, VecDeque};
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
@@ -356,7 +360,15 @@ impl Shared {
 
     async fn stream_input(&self, mut input: InputStream) {
         let mut written = 0_usize;
-        while let Some(message) = input.next().await {
+        loop {
+            let message = match AssertUnwindSafe(input.next()).catch_unwind().await {
+                Ok(Some(message)) => message,
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::error!("Prompt stream failed; closing stdin: the stream panicked");
+                    break;
+                }
+            };
             if self.is_closed() {
                 break;
             }

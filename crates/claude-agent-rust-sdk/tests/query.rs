@@ -242,6 +242,29 @@ async fn stream_prompt_writes_every_input_message_as_given() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_prompt_stream_that_panics_closes_stdin_and_the_query_ends() {
+    let transport = answering_prompts();
+    let panicking = stream::poll_fn(|_| -> std::task::Poll<Option<Value>> {
+        panic!("the prompt source failed")
+    });
+    let prompt =
+        Prompt::stream(stream::iter([Value::from(InputMessage::user("first"))]).chain(panicking));
+    let messages = tokio::time::timeout(
+        Duration::from_secs(3600),
+        drain(query_with_transport(
+            prompt,
+            ClaudeAgentOptions::default(),
+            transport.clone(),
+        )),
+    )
+    .await
+    .expect("the query never ended");
+
+    assert_eq!(result_texts(&messages), ["4"]);
+    assert!(transport.input_ended());
+}
+
+#[tokio::test(start_paused = true)]
 async fn verbatim_prompts_mark_every_user_frame_as_client_composed() {
     let verbatim = || {
         ClaudeAgentOptions::builder()
