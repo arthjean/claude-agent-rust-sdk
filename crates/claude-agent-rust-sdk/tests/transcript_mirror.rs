@@ -487,3 +487,79 @@ fn a_transcript_on_another_drive_than_the_projects_directory_maps_to_no_key() {
         Some(SessionKey::new("p", "s"))
     );
 }
+
+/// A store whose appends wait until the test opens the gate.
+#[derive(Clone)]
+struct GatedStore {
+    inner: InMemorySessionStore,
+    gate: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
+impl SessionStore for GatedStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        let _permit = self.gate.acquire().await.unwrap();
+        self.inner.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.inner.load(key).await
+    }
+}
+
+/// Upstream awaits the flush in its read loop, before it decides that the
+/// run has ended. The reader here never waits on the store: the run ends
+/// (stdin closes) at the result while a slow append is still running, and
+/// the result itself is delivered once the turn is in the store.
+#[tokio::test]
+async fn the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_waits_for_it() {
+    let store = GatedStore {
+        inner: InMemorySessionStore::new(),
+        gate: std::sync::Arc::new(tokio::sync::Semaphore::new(0)),
+    };
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            vec![mirror_frame("gated", &["u1"]), result("done")]
+        } else {
+            Vec::new()
+        }
+    });
+    let options = options(store.clone())
+        .into_builder()
+        .hook(
+            "PreToolUse",
+            claude_agent_rust_sdk::HookMatcher::new().hook(common::mock::passive_hook()),
+        )
+        .build()
+        .unwrap();
+    let mut messages = query_with_transport("hello", options, transport.clone());
+    let reader = tokio::spawn(async move {
+        let mut results = 0;
+        while let Some(message) = messages.next().await {
+            if matches!(message.unwrap(), Message::Result(_)) {
+                results += 1;
+            }
+        }
+        results
+    });
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while !transport.input_ended() {
+        assert!(tokio::time::Instant::now() < deadline, "stdin never closed");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        uuids(&store.inner, "gated").is_empty(),
+        "the append still waits"
+    );
+    assert!(!reader.is_finished(), "the result waits for the flush");
+
+    store.gate.add_permits(1);
+    assert_eq!(reader.await.unwrap(), 1);
+    assert_eq!(uuids(&store.inner, "gated"), ["u1"]);
+}

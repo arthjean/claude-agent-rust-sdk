@@ -803,3 +803,13 @@ anchor = "async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) ->
 category = "deliberate"
 reason = "Rust has no asynchronous drop: a destructor cannot wait for a future, so the waiting form is a method the caller awaits."
 test = "crates/claude-agent-rust-sdk/tests/client.rs::scoped_closes_the_session_before_returning_on_success_and_on_error"
+
+[behavior.run-end-before-mirror-flush]
+summary = "The end of the run, when a result arrives with transcript entries still to mirror"
+python = "The read loop awaits the flush of the mirror, then records the result and decides whether the run has ended; no frame is read while the store works."
+rust = "The reader never waits on the store: the flush runs in the background, the run-end decision is made at the result (stdin may close while the append still runs), and the result is delivered only once the flush has finished."
+ref = "src/claude_agent_sdk/_internal/query.py:513-516"
+anchor = "await self._transcript_mirror_batcher.flush()"
+category = "deliberate"
+reason = "Control requests keep being answered while a slow store works; closing stdin first loses nothing, since the entries are already held by the SDK and the result still waits for them."
+test = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_waits_for_it"
