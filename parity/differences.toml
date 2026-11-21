@@ -693,3 +693,13 @@ anchor = 'def _python_type_to_json_schema(py_type: Any) -> dict[str, Any]:'
 category = "deliberate"
 reason = "The bounds and nullability tell the model what a Rust integer and an `Option` accept. The Claude API refuses a tool schema with `oneOf`, `anyOf`, or `allOf` at the top level and fails the request, so an enum cannot be listed as its alternatives; `serde` checks the exact variant when the arguments are read."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::typed_tool_of_an_enum_lists_every_field_of_every_variant_in_one_object"
+
+[behavior.no-home-directory]
+summary = "Reading sessions when `CLAUDE_CONFIG_DIR` is unset and the home directory cannot be found"
+python = "`Path.home()` raises `RuntimeError` from the session functions, from a connect with a session store, and from a resume from a store."
+rust = "The session functions that return a list or an `Option` find nothing, and a mutation fails with `ErrorKind::SessionNotFound`, as when the projects directory does not exist; a connect with a session store and a resume from a store fail with `ErrorKind::Spawn`. No path relative to the working directory is ever read."
+ref = "src/claude_agent_sdk/_internal/sessions.py:127"
+anchor = 'return Path(unicodedata.normalize("NFC", str(Path.home() / ".claude")))'
+category = "deliberate"
+reason = "The listing functions return a value, not a `Result`, and treat a missing directory as empty, as upstream does for a config directory that does not exist; the calls that return a `Result` fail as upstream does."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::paths::tests::without_the_variable_or_a_home_there_is_no_config_dir"

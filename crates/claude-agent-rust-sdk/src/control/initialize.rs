@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use super::TranscriptMirror;
 use super::run_end::{parse_python_int, run_end_ceiling_ms};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::mcp::McpBridges;
 use crate::mirror::TranscriptMirrorBatcher;
 use crate::sessions::projects_dir;
@@ -58,14 +58,24 @@ impl SessionConfig {
                 || options.can_use_tool.is_some()
                 || has_sdk_mcp_server(&options.mcp_servers),
             mcp,
-            mirror: options.session_store.as_ref().map(|store| {
-                let mirror: Arc<dyn TranscriptMirror> = TranscriptMirrorBatcher::new(
-                    store.clone(),
-                    projects_dir(Some(&options.env)),
-                    &options.session_store_flush,
-                );
-                mirror
-            }),
+            mirror: options
+                .session_store
+                .as_ref()
+                .map(|store| {
+                    let projects = projects_dir(Some(&options.env)).ok_or_else(|| {
+                        Error::spawn(
+                            "Cannot mirror transcripts: CLAUDE_CONFIG_DIR is not set and \
+                             the home directory cannot be found",
+                        )
+                    })?;
+                    let mirror: Arc<dyn TranscriptMirror> = TranscriptMirrorBatcher::new(
+                        store.clone(),
+                        projects,
+                        &options.session_store_flush,
+                    );
+                    Ok::<_, Error>(mirror)
+                })
+                .transpose()?,
         })
     }
 }

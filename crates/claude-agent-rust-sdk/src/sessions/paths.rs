@@ -1,6 +1,7 @@
 //! Where the CLI keeps transcripts: the config directory, the projects
 //! directory, and the name of the directory of each project.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -73,28 +74,42 @@ pub(crate) fn sanitize_path(name: &str) -> String {
 }
 
 /// The config directory of the CLI: `CLAUDE_CONFIG_DIR` when set and not
-/// empty, otherwise `~/.claude`, normalized to NFC.
-pub(crate) fn config_home_dir() -> PathBuf {
-    match std::env::var(CONFIG_DIR_VARIABLE) {
-        Ok(directory) if !directory.is_empty() => PathBuf::from(nfc(&directory)),
-        _ => {
-            let home = std::env::home_dir().unwrap_or_default().join(".claude");
-            PathBuf::from(nfc(&home.to_string_lossy()))
-        }
+/// empty, otherwise `~/.claude`, normalized to NFC. `None` when the
+/// variable is unset and the home directory cannot be found, where
+/// upstream's `Path.home()` raises.
+pub(crate) fn config_home_dir() -> Option<PathBuf> {
+    config_home_dir_from(std::env::var_os(CONFIG_DIR_VARIABLE), std::env::home_dir())
+}
+
+/// [`config_home_dir`] from the value of the variable and the home
+/// directory. A value that is not UTF-8 is kept as it is, byte for byte,
+/// as Python keeps it through `os.environ`; only text is normalized.
+fn config_home_dir_from(variable: Option<OsString>, home: Option<PathBuf>) -> Option<PathBuf> {
+    match variable {
+        Some(directory) if !directory.is_empty() => Some(nfc_path(PathBuf::from(directory))),
+        _ => home.map(|home| nfc_path(home.join(".claude"))),
+    }
+}
+
+/// A path normalized to NFC when it is text, unchanged otherwise.
+fn nfc_path(path: PathBuf) -> PathBuf {
+    match path.to_str() {
+        Some(text) => PathBuf::from(nfc(text)),
+        None => path,
     }
 }
 
 /// The projects directory. `env` is consulted before the environment of
 /// this process, so a `CLAUDE_CONFIG_DIR` passed to the child resolves the
-/// directory the child writes to.
-pub(crate) fn projects_dir(env: Option<&IndexMap<String, String>>) -> PathBuf {
+/// directory the child writes to. `None` as [`config_home_dir`] gives it.
+pub(crate) fn projects_dir(env: Option<&IndexMap<String, String>>) -> Option<PathBuf> {
     if let Some(directory) = env
         .and_then(|env| env.get(CONFIG_DIR_VARIABLE))
         .filter(|directory| !directory.is_empty())
     {
-        return PathBuf::from(nfc(directory)).join("projects");
+        return Some(PathBuf::from(nfc(directory)).join("projects"));
     }
-    config_home_dir().join("projects")
+    config_home_dir().map(|directory| directory.join("projects"))
 }
 
 /// Resolves a directory to its canonical form: the real path, normalized
@@ -195,7 +210,7 @@ pub(crate) fn find_project_dir_in(projects: &Path, project_path: &str) -> Option
 /// [`find_project_dir_in`] under the projects directory of the
 /// environment.
 pub(crate) fn find_project_dir(project_path: &str) -> Option<PathBuf> {
-    find_project_dir_in(&projects_dir(None), project_path)
+    find_project_dir_in(&projects_dir(None)?, project_path)
 }
 
 /// The directories directly under `directory`, in the order of the
@@ -521,7 +536,32 @@ mod tests {
         env.insert(CONFIG_DIR_VARIABLE.to_owned(), "/custom/dir".to_owned());
         assert_eq!(
             projects_dir(Some(&env)),
-            PathBuf::from("/custom/dir").join("projects")
+            Some(PathBuf::from("/custom/dir").join("projects"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_config_dir_that_is_not_utf8_is_used_byte_for_byte() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let raw = OsString::from_vec(b"/data/caf\xe9".to_vec());
+        assert_eq!(
+            config_home_dir_from(Some(raw.clone()), Some(PathBuf::from("/home/u"))),
+            Some(PathBuf::from(raw))
+        );
+    }
+
+    #[test]
+    fn without_the_variable_or_a_home_there_is_no_config_dir() {
+        assert_eq!(config_home_dir_from(None, None), None);
+        assert_eq!(config_home_dir_from(Some(OsString::new()), None), None);
+        assert_eq!(
+            config_home_dir_from(None, Some(PathBuf::from("/home/u"))),
+            Some(PathBuf::from("/home/u/.claude"))
+        );
+        assert_eq!(
+            config_home_dir_from(Some(OsString::from("/cfg")), None),
+            Some(PathBuf::from("/cfg"))
         );
     }
 }

@@ -100,7 +100,8 @@ fn list_sessions_for_project(
     if worktrees.len() <= 1 {
         return single_project(&canonical, limit, offset);
     }
-    let Some(directories) = subdirectories(&projects_dir(None)) else {
+    let Some(directories) = projects_dir(None).and_then(|projects| subdirectories(&projects))
+    else {
         return single_project(&canonical, limit, offset);
     };
 
@@ -137,7 +138,8 @@ fn list_sessions_for_project(
 }
 
 fn list_all_sessions(limit: Option<usize>, offset: usize) -> Vec<SdkSessionInfo> {
-    let Some(directories) = subdirectories(&projects_dir(None)) else {
+    let Some(directories) = projects_dir(None).and_then(|projects| subdirectories(&projects))
+    else {
         return Vec::new();
     };
     let sessions = directories
@@ -213,7 +215,8 @@ pub(crate) fn candidate_project_dirs(
             Box::new(own.into_iter().chain(worktrees))
         }
         _ => Box::new(
-            subdirectories(&projects_dir(None))
+            projects_dir(None)
+                .and_then(|projects| subdirectories(&projects))
                 .unwrap_or_default()
                 .into_iter()
                 .map(|directory| (directory, None)),

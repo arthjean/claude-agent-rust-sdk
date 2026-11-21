@@ -822,6 +822,27 @@ fn a_config_dir_that_does_not_exist_gives_empty_results() {
     assert_eq!(report, json!({"listed": [], "info": false, "messages": 0}));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn a_config_dir_whose_name_is_not_utf8_is_read_as_python_reads_it() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let base = tempfile::tempdir().unwrap();
+    let config = base
+        .path()
+        .join(std::ffi::OsStr::from_bytes(b"config-caf\xe9"));
+    let id = new_id();
+    write_lines(
+        &config
+            .join("projects")
+            .join("some-project")
+            .join(format!("{id}.jsonl")),
+        &conversation(&id, "hello", json!({})),
+    );
+    let report = read_in_a_process_with_config_dir(&config, &id);
+    assert_eq!(report["listed"], json!([id]));
+    assert_eq!(report["info"], true);
+}
+
 #[test]
 fn a_projects_dir_without_projects_lists_nothing() {
     let base = tempfile::tempdir().unwrap();

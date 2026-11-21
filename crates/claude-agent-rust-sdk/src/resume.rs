@@ -20,6 +20,7 @@
 //! blocking job and comes back with its result: a resume cancelled while a
 //! job runs removes the directory once that job is done, never under it.
 
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{ErrorKind, Write};
@@ -368,11 +369,38 @@ fn write_jsonl(path: &Path, entries: &[SessionStoreEntry]) -> Result<()> {
         .map_err(|error| Error::io(format!("Cannot write {}", path.display()), error))
 }
 
-fn env_value(env: &IndexMap<String, String>, name: &str) -> Option<String> {
-    env.get(name)
-        .cloned()
+/// Whether `name` is set to a value that is not empty, in the options or
+/// else in this process, as upstream tests `opt_env.get(name) or
+/// os.environ.get(name)`. A value that is not UTF-8 counts.
+fn env_is_set(env: &IndexMap<String, String>, name: &str) -> bool {
+    env.get(name).is_some_and(|value| !value.is_empty())
+        || std::env::var_os(name).is_some_and(|value| !value.is_empty())
+}
+
+/// The config directory of the caller, as upstream reads it: the value
+/// in the options when it is not empty, otherwise the variable of this
+/// process, kept even when empty and byte for byte when it is not UTF-8.
+fn caller_config_dir(env: &IndexMap<String, String>) -> Option<OsString> {
+    caller_config_dir_from(env, std::env::var_os(CONFIG_DIR_VARIABLE))
+}
+
+/// [`caller_config_dir`] from the value of the variable in this process.
+fn caller_config_dir_from(
+    env: &IndexMap<String, String>,
+    process: Option<OsString>,
+) -> Option<OsString> {
+    env.get(CONFIG_DIR_VARIABLE)
         .filter(|value| !value.is_empty())
-        .or_else(|| std::env::var(name).ok().filter(|value| !value.is_empty()))
+        .map(OsString::from)
+        .or(process)
+}
+
+/// Whether the credentials are read from the macOS Keychain: only when
+/// no config directory is set anywhere, even an empty one, and no
+/// variable authenticates the child, as upstream tests
+/// `caller_config_dir is None`.
+fn consults_keychain(caller: Option<&OsString>, env_auth: bool) -> bool {
+    caller.is_none() && !env_auth
 }
 
 /// Reads a regular file. A missing file is absent; any other reason it
@@ -477,18 +505,29 @@ pub(crate) fn redact_credentials(credentials: &str) -> String {
 /// the blocking pool, away from the task, and the span, of the caller.
 fn copy_auth_files(target: &Path, env: &IndexMap<String, String>) -> Result<Vec<String>> {
     let mut skipped = Vec::new();
-    let caller_config_dir = env_value(env, CONFIG_DIR_VARIABLE).map(PathBuf::from);
-    let home = std::env::home_dir().unwrap_or_default();
-    let source = caller_config_dir
+    let caller = caller_config_dir(env);
+    let caller_config_dir = caller
         .clone()
-        .unwrap_or_else(|| home.join(".claude"));
+        .filter(|directory| !directory.is_empty())
+        .map(PathBuf::from);
+    let home = || {
+        std::env::home_dir().ok_or_else(|| {
+            Error::spawn(
+                "Cannot resume from the session store: CLAUDE_CONFIG_DIR is not set and the \
+                 home directory cannot be found",
+            )
+        })
+    };
+    let source = match &caller_config_dir {
+        Some(directory) => directory.clone(),
+        None => home()?.join(".claude"),
+    };
 
     let mut credentials = read_if_present(&source.join(".credentials.json"), &mut skipped)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
-    let env_auth = env_value(env, "ANTHROPIC_API_KEY").is_some()
-        || env_value(env, "CLAUDE_CODE_OAUTH_TOKEN").is_some();
-    if caller_config_dir.is_none()
-        && !env_auth
+    let env_auth =
+        env_is_set(env, "ANTHROPIC_API_KEY") || env_is_set(env, "CLAUDE_CODE_OAUTH_TOKEN");
+    if consults_keychain(caller.as_ref(), env_auth)
         && let Some(keychain) = read_keychain_credentials()
     {
         credentials = Some(keychain);
@@ -513,7 +552,7 @@ fn copy_auth_files(target: &Path, env: &IndexMap<String, String>) -> Result<Vec<
 
     let claude_json = match &caller_config_dir {
         Some(directory) => directory.join(".claude.json"),
-        None => home.join(".claude.json"),
+        None => home()?.join(".claude.json"),
     };
     copy_if_present(
         &claude_json,
@@ -884,6 +923,27 @@ mod tests {
                 name
             );
         }
+    }
+
+    #[test]
+    fn an_empty_config_dir_variable_of_the_process_keeps_the_keychain_out_as_upstream() {
+        let options = IndexMap::new();
+        let empty = caller_config_dir_from(&options, Some(OsString::new()));
+        assert_eq!(empty, Some(OsString::new()));
+        assert!(!consults_keychain(empty.as_ref(), false));
+        assert!(consults_keychain(
+            caller_config_dir_from(&options, None).as_ref(),
+            false
+        ));
+
+        let mut options = IndexMap::new();
+        options.insert(CONFIG_DIR_VARIABLE.to_owned(), String::new());
+        assert_eq!(caller_config_dir_from(&options, None), None);
+        options.insert(CONFIG_DIR_VARIABLE.to_owned(), "/cfg".to_owned());
+        assert_eq!(
+            caller_config_dir_from(&options, Some(OsString::from("/process"))),
+            Some(OsString::from("/cfg"))
+        );
     }
 
     #[test]

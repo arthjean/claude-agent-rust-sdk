@@ -145,9 +145,11 @@ fn append_to_session(
     }
     Err(match directory {
         Some(_) => not_found(session_id, directory),
-        None if std::fs::read_dir(projects_dir(None)).is_err() => Error::session_not_found(
-            format!("Session {session_id} not found (no projects directory)"),
-        ),
+        None if projects_dir(None).is_none_or(|projects| std::fs::read_dir(projects).is_err()) => {
+            Error::session_not_found(format!(
+                "Session {session_id} not found (no projects directory)"
+            ))
+        }
         None => Error::session_not_found(format!(
             "Session {session_id} not found in any project directory"
         )),

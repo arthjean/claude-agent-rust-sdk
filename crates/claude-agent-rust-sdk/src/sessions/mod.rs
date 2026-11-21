@@ -3,7 +3,9 @@
 //! The CLI writes one JSONL transcript per session under
 //! `<config>/projects/<project>/<session id>.jsonl`, where `<config>` is
 //! `CLAUDE_CONFIG_DIR` or `~/.claude` and `<project>` is the sanitized
-//! working directory (see [`project_key_for_directory`]).
+//! working directory (see [`project_key_for_directory`]). A
+//! `CLAUDE_CONFIG_DIR` that is not UTF-8 is used byte for byte; with
+//! neither the variable nor a home directory, nothing is found.
 //!
 //! The functions reading or changing the local disk are synchronous, like
 //! the upstream Python SDK, and block on filesystem calls: from async code,

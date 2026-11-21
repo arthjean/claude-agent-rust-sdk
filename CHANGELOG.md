@@ -9,6 +9,8 @@
 - `Error::is_retryable()` is true for an API error result with no HTTP status (`terminal_reason` is `api_error`, such as a stream idle timeout), the case upstream's `ResultError` docs give for a retry.
 - A store subpath whose second character is `:` (`1:foo`, not only a letter drive) is refused, as `ntpath.splitdrive` reads a drive, so it cannot name an alternate data stream on Windows.
 - The transcript mirror matches frames under the real path of a linked config directory even when its `projects` directory does not exist yet at connect, as `[behavior.mirror-canonical-projects-dir]` states.
+- A `CLAUDE_CONFIG_DIR` that is not UTF-8 is used byte for byte, as Python reads it, instead of falling back to `~/.claude`. Without the variable and a home directory, no path relative to the working directory is read: the session functions find nothing, and a connect with a session store or a resume from a store fails with `ErrorKind::Spawn` (`[behavior.no-home-directory]`).
+- A resume from a store reads the macOS Keychain only when `CLAUDE_CONFIG_DIR` is unset, as upstream: an empty value set in the process keeps the Keychain out.
 
 ## 0.2.0 - 2026-11-20
 
