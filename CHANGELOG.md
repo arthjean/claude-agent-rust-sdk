@@ -27,6 +27,7 @@
 
 ### Fixed
 
+- A store summary whose `created_at` is a float gives that time, cut to the millisecond, instead of none.
 - `list_sessions_from_store` fills every slot of a session the store lists twice, as upstream does, instead of the first one only.
 - The title of a fork and the cut of a long first prompt strip what Python's `str.strip()` and `str.rstrip()` strip, the separators U+001C to U+001F included.
 - A stream from `receive_messages` or `receive_response` checks the connection when first polled, as upstream checks it at the first iteration, so a stream created before `connect` reads the session connected since. The documented errors of `ClaudeSdkClient::query` now name `PromptStream` for a failing input stream.

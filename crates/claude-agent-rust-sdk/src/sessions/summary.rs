@@ -170,8 +170,22 @@ pub(crate) fn summary_entry_to_sdk_info(
             .map(str::to_owned)
     });
     info.tag = non_empty_string(data, "tag");
-    info.created_at = data.get("created_at").and_then(Value::as_i64);
+    info.created_at = data.get("created_at").and_then(created_at_millis);
     Some(info)
+}
+
+/// Reads `created_at` as whole milliseconds. Upstream passes the value
+/// through, so a store that wrote a float (a JavaScript `Date.now()` with
+/// a fraction, or a value read back from a float column) is kept, here cut
+/// to the millisecond; a value that is not a finite number is dropped.
+fn created_at_millis(value: &Value) -> Option<i64> {
+    if let Some(millis) = value.as_i64() {
+        return Some(millis);
+    }
+    value
+        .as_f64()
+        .filter(|millis| millis.is_finite() && millis.abs() < 9.0e15)
+        .map(|millis| millis.trunc() as i64)
 }
 
 #[cfg(test)]
@@ -286,6 +300,26 @@ mod tests {
         );
         assert_eq!(folded.data["first_prompt"], "real first");
         assert_eq!(folded.data["first_prompt_locked"], true);
+    }
+
+    #[test]
+    fn a_created_at_written_as_a_float_is_kept_to_the_millisecond() {
+        let summary = |created_at: Value| {
+            let mut data = Map::new();
+            data.insert("custom_title".to_owned(), json!("T"));
+            data.insert("created_at".to_owned(), created_at);
+            let entry = SessionSummaryEntry::new("s", 1, data);
+            summary_entry_to_sdk_info(&entry, None).unwrap().created_at
+        };
+        assert_eq!(
+            summary(json!(1_704_067_200_000.75)),
+            Some(1_704_067_200_000)
+        );
+        assert_eq!(
+            summary(json!(1_704_067_200_000_i64)),
+            Some(1_704_067_200_000)
+        );
+        assert_eq!(summary(json!("2024-01-01")), None);
     }
 
     #[test]

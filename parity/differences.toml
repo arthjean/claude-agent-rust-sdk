@@ -823,3 +823,13 @@ anchor = 'for line in content.decode("utf-8", errors="replace").splitlines():'
 category = "python-defect"
 reason = "The CLI writes one JSON value per line feed and does not escape those characters; every other reader of the SDK splits at line feeds."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::a_fork_keeps_an_entry_whose_text_holds_a_line_separator"
+
+[behavior.summary-created-at-typed]
+summary = "A `created_at` in a store summary that is not an integer"
+python = "`created_at` is passed through as stored: a float stays a float, a string stays a string."
+rust = "`SdkSessionInfo::created_at` is whole milliseconds: a float is cut to the millisecond, and a value that is not a finite number reads as `None`."
+ref = "src/claude_agent_sdk/_internal/session_summary.py:231"
+anchor = 'created_at=data.get("created_at"),'
+category = "rust-stricter"
+reason = "The field is typed as the epoch milliseconds the SDK writes; the raw value stays in the summary data the store returns."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::summary::tests::a_created_at_written_as_a_float_is_kept_to_the_millisecond"
