@@ -1707,9 +1707,12 @@ mod schema_validation {
     }
 }
 
-#[cfg(not(feature = "jsonschema"))]
+/// Python always validates; the crate validates with the `jsonschema`
+/// feature, on by default, and hands the arguments over as sent without
+/// it. Built and run both ways: CI runs the tests without default
+/// features too.
 #[tokio::test(start_paused = true)]
-async fn raw_tool_arguments_reach_the_handler_unvalidated_without_the_jsonschema_feature() {
+async fn raw_tool_arguments_are_validated_only_with_the_jsonschema_feature() {
     let calls = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&calls);
     let echo = SdkMcpTool::raw(
@@ -1724,9 +1727,14 @@ async fn raw_tool_arguments_reach_the_handler_unvalidated_without_the_jsonschema
     .unwrap();
     let client = SdkMcpClient::connected(server([echo])).await;
     let outcome = client.call_tool("srv", "echo", json!({"a": 1})).await;
-    assert_ne!(outcome["isError"], true, "{outcome}");
-    assert_eq!(texts(&outcome), [r#"{"a":1}"#]);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    if cfg!(feature = "jsonschema") {
+        assert_eq!(outcome["isError"], true, "{outcome}");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    } else {
+        assert_ne!(outcome["isError"], true, "{outcome}");
+        assert_eq!(texts(&outcome), [r#"{"a":1}"#]);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[cfg(feature = "rmcp")]
