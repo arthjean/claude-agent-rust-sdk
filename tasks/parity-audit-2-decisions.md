@@ -229,3 +229,16 @@ docs of `UnknownError` say "Any other failure; details are in the message
 text"). The error texts that name Python types (`got NoneType`) are kept on
 purpose: they are upstream's text word for word, now said on
 `python_type_name` in `src/message_parser.rs`.
+
+**Terminal access of tools (U1).** The CLI leads its own process group, so
+on Unix it runs in the background of the program's terminal: a tool that
+opens `/dev/tty` (a `sudo` password, an `ssh` host-key question) is stopped
+by `SIGTTIN`, where upstream's child, in the program's own group, prompts.
+Measured under a pseudo-terminal; the close no longer stalls on such a tool
+(`SIGCONT` follows `SIGTERM`). Options: keep the own group (current: one
+signal ends the CLI and everything it started, the guarantee of M5), or
+join the program's group when it is the foreground of a terminal, and then
+signal only the CLI, as upstream does, losing the sweep of its
+descendants in that one case. Recommendation: keep, since a session's CLI
+reads its prompts from a pipe and a tool prompting on the host terminal
+would fight the host program for it.

@@ -115,7 +115,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 
 | Id | Point | Status | Proof / note |
 |---|---|---|---|
-| U1 | A tool reading `/dev/tty` is stopped (SIGTTIN) since the CLI has its own process group | todo | |
+| U1 | A tool reading `/dev/tty` is stopped (SIGTTIN) since the CLI has its own process group | done | PROVEN (pty probe via python pty.fork): a CLI stand-in reading /dev/tty under the crate is in state T (SIGTTIN); the same under a subprocess of the program own group (upstream) is S (waits for input). Close then took 12 s (SIGTERM pending on a stopped process). Fixed: SIGTERM to the group is followed by SIGCONT (`sys::imp::tests::a_stopped_member_of_the_group_ends_on_terminate`, red before). The background group is kept and recorded on `[behavior.separate-process-group]`. |
 | U2 | OTel context carried by tracing spans not propagated to the CLI | todo | |
 | U3 | `claude-code-guide` agent in the init message of a Rust session | done | Proven: offline run of CLI 2.1.329 lists `claude-code-guide` in `init.agents` with `sdk-rs`, not with `sdk-py`, `sdk-cli`, or no label (docs/validation/entrypoint-label.md). |
 | U4 | A tag read after a store reorders keys is correct | done | Proven: `session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries` (store sorts keys on load; tag, title and first prompt read correctly). |
