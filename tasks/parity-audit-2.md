@@ -128,3 +128,24 @@ evidence), `owner` (decision note written, waiting on the owner).
 
 ## Checks
 
+
+## Consistency sweep after the actions (2026-11-21)
+
+Three independent read-only reviews (ledger lines 1-476, ledger 477-end with
+`surface.toml` notes, hand-written docs and module docs) checked every claim
+against the code and upstream. Findings, each verified before acting:
+
+| Finding | Outcome |
+|---|---|
+| `[behavior.user-option-group]` stale (said groups are cleared) and a duplicate of `run-as-user-groups` | Removed |
+| Duplicate of the fork line-separator entry added during D10; U+001C-U+001E wrongly listed (JSON escapes them) | Merged into `[behavior.fork-line-separators]`, characters corrected in the entry and in `sessions/mutations.rs` |
+| A cancelled `connect` left the connecting slot set; a cancelled `scoped` left the session open | Fixed with drop guards; `client.rs::a_cancelled_connect_leaves_the_client_not_connected`, `a_scoped_call_cancelled_in_its_body_disconnects_the_client`, red before |
+| An in-process tool panic answered a fixed text where upstream sends `str(e)` | Fixed (panic message, fixed text only for a non-text payload); `sdk_mcp.rs` tests updated |
+| The shadowed `can_use_tool` warning was logged before the store checks; upstream warns after them | Fixed; `transport.rs::a_connect_refused_by_the_store_check_logs_no_shadowing_warning`, red before |
+| A control response without a request id was ignored silently though the ledger said "logged" | Warn log added and asserted |
+| Windows build of `tests/shutdown.rs` broken (constants used only on Unix) | Fixed in the m12 commit; `cargo clippy --target x86_64-pc-windows-msvc` and `aarch64-apple-darwin` pass with `-D warnings` |
+| Claims shown by no test: stderr and credentials not UTF-8, the failed status call, the stream-close warning, `ConnectionClosed`/`NotConnected` kinds, the fork's null parent | Tests added or tightened; fake-claude `stderr` step takes bytes |
+| Imprecise upstream claims (OTel propagators, untested CLI version, shadow warning per message, import of non-object lines, pending requests on an error end) | Rewritten from the upstream source |
+| Docs: `build()` checks, `capabilities()` "read at build", client method failures, `connect` errors, `disconnect` timing, `permission_prompt_tool_name` "forced to stdio", `load_timeout_ms` scope, agent-id segments, error sources, `unsafe` kinds, crate counts, AGENTS.md pinned copies and coverage exclusions, parity README ref and example, CHANGELOG wording and 7 missing entries | All corrected |
+
+U5 proven on the macOS code path (see its row).
