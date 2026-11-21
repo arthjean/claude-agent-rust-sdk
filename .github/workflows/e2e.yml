@@ -37,7 +37,7 @@ jobs:
       - name: Install Claude Code
         shell: bash
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          bash .github/scripts/install-cli.sh "$CLAUDE_CODE_VERSION"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Verify Claude Code installation

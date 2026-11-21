@@ -41,12 +41,13 @@ The gates leave out checks that CI still enforces. Run the one that matches the 
 | Changed what reaches the CLI (command line, environment, control frames, MCP answers), `crates/fake-claude`, `crates/parity-driver`, or `parity/cases`; moved the submodule pin | `cargo xtask parity-diff` and `cargo xtask parity-diff --coverage` (needs Python 3.10+ with `parity/requirements.txt`, pointed to by `PARITY_PYTHON`; see `parity/README.md`) |
 | A manifest of a published crate, a file at the root of `crates/claude-agent-rust-sdk` or `crates/claude-agent-rust-sdk-macros`, or `xtask/src/package.rs` | `cargo xtask package-check` (packages without `--allow-dirty`, so commit first; CI runs it in the `package` job, with the docs.rs-style build: `RUSTDOCFLAGS="--cfg docsrs -D warnings" cargo +nightly doc --package claude-agent-rust-sdk --all-features --no-deps`) |
 | Changed, renamed, or removed a public item of the library | `cargo xtask semver-check` (needs `cargo-semver-checks` and the toolchain pinned in `xtask/src/semver.rs`; reads crates.io). CI runs it in the `semver` job |
-| New or bumped dependency | `cargo deny check licenses advisories`. The version declared in `Cargo.toml` must be a true minimum: CI resolves direct dependencies to their declared minimums and runs the tests. |
+| New or bumped dependency | `cargo deny check licenses advisories bans sources`. The version declared in `Cargo.toml` must be a true minimum: CI resolves direct dependencies to their declared minimums and runs the tests. |
 | Dependency change, or a language or std feature that may be newer than Rust 1.88 | `cargo +1.88.0 check --workspace --all-features --locked` |
 | `.github/workflows/*.yml` | `gh actions-lock --verify` (extension: `gh extension install github/gh-actions-lock --pin v0.4.1`) |
 | `.github/scripts/actions-freshness.sh` | `bash .github/scripts/actions-freshness.test.sh` (offline, needs `jq`) |
 | `.github/scripts/upstream-watch.sh` | `bash .github/scripts/upstream-watch.test.sh` (offline, needs `git`) |
 | `.github/scripts/release.sh` | `bash .github/scripts/release.test.sh` (offline, needs `git` and `jq`) |
+| `.github/scripts/install-cli.sh` | `bash .github/scripts/install-cli.test.sh` (offline, needs `jq`) |
 | New code paths | Cover them with offline tests: CI fails under 91.5% line coverage, measured on Linux with `fake-claude` and `xtask` left out. |
 
 CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and tests with `cfg`, and keep both the Unix and the Windows branch compiling.

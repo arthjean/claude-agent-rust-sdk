@@ -8,13 +8,25 @@ allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
     "Zlib",
     "Unicode-3.0",
-    "MPL-2.0",
 ]
 confidence-threshold = 0.8
+
+# Every crate comes from crates.io: a git or other registry source is
+# refused, so a dependency cannot bypass the registry and its yanking.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+# A wildcard requirement (`*`) is refused; it would let any version in. A
+# bare path dependency of an unpublished workspace crate is not one.
+# Duplicate versions are reported, not refused: syn 2 and 3 and their
+# like come from dependencies this crate does not control.
+[bans]
+wildcards = "deny"
+allow-wildcard-paths = true
+multiple-versions = "warn"
 
 # Read by the `Advisories` workflow (.github/workflows/advisories.yml), which
 # fails on any advisory that affects a crate of Cargo.lock: vulnerabilities,

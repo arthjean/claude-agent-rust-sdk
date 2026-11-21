@@ -859,7 +859,15 @@ fn license_allow_list_is_enforced_in_ci() {
 
     let workflow = compact(&read(".github/workflows/ci.yml"));
     assert!(workflow.contains("EmbarkStudios/cargo-deny-action@"));
-    assert!(workflow.contains("command: check licenses"));
+    assert!(workflow.contains("command: check licenses bans sources"));
+    let deny = read("deny.toml");
+    for rule in [
+        "unknown-registry = \"deny\"",
+        "unknown-git = \"deny\"",
+        "wildcards = \"deny\"",
+    ] {
+        assert!(deny.contains(rule), "deny.toml lacks {rule}");
+    }
 }
 
 #[test]
@@ -1786,7 +1794,35 @@ fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_
     assert!(!job.contains("CLAUDE_AGENT_RUST_SDK_E2E_AUTH"), "{job}");
 
     assert!(workflow.contains(&format!("CLAUDE_CODE_VERSION: {CLI_VERSION}")));
-    assert!(job.contains("| bash -s \"$CLAUDE_CODE_VERSION\""));
+    assert!(job.contains(INSTALL_PINNED_CLI), "{job}");
+}
+
+/// The install step of every job that runs the real CLI: the reviewed
+/// script, never a script piped from the network.
+const INSTALL_PINNED_CLI: &str = "bash .github/scripts/install-cli.sh \"$CLAUDE_CODE_VERSION\"";
+
+#[test]
+fn the_cli_is_installed_by_the_reviewed_script_and_never_piped_into_a_shell() {
+    for path in [".github/workflows/ci.yml", ".github/workflows/e2e.yml"] {
+        let workflow = read(path);
+        assert!(workflow.contains(INSTALL_PINNED_CLI), "{path}");
+        assert!(
+            !workflow.contains("| bash"),
+            "{path} pipes a download into a shell"
+        );
+        assert!(
+            !workflow.contains("| sh"),
+            "{path} pipes a download into a shell"
+        );
+    }
+    let scripts = ci_job(&read(".github/workflows/ci.yml"), "scripts");
+    assert!(
+        scripts.contains("run: bash .github/scripts/install-cli.test.sh"),
+        "{scripts}"
+    );
+    let script = read(".github/scripts/install-cli.sh");
+    assert!(script.contains(".platforms[$platform].checksum"));
+    assert!(script.contains("checksum mismatch"));
 }
 
 #[test]
@@ -1795,7 +1831,7 @@ fn the_pinned_cli_runs_without_the_api_on_every_push_and_never_with_a_secret() {
     let job = ci_job(&workflow, "offline-cli");
     assert!(job.contains("runs-on: ubuntu-latest"));
     assert!(job.contains(&format!("CLAUDE_CODE_VERSION: {CLI_VERSION}")));
-    assert!(job.contains("| bash -s \"$CLAUDE_CODE_VERSION\""));
+    assert!(job.contains(INSTALL_PINNED_CLI), "{job}");
     assert!(job.contains("--test offline_cli -- --ignored"));
     assert!(job.contains("project_directory_naming_matches_the_cli_without_calling_the_api"));
     assert!(!job.contains("secrets."), "{job}");

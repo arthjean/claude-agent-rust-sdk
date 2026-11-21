@@ -162,7 +162,7 @@ jobs:
         run: cargo xtask semver-check --features jsonschema,macros,otel,preserve-order,rmcp
 
   licenses:
-    name: Dependency licenses
+    name: Dependency licenses and sources
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -170,7 +170,7 @@ jobs:
 
       - uses: EmbarkStudios/cargo-deny-action@v2.1.1
         with:
-          command: check licenses
+          command: check licenses bans sources
 
   # Each platform lists the tests it compiles and checks the ones the
   # ledgers mark for another platform against the sources, so every
@@ -335,6 +335,9 @@ jobs:
       - name: Test the release script
         run: bash .github/scripts/release.test.sh
 
+      - name: Test the CLI install script
+        run: bash .github/scripts/install-cli.test.sh
+
   lockfile:
     name: Workflow lockfile
     runs-on: ubuntu-latest
@@ -374,7 +377,7 @@ jobs:
       - name: Install Claude Code
         shell: bash
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          bash .github/scripts/install-cli.sh "$CLAUDE_CODE_VERSION"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Verify Claude Code installation
