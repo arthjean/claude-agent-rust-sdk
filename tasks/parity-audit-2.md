@@ -88,7 +88,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D6 | `receive_messages()` checks the connection at call time | done | Connection slot is now Arc<Mutex<..>>; the stream reads it at first poll. `client.rs::a_message_stream_created_before_connect_reads_the_session_connected_since`, red before. |
 | D7 | `ClaudeSdkClient::query` error docs wrong | done | query() errors doc names PromptStream and transport errors (same commit as D6). |
 | D8 | `server_info()` returns an `Option` never `None`; no `options()` accessor | done | server_info() returns Ok(None) during connect (the Option now has upstream meaning); new `ClaudeSdkClient::options()`. `client.rs::server_info_is_none_while_connecting_and_the_options_stay_readable` (did not compile / NotConnected before). |
-| D9 | `"agentId": null` and absent key differ in chain rebuild | todo | |
+| D9 | `"agentId": null` and absent key differ in chain rebuild | done | same_writer compares agentId with null read as absent, as dict.get. Lib test `sessions::chain::tests::a_null_agent_id_and_a_missing_one_are_the_same_writer` (Some(Null) != None before). |
 | D10 | `str::trim` instead of Python `strip()` in three places | todo | |
 | D11 | Duplicate ids in a store listing page: one filled | todo | |
 | D12 | Float `created_at` refused by the session summary | todo | |

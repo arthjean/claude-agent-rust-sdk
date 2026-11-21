@@ -53,7 +53,7 @@ pub(crate) fn is_transcript_entry(entry: &Entry) -> bool {
 pub(crate) fn parse_transcript_entries(content: &str) -> Vec<Entry> {
     content
         .split('\n')
-        .map(str::trim)
+        .map(super::lite::python_strip)
         .filter(|line| !line.is_empty())
         .filter_map(|line| match crate::transport::framing::parse_json(line) {
             Ok(Value::Object(entry)) if is_transcript_entry(&entry) => Some(entry),

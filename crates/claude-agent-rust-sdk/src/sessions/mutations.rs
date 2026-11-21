@@ -276,10 +276,13 @@ pub(crate) fn partition_fork_entries(
     (transcript, replacements)
 }
 
+/// Splits at line feeds only, where upstream's `splitlines()` also splits
+/// at U+2028, U+2029, U+0085 and the separators U+001C to U+001E, which a
+/// JSON string holds unescaped: such an entry would be cut in two and lost.
 fn parse_fork_transcript(content: &str, session_id: &str) -> (Vec<Entry>, Vec<Value>) {
     let entries = content
         .lines()
-        .map(str::trim)
+        .map(super::lite::python_strip)
         .filter(|line| !line.is_empty())
         .filter_map(|line| crate::transport::framing::parse_json(line).ok());
     partition_fork_entries(entries, session_id)
@@ -448,7 +451,10 @@ pub(crate) fn build_fork_entries(
             "timestamp": now,
         })));
     }
-    let fork_title = match title.map(str::trim).filter(|title| !title.is_empty()) {
+    let fork_title = match title
+        .map(super::lite::python_strip)
+        .filter(|title| !title.is_empty())
+    {
         Some(title) => title.to_owned(),
         None => format!(
             "{} (fork)",
@@ -807,6 +813,24 @@ mod tests {
     }
 
     #[test]
+    fn a_fork_keeps_an_entry_whose_text_holds_a_line_separator() {
+        let content = [
+            json!({"type": "user", "uuid": "u1", "sessionId": "s", "message": {"content": "a\u{2028}b\u{85}c"}}),
+            json!({"type": "assistant", "uuid": "a1", "parentUuid": "u1", "sessionId": "s"}),
+        ]
+        .iter()
+        .map(|entry| serde_json::to_string(entry).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+        let (transcript, _) = parse_fork_transcript(&content, "s");
+        let uuids: Vec<_> = transcript
+            .iter()
+            .map(|entry| entry["uuid"].clone())
+            .collect();
+        assert_eq!(uuids, [json!("u1"), json!("a1")]);
+    }
+
+    #[test]
     fn fork_cut_and_title_rules() {
         let source = || {
             vec![
@@ -830,6 +854,16 @@ mod tests {
         .unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[1]["customTitle"], "Named");
+        let (_, entries) = build_fork_entries(
+            source(),
+            vec![],
+            "src",
+            Some("u1"),
+            Some("\u{1c} \u{1f}"),
+            || None,
+        )
+        .unwrap();
+        assert_eq!(entries[1]["customTitle"], "Forked session (fork)");
         let (_, entries) =
             build_fork_entries(source(), vec![], "src", None, None, || None).unwrap();
         assert_eq!(entries[2]["customTitle"], "Forked session (fork)");

@@ -813,3 +813,13 @@ anchor = "await self._transcript_mirror_batcher.flush()"
 category = "deliberate"
 reason = "Control requests keep being answered while a slow store works; closing stdin first loses nothing, since the entries are already held by the SDK and the result still waits for them."
 test = "crates/claude-agent-rust-sdk/tests/transcript_mirror.rs::the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_waits_for_it"
+
+[behavior.fork-splits-at-line-feeds]
+summary = "A fork of a transcript whose message text holds U+2028, U+2029, U+0085 or U+001C to U+001E"
+python = "`splitlines()` also splits at those characters, which JSON leaves unescaped inside a string: the entry is cut in two, neither half parses, and the fork loses it and the chain under it."
+rust = "The transcript is split at line feeds only, as the CLI writes it, and every line is stripped as `str.strip()` strips; the entry is kept."
+ref = "src/claude_agent_sdk/_internal/session_mutations.py:601"
+anchor = 'for line in content.decode("utf-8", errors="replace").splitlines():'
+category = "python-defect"
+reason = "The CLI writes one JSON value per line feed and does not escape those characters; every other reader of the SDK splits at line feeds."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::sessions::mutations::tests::a_fork_keeps_an_entry_whose_text_holds_a_line_separator"

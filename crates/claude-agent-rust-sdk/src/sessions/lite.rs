@@ -238,9 +238,16 @@ pub(crate) enum PromptText {
 /// separators U+001C to U+001F, which Python counts as space and Rust
 /// does not.
 pub(crate) fn python_strip(text: &str) -> &str {
-    text.trim_matches(|character: char| {
-        character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
-    })
+    text.trim_matches(is_python_space)
+}
+
+/// What Python's `str.rstrip()` strips; see [`python_strip`].
+pub(crate) fn python_strip_end(text: &str) -> &str {
+    text.trim_end_matches(is_python_space)
+}
+
+fn is_python_space(character: char) -> bool {
+    character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
 }
 
 pub(crate) fn classify_prompt(raw: &str) -> PromptText {
@@ -257,7 +264,7 @@ pub(crate) fn classify_prompt(raw: &str) -> PromptText {
     }
     if text.chars().count() > FIRST_PROMPT_MAX_CHARS {
         let cut: String = text.chars().take(FIRST_PROMPT_MAX_CHARS).collect();
-        return PromptText::Prompt(format!("{}\u{2026}", cut.trim_end()));
+        return PromptText::Prompt(format!("{}\u{2026}", python_strip_end(&cut)));
     }
     PromptText::Prompt(text.to_owned())
 }
@@ -379,6 +386,15 @@ mod tests {
         ]
         .join("\n");
         assert_eq!(extract_first_prompt_from_head(&head), "real prompt");
+    }
+
+    #[test]
+    fn a_cut_prompt_drops_the_separators_python_strips_before_the_ellipsis() {
+        let prompt = format!("{}\u{1f}\u{1c}{}", "x".repeat(198), "y".repeat(20));
+        assert_eq!(
+            extract_first_prompt_from_head(&user_line(&Value::from(prompt))),
+            format!("{}\u{2026}", "x".repeat(198))
+        );
     }
 
     #[test]
