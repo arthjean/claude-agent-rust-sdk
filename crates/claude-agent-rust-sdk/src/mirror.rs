@@ -176,10 +176,17 @@ impl TranscriptMirrorBatcher {
     async fn send(&self, items: Vec<Pending>) -> Vec<(SessionKey, String)> {
         let mut by_path: IndexMap<String, Vec<SessionStoreEntry>> = IndexMap::new();
         for item in items {
-            let bucket = by_path.entry(item.file_path).or_default();
+            let bucket = by_path.entry(item.file_path.clone()).or_default();
             bucket.extend(item.entries.into_iter().filter_map(|entry| match entry {
                 Value::Object(entry) => Some(entry),
-                _ => None,
+                other => {
+                    tracing::warn!(
+                        "[SessionStore] dropping a mirrored entry of {} that is not a JSON object: \
+                         {other}",
+                        item.file_path
+                    );
+                    None
+                }
             }));
         }
         let mut errors = Vec::new();

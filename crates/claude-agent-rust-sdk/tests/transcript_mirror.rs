@@ -563,3 +563,29 @@ async fn the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_wa
     assert_eq!(reader.await.unwrap(), 1);
     assert_eq!(uuids(&store.inner, "gated"), ["u1"]);
 }
+
+/// Upstream hands every entry to the store as it came; a store entry is a
+/// JSON object here, so one that is not is logged and left out, and the
+/// others of the frame are still mirrored.
+#[tokio::test]
+async fn a_mirrored_entry_that_is_not_an_object_is_left_out_and_the_others_are_stored() {
+    let store = InMemorySessionStore::new();
+    let transport = cli_answering(|frame| {
+        if frame["type"] == "user" {
+            let mut mirror = mirror_frame("objects", &["u1"]);
+            mirror["entries"].as_array_mut().unwrap().extend([
+                json!(5),
+                json!("text"),
+                json!({"type": "user", "uuid": "u2"}),
+            ]);
+            vec![mirror, result("done")]
+        } else {
+            Vec::new()
+        }
+    });
+    let messages: Vec<_> = query_with_transport("hello", options(store.clone()), transport)
+        .collect()
+        .await;
+    assert!(messages.iter().all(Result::is_ok));
+    assert_eq!(uuids(&store, "objects"), ["u1", "u2"]);
+}
