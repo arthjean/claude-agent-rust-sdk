@@ -773,3 +773,23 @@ anchor = "ClaudeAgentOptions(cli_path='/path/to/claude')"
 category = "deliberate"
 reason = "An instruction must be one the reader can follow in Rust; matching on an error keeps working on the parts that name the cause."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::the_not_found_message_shows_the_rust_call_where_upstream_shows_python"
+
+[behavior.null-text-reads-empty]
+summary = "A `task_updated` message with `task_id: null`, or a `mirror_error` with `error: null`"
+python = "`data.get(key, \"\")` returns the `None` that was sent, so the field is `None`."
+rust = "The field is a `String` and reads as empty; the `null` stays in the `data` of the message."
+ref = "src/claude_agent_sdk/_internal/message_parser.py:286"
+anchor = 'task_id=data.get("task_id", ""),'
+category = "deliberate"
+reason = "Upstream types both fields as `str` and defaults a missing one to the empty string; a `String` holds the same default for `null` without a second absent state."
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::a_null_task_id_or_mirror_error_text_reads_as_empty_and_stays_in_the_data"
+
+[behavior.init-data-typed]
+summary = "The `init` system message read as `SystemInitData`"
+python = "`SystemInitData` is a `TypedDict`: the dictionary is handed over as sent, whatever the type of each value."
+rust = "`SystemMessage::init_data` deserializes the frame into typed fields and keeps the keys it does not model in `extra` at every level; it returns `None` when a modeled field has the wrong type, and the frame stays in `SystemMessage::data`."
+ref = "src/claude_agent_sdk/types.py:1532"
+anchor = "class SystemInitData"
+category = "deliberate"
+reason = "Typed fields cannot hold a value of another type; returning the whole frame untouched keeps every value reachable."
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::init_data_is_none_when_a_field_has_the_wrong_type_and_the_frame_stays_reachable"

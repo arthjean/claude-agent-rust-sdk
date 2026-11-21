@@ -423,6 +423,9 @@ pub struct SystemInitMcpServer {
     /// Where the definition came from: `sdk`, `plugin`, or a config scope.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Keys of the CLI this version does not model, kept as sent.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// A loaded plugin listed in [`SystemInitData`].
@@ -437,6 +440,9 @@ pub struct SystemInitPlugin {
     /// Version declared in the plugin manifest, verbatim.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// Keys of the CLI this version does not model, kept as sent.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// A plugin load failure listed in [`SystemInitData`].
@@ -455,6 +461,9 @@ pub struct SystemInitPluginError {
     /// working directory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Keys of the CLI this version does not model, kept as sent.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 wire_enum! {
@@ -555,6 +564,9 @@ pub struct SystemInitData {
     /// ignore unknown values.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<String>>,
+    /// Keys of the CLI this version does not model, kept as sent.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 /// Usage statistics reported by task progress and notification messages.

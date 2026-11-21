@@ -52,7 +52,7 @@ TaskNotificationMessage = { rust = "claude_agent_rust_sdk::TaskNotificationMessa
 TaskNotificationStatus = { rust = "claude_agent_rust_sdk::TaskNotificationStatus" }
 TaskUpdatedStatus = { rust = "claude_agent_rust_sdk::TaskUpdatedStatus" }
 TERMINAL_TASK_STATUSES = { rust = "claude_agent_rust_sdk::TERMINAL_TASK_STATUSES" }
-TaskUsage = { rust = "claude_agent_rust_sdk::TaskUsage" }
+TaskUsage = { rust = "claude_agent_rust_sdk::TaskUsage", note = "A `Copy` struct of the three counts the CLI sends; a key it does not model stays in the `data` of the system message that carries it." }
 ResultMessage = { rust = "claude_agent_rust_sdk::ResultMessage" }
 ModelUsage = { rust = "claude_agent_rust_sdk::ModelUsage", note = "Typed struct where Python keeps the dictionary; keys it does not model are kept in `extra`, and an entry that is not an object is skipped." }
 DeferredToolUse = { rust = "claude_agent_rust_sdk::DeferredToolUse" }

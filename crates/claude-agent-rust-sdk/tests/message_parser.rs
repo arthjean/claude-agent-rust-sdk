@@ -2101,6 +2101,60 @@ fn init_frame_parses_to_a_generic_system_message_with_a_typed_view() {
 }
 
 #[test]
+fn init_data_keeps_the_keys_it_does_not_model_at_every_level() {
+    let message = system(json!({
+        "type": "system",
+        "subtype": "init",
+        "memory_paths": {"user": "/m"},
+        "mcp_servers": [{"name": "docs", "status": "connected", "scope": "project"}],
+        "plugins": [{"name": "p", "path": "/p", "marketplace": "official"}],
+        "plugin_errors": [{"plugin": "x", "type": "t", "message": "m", "line": 4}],
+    }));
+    let init = message.init_data().expect("init data");
+    assert_eq!(init.extra.get("memory_paths"), Some(&json!({"user": "/m"})));
+    assert_eq!(
+        init.mcp_servers[0].extra.get("scope"),
+        Some(&json!("project"))
+    );
+    assert_eq!(
+        init.plugins[0].extra.get("marketplace"),
+        Some(&json!("official"))
+    );
+    assert_eq!(
+        init.plugin_errors.as_ref().unwrap()[0].extra.get("line"),
+        Some(&json!(4))
+    );
+    let written = serde_json::to_value(&init).unwrap();
+    assert_eq!(written["memory_paths"], json!({"user": "/m"}));
+    assert_eq!(written["mcp_servers"][0]["scope"], "project");
+}
+
+#[test]
+fn a_null_task_id_or_mirror_error_text_reads_as_empty_and_stays_in_the_data() {
+    let updated = task_updated(json!({
+        "type": "system", "subtype": "task_updated", "task_id": null, "patch": {},
+    }));
+    assert_eq!(updated.task_id, "");
+    assert_eq!(updated.data["task_id"], Value::Null);
+
+    let Message::System(SystemMessage::MirrorError(mirror)) = parse_message(json!({
+        "type": "system", "subtype": "mirror_error", "error": null,
+    }))
+    .unwrap() else {
+        panic!("a mirror error");
+    };
+    assert_eq!(mirror.error, "");
+    assert_eq!(mirror.data["error"], Value::Null);
+}
+
+#[test]
+fn init_data_is_none_when_a_field_has_the_wrong_type_and_the_frame_stays_reachable() {
+    let message = system(json!({"type": "system", "subtype": "init", "tools": "Bash"}));
+    assert!(message.init_data().is_none());
+    assert_eq!(message.data()["tools"], "Bash");
+}
+
+#[test]
 fn init_frame_optional_fields_are_typed() {
     let message = system(json!({
         "type": "system",

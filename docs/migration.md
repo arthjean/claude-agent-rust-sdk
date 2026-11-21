@@ -326,7 +326,7 @@ shape, not only spelling.
 | `TaskStartedMessage` | `claude_agent_rust_sdk::TaskStartedMessage` |  |
 | `TaskUpdatedMessage` | `claude_agent_rust_sdk::TaskUpdatedMessage` |  |
 | `TaskUpdatedStatus` | `claude_agent_rust_sdk::TaskUpdatedStatus` |  |
-| `TaskUsage` | `claude_agent_rust_sdk::TaskUsage` |  |
+| `TaskUsage` | `claude_agent_rust_sdk::TaskUsage` | A `Copy` struct of the three counts the CLI sends; a key it does not model stays in the `data` of the system message that carries it. |
 | `TextBlock` | `claude_agent_rust_sdk::TextBlock` |  |
 | `ThinkingBlock` | `claude_agent_rust_sdk::ThinkingBlock` |  |
 | `ThinkingConfig` | `claude_agent_rust_sdk::ThinkingConfig` |  |
