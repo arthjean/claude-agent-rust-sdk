@@ -27,6 +27,13 @@ differences found but not yet classified.
 - The Claude Code CLI installed on the machine that runs your program. The
   crate does not bundle it. Version 2.0.0 is the minimum; the crate is tested
   against 2.1.329 and logs a warning when the CLI reports another version.
+  To run a fixed release instead of one that updates itself, set `cli_path`,
+  or place the executable in the directory the crate reserves for it and
+  searches before `PATH`: `~/.local/share/claude-agent-rust-sdk/cli`
+  (`$XDG_DATA_HOME` when set) on Linux,
+  `~/Library/Application Support/claude-agent-rust-sdk/cli` on macOS,
+  `%LOCALAPPDATA%\claude-agent-rust-sdk\cli` on Windows. The crate never
+  writes there itself.
 - Linux, macOS, or Windows.
 
 ## Authentication

@@ -90,6 +90,15 @@ fn absolute_from_env(name: &str) -> Option<PathBuf> {
 
 /// Finds the CLI executable without spawning anything.
 ///
+/// The install directory reserved for the crate is searched first, so a
+/// release placed there is pinned for every program on the machine that
+/// uses the crate, as the Python wheel pins the CLI it bundles:
+/// `%LOCALAPPDATA%\claude-agent-rust-sdk\cli` on Windows,
+/// `~/Library/Application Support/claude-agent-rust-sdk/cli` on macOS, and
+/// `$XDG_DATA_HOME/claude-agent-rust-sdk/cli` (default
+/// `~/.local/share/claude-agent-rust-sdk/cli`) elsewhere. The crate never
+/// writes there.
+///
 /// # Errors
 ///
 /// Returns [`ErrorKind::CliNotFound`](crate::ErrorKind::CliNotFound), with install instructions, when no

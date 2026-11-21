@@ -41,3 +41,34 @@ A12 of the first audit; an opt-out would be a new public option
 (`ClaudeAgentOptions::keep_background_processes` or similar), which is a
 naming decision. Recommendation: no option until a user asks; `setsid`
 already lets an agent detach a process on purpose.
+
+## M6: installing a pinned CLI
+
+Done on the branch: the warning about an untested CLI is logged once per
+process for each path and version, and the install directory the crate
+searches before `PATH` is documented (README, migration guide, `find_cli`) as
+the place to pin a release.
+
+Remaining choice: an installer that fills that directory, the Rust
+counterpart of the CLI the Python wheel bundles. The download protocol is the
+one `https://claude.ai/install.sh` follows: read
+`https://downloads.claude.ai/claude-code-releases/<version>/manifest.json`,
+take `platforms["<os>-<arch>[-musl]"].checksum` (SHA-256), download
+`<version>/<platform>/claude`, check the digest, and move the file into place
+atomically. A design that fits the crate:
+
+- an opt-in feature `install-cli` with `cli::install_cli(version)`, pinned to
+  `CLI_VERSION` by default, never called by the crate on its own;
+- an HTTPS client (`ureq` with `rustls`) and `sha2`, which add `ring` and a
+  certificate root set to the graph: `deny.toml` would have to allow the
+  license of the roots (`webpki-roots` is CDLA-Permissive-2.0), or use the
+  platform verifier;
+- offline tests against a local server serving a manifest and a binary,
+  wrong digest and missing platform included.
+
+Why it waits for the owner: it downloads and installs Anthropic's binary on
+the user's machine, which is the distribution question of prerequisite A1
+(whether Anthropic would rather bundle or host it), and it adds a network
+stack to the supply chain of every build that turns the feature on.
+Recommendation: build it once A1 is settled, as a feature of this crate
+rather than a separate binary.
