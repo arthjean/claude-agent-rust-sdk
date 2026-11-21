@@ -168,6 +168,7 @@ mod control;
 pub mod error;
 pub mod mcp;
 pub mod message_parser;
+mod message_writer;
 mod mirror;
 mod process;
 mod prompt;

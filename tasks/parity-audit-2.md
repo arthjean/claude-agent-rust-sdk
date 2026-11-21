@@ -45,7 +45,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m2 | `disconnect()` cannot interrupt a stuck `connect()` | todo | |
 | m3 | `is_retryable()` false for `terminal_reason == "api_error"` without status | done | `terminal_reason == "api_error"` with no status is retryable; `error::tests::an_api_error_result_without_a_status_is_retryable_as_upstream_documents`, red before. |
 | m4 | `continue_conversation` refused for a store that implements `list_sessions` undeclared | todo | |
-| m5 | Wrongly typed optional field is lost | todo | |
+| m5 | Wrongly typed optional field is lost | done | Modeled keys carry what they must hold (`Reads` tables in `message_parser.rs`); a non-null value the typed field cannot hold stays in `extra`/`message_extra` (frames, bodies, blocks). System messages and rate limits already keep the whole frame raw. `message_parser.rs::an_optional_value_the_crate_cannot_read_is_kept_in_extra`, red before; `[behavior.optional-field-wrong-type]` updated. Not covered: a `modelUsage` entry that is not an object (still skipped) and wrongly typed counters inside `ModelUsage` (read as 0). |
 | m6 | `task_progress` null/non-object `usage` read as zeros | todo | |
 | m7 | `close()` does not close stdin when the write lock times out | done | After the 5 s lock wait, a `Notify` makes the blocked writer drop the pipe (upstream order). Through the client the writer task is aborted on close, so only a direct `SubprocessTransport` writer was affected. `transport.rs::close_ends_stdin_even_while_a_write_is_blocked_on_a_full_pipe` (fake CLI), red before (no `stdin_eof`, 10.3 s). |
 | m8 | Derived `Debug` prints secrets of options | todo | |

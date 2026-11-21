@@ -703,3 +703,13 @@ anchor = '"annotations": tool_def.annotations,'
 category = "deliberate"
 reason = "The program set the keys to send them; the Rust type has no other way to carry a hint MCP adds later, and the CLI ignores a key it does not know. Everything the SDK writes itself is shaped as `mcp` 2.x shapes it."
 test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::an_annotation_key_the_crate_does_not_model_is_listed_and_a_modeled_one_wins"
+
+[behavior.message-serialization]
+summary = "A message or a content block turned into JSON"
+python = "Messages and blocks are dataclasses: `dataclasses.asdict` gives a dictionary of their fields under their Python names (`content`, `model`, `message_id`), not the frame the CLI sent."
+rust = "Messages and blocks implement `Serialize` and `Deserialize` in the form of the CLI frame: a message read from the CLI serializes back to a value equal to its frame, a value the typed field could not hold included, and deserializing goes through `parse_message`."
+ref = "src/claude_agent_sdk/types.py:1438-1439"
+anchor = "class AssistantMessage:"
+category = "deliberate"
+reason = "Rust has no `asdict`; the frame is what a program relays, logs, or replays to a test, and the only JSON form the parser reads back, so serialization and deserialization are inverse."
+test = "crates/claude-agent-rust-sdk/tests/message_serde.rs::every_message_read_from_the_cli_serializes_back_to_its_frame"

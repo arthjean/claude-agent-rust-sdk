@@ -68,6 +68,12 @@ enum with a variant per class (`Message::Assistant`, `Message::User`,
 A message or a block this version does not know is kept as raw JSON instead of
 being dropped, so a newer CLI does not break an older program.
 
+Where Python turns a message into a dictionary with `dataclasses.asdict`,
+serialize it with `serde_json::to_value(&message)`: messages and blocks implement
+`Serialize` and `Deserialize` in the form of the CLI frame, not as a dictionary
+of their fields. A message read from the CLI serializes back to its frame, and
+deserializing a frame goes through `parse_message`.
+
 ## Errors
 
 Every function returns one error type, `Error`. Its `kind()` says what went

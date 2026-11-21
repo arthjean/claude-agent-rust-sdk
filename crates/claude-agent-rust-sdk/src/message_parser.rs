@@ -1,6 +1,11 @@
 //! Parser that turns one JSON message of CLI output into a typed
 //! [`Message`].
 //!
+//! Messages and content blocks also implement `Serialize` and
+//! `Deserialize` in the form of the frame: serializing a parsed message
+//! gives back a value equal to the frame it was read from, and
+//! deserializing goes through [`parse_message`].
+//!
 //! The parser dispatches on the `type` field by hand and reproduces the
 //! required and optional fields of the upstream Python parser. It differs
 //! from upstream in four deliberate ways:
@@ -226,11 +231,7 @@ impl<'a> Fields<'a> {
 }
 
 fn parse_hook_event(object: &Map<String, Value>, subtype: &str) -> SystemMessage {
-    let hook_event_name = ["hook_event", "hook_name", "hook_event_name"]
-        .into_iter()
-        .filter_map(|key| object.get(key).and_then(Value::as_str))
-        .find(|name| !name.is_empty())
-        .unwrap_or_default();
+    let hook_event_name = read_hook_event_name(object);
     let fields = Fields::new(object, "system");
     SystemMessage::HookEvent(HookEventMessage {
         subtype: subtype.to_owned(),
@@ -752,3 +753,33 @@ fn parse_conversation_reset(fields: &Fields<'_>) -> Parsed<ConversationResetMess
         extra: extra_keys(fields.object, CONVERSATION_RESET_KEYS),
     })
 }
+
+/// Parses one content block as an assistant message reads it, every block
+/// type the crate models read into its typed variant.
+pub(crate) fn parse_content_block(block: &Value) -> Result<ContentBlock, Error> {
+    parse_block(block, "assistant", Turn::Assistant)
+        .map_err(|message| Error::message_parse(message, Some(block.clone())))
+}
+
+/// Reads the usage of a task message as [`TaskUsage`], as the parser does.
+pub(crate) fn read_task_usage(value: &Value) -> TaskUsage {
+    parse_task_usage(value)
+}
+
+/// Reads the key of a mirror error as the parser does.
+pub(crate) fn read_session_key(value: Option<&Value>) -> Option<SessionKey> {
+    parse_session_key(value)
+}
+
+/// The name of the hook event a `hook_started` or `hook_response` frame
+/// carries, as the parser reads it.
+pub(crate) fn read_hook_event_name(object: &Map<String, Value>) -> &str {
+    HOOK_EVENT_NAME_KEYS
+        .into_iter()
+        .filter_map(|key| object.get(key).and_then(Value::as_str))
+        .find(|name| !name.is_empty())
+        .unwrap_or_default()
+}
+
+/// The keys a hook event frame may name its event under, first match wins.
+pub(crate) const HOOK_EVENT_NAME_KEYS: [&str; 3] = ["hook_event", "hook_name", "hook_event_name"];

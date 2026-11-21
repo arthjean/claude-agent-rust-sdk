@@ -4,6 +4,7 @@
 
 ### Added
 
+- `Message`, every message type, `ContentBlock`, and every block type implement `Serialize` and `Deserialize` in the form of the CLI frame (`MessageOrigin` and `ToolResultContent` too; `UserContent`, `RateLimitInfo`, and `DeferredToolUse` implement `Serialize`). A message read from the CLI serializes back to a value equal to its frame, and deserializing goes through `parse_message`.
 - `HookInput::tool_name()` and `HookInput::tool_input()` read the tool of a `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, or `PermissionRequest` input, typed or `Unknown`, so a hook that guards tool calls keeps checking an input whose shape changed. The `hooks` example uses them and denies a call it cannot check.
 
 ### Changed
