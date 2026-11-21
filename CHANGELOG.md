@@ -4,6 +4,7 @@
 
 ### Added
 
+- `ClaudeSdkClient::options`, the counterpart of `client.options`. `server_info` returns `Ok(None)` while `connect` waits for the initialize response, as upstream returns `None`, instead of a not-connected error.
 - `ClaudeSdkClient::scoped`, the counterpart of `async with ClaudeSDKClient()`: it connects, runs an async closure with the client, and waits for the disconnect whether the closure succeeded or failed.
 - Constructors for every public message, hook input, and session type that had none: `new()` on the task, mirror error, hook event, generic system, stream, rate limit, and conversation reset messages, `RateLimitInfo`, `DeferredToolUse`, `SessionMessage`, `HookInputBase`, and the ten hook inputs. Each takes the fields upstream requires; the optional ones start empty and are public.
 - A CI job that installs the pinned CLI and runs it without credentials (a placeholder key and an API address on a closed local port): the handshake, the options the init message reports, the `sdk-rs` entrypoint agent list, and the project directory names are checked on every push at no API cost (`tests/offline_cli.rs`).

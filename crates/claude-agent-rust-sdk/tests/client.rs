@@ -570,3 +570,25 @@ async fn a_message_stream_created_before_connect_reads_the_session_connected_sin
     assert_not_connected(messages.next().await.unwrap(), "receive_response");
     assert!(messages.next().await.is_none());
 }
+
+/// Upstream returns `None` from `get_server_info` while `connect` waits
+/// for the initialize response, and exposes the options it was given.
+#[tokio::test(start_paused = true)]
+async fn server_info_is_none_while_connecting_and_the_options_stay_readable() {
+    let options = ClaudeAgentOptions::builder().max_turns(3).build().unwrap();
+    let client = Arc::new(ClaudeSdkClient::with_transport(
+        options,
+        common::mock::silent_cli(),
+    ));
+    assert_eq!(client.options().max_turns, Some(3));
+    assert_not_connected(client.server_info(), "server_info");
+    let connecting = {
+        let client = Arc::clone(&client);
+        tokio::spawn(async move { client.connect().await })
+    };
+    settle().await;
+    assert_eq!(client.server_info().unwrap(), None);
+    client.disconnect().await.unwrap();
+    assert!(connecting.await.unwrap().is_err());
+    assert_not_connected(client.server_info(), "server_info");
+}

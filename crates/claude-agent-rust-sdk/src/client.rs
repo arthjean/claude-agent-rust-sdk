@@ -465,14 +465,27 @@ impl ClaudeSdkClient {
     }
 
     /// Returns the response of the CLI to the initialize handshake: the
-    /// available commands, the output styles, and the capabilities.
+    /// available commands, the output styles, and the capabilities. It is
+    /// `None` while [`connect`](Self::connect) is still waiting for that
+    /// response, as upstream returns `None`.
     ///
     /// # Errors
     ///
-    /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is not connected.
+    /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is neither
+    /// connected nor connecting.
     #[doc(alias = "get_server_info")]
     pub fn server_info(&self) -> Result<Option<Value>> {
+        if let Some(connecting) = self.connecting_slot().as_ref() {
+            return Ok(connecting.server_info());
+        }
         Ok(self.connection()?.session.server_info())
+    }
+
+    /// The options this client was created with, as upstream exposes
+    /// `client.options`.
+    #[must_use]
+    pub fn options(&self) -> &ClaudeAgentOptions {
+        &self.options
     }
 
     /// Connects, runs `body` with the connected client, then disconnects
