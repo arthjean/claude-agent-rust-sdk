@@ -52,6 +52,18 @@ jobs:
       - name: Test (no default features)
         run: cargo test --package claude-agent-rust-sdk --no-default-features --features testing
 
+      - name: Run as another user, started as root (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          executable() { jq -r --arg name "$1" 'select(.reason == "compiler-artifact" and .target.name == $name and .executable != null) | .executable'; }
+          fake=$(cargo build -p fake-claude --bin fake-claude --message-format=json | executable fake-claude)
+          binary=$(cargo test -p claude-agent-rust-sdk --all-features --test transport --no-run --message-format=json | executable transport)
+          shared=$(mktemp -d)
+          chmod 755 "$shared"
+          sudo env TMPDIR="$shared" CLAUDE_AGENT_RUST_SDK_TEST_FAKE_CLAUDE="$fake" \
+            "$binary" --exact the_process_runs_as_the_requested_user
+
       - name: Keychain resume (macOS)
         if: runner.os == 'macOS'
         shell: bash

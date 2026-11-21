@@ -782,7 +782,8 @@ fn command_output(program: &str, arguments: &[&str]) -> String {
 /// prints them, not those of root. Without privilege
 /// the change of identity cannot succeed, so the test checks the spawn is
 /// refused with a permission error: a child that starts anyway was never
-/// asked to change user or group.
+/// asked to change user or group. The `gates` job of `ci.yml` also runs it
+/// with `sudo` on Linux, so the root branch runs on every push.
 #[cfg(unix)]
 #[tokio::test]
 async fn the_process_runs_as_the_requested_user() {

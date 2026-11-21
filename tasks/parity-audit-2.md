@@ -167,7 +167,7 @@ changes. 57 commits checked:
   - `6fad5bf` (control response without a request id): `a_control_response_whose_response_is_not_an_object_is_ignored_and_the_session_goes_on` fails without the warn.
   - `d469030` (D13): the test first asserted only the stored entries (green before); it now asserts the warning and fails without it.
   - `19f10b0` (M7): `serde_json_key_order_is_a_feature_of_the_library_its_dependents_can_turn_off` fails on the parent's manifests (the script only reverted `src/`).
-  - `ffab1a8` (run-as-user groups): the root branch of `the_process_runs_as_the_requested_user` runs in no CI job. Run as root in a user namespace (`podman unshare`, `nobody` mapped): green at HEAD; on the parent source it fails with "the child does not hold the groups of nobody" (`[]` against `[65534]`).
+  - `ffab1a8` (run-as-user groups): the root branch of `the_process_runs_as_the_requested_user` runs in no CI job. Run as root in a user namespace (`podman unshare`, `nobody` mapped): green at HEAD; on the parent source it fails with "the child does not hold the groups of nobody" (`[]` against `[65534]`). The `gates` job of `ci.yml` now runs it with `sudo` on Linux (step "Run as another user, started as root"); the step script was run locally with `podman unshare env -i` in place of `sudo env` and passes.
 - Not red by construction: `710be8f` (M1, new `mcp/surface.rs` module, red
   before through the differential cases `mcp-protocol-edges`,
   `mcp-tool-content`, `mcp-cancel`); `76437ff` (D4) and `3904aee` (D30),
