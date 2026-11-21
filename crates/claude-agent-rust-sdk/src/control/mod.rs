@@ -764,7 +764,10 @@ impl ControlSession {
         }
         let materialized = match transport {
             None => materialize_resume_session(&options).await?,
-            Some(_) => None,
+            Some(_) => {
+                crate::resume::check_continue_store(&options).await?;
+                None
+            }
         };
         let Some(materialized) = materialized else {
             return Self::for_options(&options, transport);

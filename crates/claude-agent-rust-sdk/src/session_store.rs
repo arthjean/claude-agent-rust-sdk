@@ -363,9 +363,8 @@ pub trait SessionStore: Send + Sync + 'static {
     ///
     /// A hint only: the crate calls an optional method whatever the
     /// declaration says, and takes [`UnsupportedStoreOperation`] as its
-    /// absence. Declare [`list_sessions`](SessionStoreCapabilities::list_sessions)
-    /// for a store used with `continue_conversation`, which is validated
-    /// before the store can be called.
+    /// absence, `continue_conversation` included. The conformance suite
+    /// checks that the declaration matches what the store does.
     fn capabilities(&self) -> SessionStoreCapabilities {
         SessionStoreCapabilities::none()
     }

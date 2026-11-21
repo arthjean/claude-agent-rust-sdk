@@ -33,8 +33,8 @@ use serde_json::Value;
 
 use crate::error::{Error, Result};
 use crate::session_store::{
-    SessionKey, SessionListSubkeysKey, SessionStoreEntry, SessionStoreError, SharedSessionStore,
-    is_unsupported,
+    SessionKey, SessionListSubkeysKey, SessionStoreEntry, SessionStoreError, SessionStoreListEntry,
+    SharedSessionStore, is_unsupported,
 };
 use crate::sessions::{
     agent_metadata_sidecar_path, plain_line, project_key_for_directory, split_agent_metadata,
@@ -247,6 +247,54 @@ async fn load_candidate(
     Ok(entries.filter(|entries| !entries.is_empty()))
 }
 
+/// The error of `continue_conversation` with a store that does not
+/// implement `list_sessions`, upstream's text.
+fn continue_needs_list_sessions() -> Error {
+    Error::config(
+        "continue_conversation with session_store requires the store to implement \
+         list_sessions()",
+    )
+}
+
+/// The sessions of a project for `continue_conversation`. A store that
+/// answers [`UnsupportedStoreOperation`](crate::UnsupportedStoreOperation)
+/// is refused with the `Config` error upstream raises when the store does
+/// not override `list_sessions`: the call is the Rust way to ask, since a
+/// trait cannot tell whether a method is overridden.
+async fn sessions_to_continue(
+    store: &SharedSessionStore,
+    project_key: &str,
+    limit: Duration,
+) -> Result<Vec<SessionStoreListEntry>> {
+    match tokio::time::timeout(limit, store.list_sessions(project_key)).await {
+        Ok(Err(error)) if is_unsupported(&error) => Err(continue_needs_list_sessions()),
+        Ok(Ok(sessions)) => Ok(sessions),
+        Ok(Err(error)) => Err(Error::session_store(
+            "Session store list_sessions failed during resume materialization",
+            error,
+        )),
+        Err(_) => Err(timeout_error("list_sessions", limit)),
+    }
+}
+
+/// Refuses `continue_conversation` with a store that does not implement
+/// `list_sessions`, for a session whose transport is custom: nothing is
+/// materialized then, but upstream validates the options at connect all
+/// the same.
+pub(crate) async fn check_continue_store(options: &ClaudeAgentOptions) -> Result<()> {
+    let Some(store) = &options.session_store else {
+        return Ok(());
+    };
+    if !options.continue_conversation || options.resume.is_some() {
+        return Ok(());
+    }
+    let limit = Duration::from_millis(options.load_timeout_ms);
+    let project_key = project_key_for_directory(options.cwd.as_deref());
+    sessions_to_continue(store, &project_key, limit)
+        .await
+        .map(drop)
+}
+
 /// The newest session whose first entry is not a sidechain: sidechains are
 /// mirrored as top-level keys and are often the newest.
 async fn continue_candidate(
@@ -254,7 +302,7 @@ async fn continue_candidate(
     project_key: &str,
     limit: Duration,
 ) -> Result<Option<(String, Vec<SessionStoreEntry>)>> {
-    let mut sessions = bounded("list_sessions", limit, store.list_sessions(project_key)).await?;
+    let mut sessions = sessions_to_continue(store, project_key, limit).await?;
     sessions.sort_by_key(|session| std::cmp::Reverse(session.mtime));
     for candidate in sessions {
         if validate_uuid(&candidate.session_id).is_none() {

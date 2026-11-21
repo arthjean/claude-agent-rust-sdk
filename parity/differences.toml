@@ -505,14 +505,14 @@ reason = "Parsing, cloning, and dropping a `serde_json::Value` recurse once per 
 test = "crates/claude-agent-rust-sdk/src/lib.rs::transport::framing::tests::nesting_up_to_the_limit_is_read_whole_and_deeper_keeps_the_rest_of_the_line"
 
 [behavior.store-declaration-for-continue]
-summary = "`continue_conversation` with a store that implements `list_sessions` without declaring it"
-python = "Option validation sees that the store class overrides `list_sessions` and accepts the options."
-rust = "Every other path calls an optional method and takes `UnsupportedStoreOperation` as its absence, but option validation runs before any call can be made and reads `SessionStore::capabilities`: a store that does not declare `list_sessions` is refused with the same `Config` error as one that lacks it."
+summary = "How a connect with `continue_conversation` learns that the store implements `list_sessions`"
+python = "Validation at connect inspects the class of the store: an override of `list_sessions` passes, the inherited default is refused."
+rust = "The connect calls `list_sessions`, which the resume needs anyway, and takes `UnsupportedStoreOperation` as its absence, with upstream's `Config` error; `SessionStore::capabilities` is not read. With a custom transport, where nothing is resumed, the call is made for this check alone."
 ref = "src/claude_agent_sdk/_internal/session_store_validation.py:8-38"
 anchor = 'def _store_implements(store: SessionStore, method: str) -> bool:'
 category = "deliberate"
-reason = "Rust cannot see whether a trait method is overridden, and building options is synchronous, so the declaration is the only answer available before the child starts."
-test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_reads_the_declaration_of_list_sessions"
+reason = "Rust cannot see whether a trait method is overridden; the call is the one answer that cannot disagree with the store, where a declaration can."
+test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_accepts_a_store_that_lists_sessions_without_declaring_it"
 
 [behavior.transcript-line-json-reading]
 summary = "A transcript line that escapes a lone UTF-16 surrogate, or nests more than 512 levels deep"

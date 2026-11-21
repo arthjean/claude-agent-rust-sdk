@@ -418,20 +418,11 @@ fn shadowed_warning_message(
     ))
 }
 
+/// The checks of the session store that need no call to it. The store of
+/// `continue_conversation` must implement `list_sessions`, which only a call
+/// tells, so that check runs at connect (`resume::check_continue_store`).
 fn validate_session_store(options: &ClaudeAgentOptions) -> Result<(), Error> {
-    let Some(store) = &options.session_store else {
-        return Ok(());
-    };
-    if options.continue_conversation
-        && options.resume.is_none()
-        && !store.capabilities().list_sessions
-    {
-        return Err(Error::config(
-            "continue_conversation with session_store requires the store to implement \
-             list_sessions()",
-        ));
-    }
-    if options.enable_file_checkpointing {
+    if options.session_store.is_some() && options.enable_file_checkpointing {
         return Err(Error::config(
             "session_store cannot be combined with enable_file_checkpointing (checkpoints are \
              local-disk only and would diverge from the mirrored transcript)",
@@ -702,9 +693,11 @@ impl ClaudeAgentOptionsBuilder {
     /// # Errors
     ///
     /// Returns [`ErrorKind::Config`](crate::ErrorKind::Config) when `can_use_tool` is combined with
-    /// `permission_prompt_tool_name`, when `session_store` is combined with
-    /// `enable_file_checkpointing`, or when `continue_conversation` is used
-    /// without `resume` on a store that does not list sessions.
+    /// `permission_prompt_tool_name`, or when `session_store` is combined
+    /// with `enable_file_checkpointing`. A store used with
+    /// `continue_conversation` and no `resume` must implement
+    /// `list_sessions`; that is checked at connect, where the store can be
+    /// called, as upstream checks it.
     pub fn build(self) -> Result<ClaudeAgentOptions, Error> {
         validate_session_store(&self.options)?;
         check_can_use_tool(&self.options)?;

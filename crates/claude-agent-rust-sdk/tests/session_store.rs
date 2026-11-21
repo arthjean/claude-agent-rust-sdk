@@ -506,15 +506,7 @@ fn project_keys_resolve_relative_directories_and_sanitize() {
 #[test]
 fn store_options_are_validated() {
     let minimal = || ClaudeAgentOptions::builder().session_store(MinimalStore::default());
-    assert_eq!(
-        minimal()
-            .continue_conversation(true)
-            .build()
-            .as_ref()
-            .err()
-            .map(Error::kind),
-        Some(ErrorKind::Config)
-    );
+    minimal().continue_conversation(true).build().unwrap();
     minimal()
         .continue_conversation(true)
         .resume("00000000-0000-4000-8000-000000000000")

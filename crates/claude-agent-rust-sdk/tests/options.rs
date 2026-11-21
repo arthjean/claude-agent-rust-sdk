@@ -749,32 +749,56 @@ fn session_store_with_file_checkpointing_is_a_config_error() {
     assert!(checkpointing_alone.enable_file_checkpointing);
 }
 
-#[test]
-fn continue_conversation_needs_a_store_that_lists_sessions() {
-    let message = config_error(
+/// The error of a connect whose options are refused before anything
+/// starts: no CLI is installed at `cli_path`, so any other refusal would be
+/// `CliNotFound`.
+async fn connect_error(builder: claude_agent_rust_sdk::ClaudeAgentOptionsBuilder) -> Error {
+    let options = builder
+        .cli_path("/nonexistent/claude-for-the-options-test")
+        .build()
+        .expect("the options build: the store is checked at connect");
+    claude_agent_rust_sdk::ClaudeSdkClient::new(options)
+        .connect()
+        .await
+        .unwrap_err()
+}
+
+const CONTINUE_NEEDS_LIST: &str =
+    "continue_conversation with session_store requires the store to implement list_sessions()";
+
+/// Upstream validates the store at connect: a store that does not
+/// implement `list_sessions` cannot serve `continue_conversation`, unless
+/// `resume` is set, which wins.
+#[tokio::test]
+async fn continue_conversation_needs_a_store_that_lists_sessions() {
+    let minimal = || {
         ClaudeAgentOptions::builder()
             .session_store(MinimalStore::default())
             .continue_conversation(true)
-            .build(),
+    };
+    let error = connect_error(minimal()).await;
+    assert_eq!(error.kind(), ErrorKind::Config);
+    assert_eq!(error.to_string(), CONTINUE_NEEDS_LIST);
+
+    let transport = claude_agent_rust_sdk::testing::MockTransport::new();
+    let client = claude_agent_rust_sdk::ClaudeSdkClient::with_transport(
+        minimal().build().unwrap(),
+        transport,
     );
     assert_eq!(
-        message,
-        "continue_conversation with session_store requires the store to implement \
-         list_sessions()"
+        client.connect().await.unwrap_err().to_string(),
+        CONTINUE_NEEDS_LIST
     );
 
-    ClaudeAgentOptions::builder()
-        .session_store(MinimalStore::default())
-        .continue_conversation(true)
-        .resume("session-123")
-        .build()
-        .unwrap();
-
-    ClaudeAgentOptions::builder()
-        .session_store(ListingStore)
-        .continue_conversation(true)
-        .build()
-        .unwrap();
+    let resumed = connect_error(minimal().resume("00000000-0000-4000-8000-000000000000")).await;
+    assert_ne!(resumed.kind(), ErrorKind::Config, "{resumed}");
+    let listing = connect_error(
+        ClaudeAgentOptions::builder()
+            .session_store(ListingStore)
+            .continue_conversation(true),
+    )
+    .await;
+    assert_ne!(listing.kind(), ErrorKind::Config, "{listing}");
 }
 
 /// Implements `list_sessions` but keeps the default `capabilities`.
@@ -804,15 +828,17 @@ impl SessionStore for UndeclaredListingStore {
     }
 }
 
-#[test]
-fn continue_conversation_reads_the_declaration_of_list_sessions() {
-    let message = config_error(
+/// The call answers what Rust cannot see: whether the method is
+/// implemented. The declaration is not read.
+#[tokio::test]
+async fn continue_conversation_accepts_a_store_that_lists_sessions_without_declaring_it() {
+    let error = connect_error(
         ClaudeAgentOptions::builder()
             .session_store(UndeclaredListingStore)
-            .continue_conversation(true)
-            .build(),
-    );
-    assert!(message.contains("list_sessions()"), "{message}");
+            .continue_conversation(true),
+    )
+    .await;
+    assert_ne!(error.kind(), ErrorKind::Config, "{error}");
 }
 
 #[tokio::test]
