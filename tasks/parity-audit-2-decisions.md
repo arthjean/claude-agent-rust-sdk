@@ -75,6 +75,8 @@ rather than a separate binary.
 
 ## B1 and A1: the entrypoint label
 
+**Decided by the owner (2026-11-21):** keep `sdk-rs`; the owner asks Anthropic to add it to the CLI as part of the proposal. `sdk-py` is never sent.
+
 Measured (`docs/validation/entrypoint-label.md`): CLI 2.1.329 knows `sdk-ts`,
 `sdk-py`, and `sdk-cli` only. With `sdk-rs` the `init` message lists the
 `claude-code-guide` agent a Python session does not get, API requests carry
