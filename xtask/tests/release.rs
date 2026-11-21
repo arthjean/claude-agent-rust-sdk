@@ -316,7 +316,7 @@ impl Fixture {
         file(
             "README.md",
             &format!(
-                "# SDK\n\nIt is a port of the Claude Agent SDK, version {PIN_SDK}.\nTested\n  against {PIN_CLI}.\n\n```toml\n[dependencies]\nclaude-agent-rust-sdk = \"0.1\"\n```\n"
+                "# SDK\n\nIt is a port of the Claude Agent SDK, version {PIN_SDK}.\nTested\n  against {PIN_CLI} and logs a warning on another one.\n\n```toml\n[dependencies]\nclaude-agent-rust-sdk = \"0.1\"\n```\n"
             ),
         );
         file(
@@ -1156,7 +1156,7 @@ fn sync_to_a_cli_only_release_moves_every_copy_and_the_pin() {
         library("0.2.183", "2.1.326")
     );
     assert!(fixture.read("README.md").contains(
-        "It is a port of the Claude Agent SDK, version 0.2.183.\nTested\n  against 2.1.326."
+        "It is a port of the Claude Agent SDK, version 0.2.183.\nTested\n  against 2.1.326 and logs a warning on another one."
     ));
     assert!(
         fixture
