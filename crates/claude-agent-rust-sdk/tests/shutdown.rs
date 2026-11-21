@@ -173,6 +173,53 @@ async fn descendants_end_with_the_session() {
     );
 }
 
+/// A descendant left in the group when the CLI exits gets `SIGTERM` first,
+/// so a server the agent started in the background can clean up.
+#[cfg(unix)]
+#[tokio::test]
+async fn descendants_left_at_exit_get_sigterm_before_sigkill() {
+    let fake = Fake::new(json!({"steps": [{"wait_for_eof": true}]}));
+    let marker = fake.directory.path().join("cleaned");
+    let ready = fake.directory.path().join("ready");
+    let wrapper = fake
+        .directory
+        .path()
+        .join("claude-with-a-background-server");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\n( trap 'echo cleaned > \"{}\"; exit 0' TERM; echo ready > \"{}\"; while :; do sleep 1 & wait $!; done ) &\nexec \"{}\" \"$@\"\n",
+            marker.display(),
+            ready.display(),
+            fake_claude().display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (transport, _pid) = connected(fake.options().cli_path(&wrapper).build().unwrap()).await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(&ready).is_ok_and(|text| text.ends_with('\n')) {
+        assert!(
+            Instant::now() < deadline,
+            "the background server never started"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    transport.close().await.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read_to_string(&marker).ok().as_deref() != Some("cleaned\n") {
+        assert!(
+            Instant::now() < deadline,
+            "the background server was killed without a chance to clean up"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn descendants_of_a_killed_process_end_too() {
     let fake = Fake::new(json!({

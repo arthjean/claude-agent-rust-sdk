@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- On Unix, the processes left in the group of the CLI when it exits get `SIGTERM`, and `SIGKILL` only 5 s later if they are still running, instead of `SIGKILL` at once, so a server the agent started in the background can clean up.
 - In-process MCP tools run in the `tracing` span and the OpenTelemetry context of the caller that connected, as the other callbacks do.
 - A prompt stream that panics closes stdin, so the query ends, as upstream closes it when the iterable raises.
 - `Error::is_retryable()` is true for an API error result with no HTTP status (`terminal_reason` is `api_error`, such as a stream idle timeout), the case upstream's `ResultError` docs give for a retry.

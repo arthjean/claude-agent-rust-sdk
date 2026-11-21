@@ -137,11 +137,11 @@ test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_ow
 [behavior.process-tree-ended]
 summary = "Processes the CLI started"
 python = "Only the direct child is signaled, and an atexit hook cleans up at interpreter exit."
-rust = "The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux. A process the agent starts in the background (`nohup server &`) is in that tree and ends with the session too, unless it leaves the group (`setsid`). When the runtime stops with a session open, the Unix group gets `SIGTERM`, as the Python atexit hook sends to the child."
+rust = "The CLI and its descendants end with the session: a Job Object on Windows, the process group on Unix, a parent-death signal on Linux. A process the agent starts in the background (`nohup server &`) is in that tree and ends with the session too, unless it leaves the group (`setsid`). On Unix, what is left in the group when the CLI exits gets `SIGTERM`, then `SIGKILL` 5 s later if it is still running, so it can clean up; on Windows the job is terminated at once. When the runtime stops with a session open, the Unix group gets `SIGTERM`, as the Python atexit hook sends to the child."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:72-82"
 anchor = "p.send_signal(signal.SIGTERM)"
 category = "rust-more-robust"
-reason = "A tool process the CLI started must not outlive the session."
+reason = "A tool process the CLI started must not outlive the session, and a stdio MCP server or a tool process that a CLI killed by a signal could not stop would otherwise be orphaned; the grace period gives a background server the time the CLI itself gets to clean up."
 test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::descendants_end_with_the_session"
 
 [behavior.shadow-warning-per-session]

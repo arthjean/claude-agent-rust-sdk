@@ -80,7 +80,9 @@
 //! its own process tree, which the crate ends as a whole: through a process
 //! group on Unix and a Job Object on Windows. A server the agent starts in
 //! the background (`nohup server &`) is part of that tree and ends with the
-//! session, unless it leaves the group (`setsid` on Unix). When the program
+//! session, unless it leaves the group (`setsid` on Unix): on Unix it gets
+//! `SIGTERM` when the CLI exits, and `SIGKILL` 5 s later if it is still
+//! running; on Windows it is terminated at once. When the program
 //! returns from `main` with a session still open, the CLI gets `SIGTERM` on
 //! Unix, so it writes the end of its transcript before it exits.
 //!

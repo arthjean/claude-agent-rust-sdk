@@ -217,9 +217,29 @@ mod imp {
             let _ = child.start_kill();
         }
 
-        pub(crate) fn sweep(&mut self) {
-            self.signal(libc::SIGKILL);
-            self.group = None;
+        /// Ends the processes left in the group once the child has exited:
+        /// `SIGTERM` at once, then `SIGKILL` after `grace` to those still
+        /// there, in a task of its own so that the exit of the child is
+        /// reported without waiting. The group is polled every 50 ms and
+        /// never signaled again once it is empty, so a group id the system
+        /// reuses later is not touched.
+        pub(crate) fn sweep(&mut self, grace: std::time::Duration) {
+            let Some(group) = self.group.take() else {
+                return;
+            };
+            if !signal_group(group, libc::SIGTERM) {
+                return;
+            }
+            tokio::spawn(async move {
+                let deadline = tokio::time::Instant::now() + grace;
+                while tokio::time::Instant::now() < deadline {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    if !signal_group(group, 0) {
+                        return;
+                    }
+                }
+                signal_group(group, libc::SIGKILL);
+            });
         }
 
         fn signal(&self, signal: libc::c_int) {
@@ -235,6 +255,12 @@ mod imp {
         fn drop(&mut self) {
             self.signal(libc::SIGTERM);
         }
+    }
+
+    /// Sends `signal` to the group, `0` only checking that it still has a
+    /// member. False when no process of the group is left.
+    fn signal_group(group: libc::pid_t, signal: libc::c_int) -> bool {
+        unsafe { libc::killpg(group, signal) == 0 }
     }
 }
 
@@ -298,7 +324,10 @@ mod imp {
             self.terminate(child);
         }
 
-        pub(crate) fn sweep(&mut self) {
+        /// Ends the processes left in the job once the child has exited.
+        /// Windows has no signal a console-less process can handle, so
+        /// they are terminated at once, whatever `grace` is.
+        pub(crate) fn sweep(&mut self, _grace: std::time::Duration) {
             self.terminate_job();
             self.job = None;
         }

@@ -209,7 +209,7 @@ async fn supervise(
     };
     match status {
         Ok(status) => {
-            supervised.tree.sweep();
+            supervised.tree.sweep(SHUTDOWN_STEP);
             let _ = exit.send(Some(Exit {
                 code: exit_code(status),
                 forced,
