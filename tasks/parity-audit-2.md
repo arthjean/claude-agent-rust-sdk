@@ -116,10 +116,10 @@ evidence), `owner` (decision note written, waiting on the owner).
 | Id | Point | Status | Proof / note |
 |---|---|---|---|
 | U1 | A tool reading `/dev/tty` is stopped (SIGTTIN) since the CLI has its own process group | done | PROVEN (pty probe via python pty.fork): a CLI stand-in reading /dev/tty under the crate is in state T (SIGTTIN); the same under a subprocess of the program own group (upstream) is S (waits for input). Close then took 12 s (SIGTERM pending on a stopped process). Fixed: SIGTERM to the group is followed by SIGCONT (`sys::imp::tests::a_stopped_member_of_the_group_ends_on_terminate`, red before). The background group is kept and recorded on `[behavior.separate-process-group]`. |
-| U2 | OTel context carried by tracing spans not propagated to the CLI | todo | |
+| U2 | OTel context carried by tracing spans not propagated to the CLI | refuted | Probe (scratch crate: tracing-opentelemetry 0.34 + opentelemetry_sdk 0.33, CLI stand-in dumping env): connect() outside a span sends no TRACEPARENT; connect().instrument(info_span!) sends TRACEPARENT=00-<trace>-<span>-01. The layer attaches the span context on enter by default (`context_activation`, layer.rs:1206-1222). Documented on the `otel` feature in lib.rs. |
 | U3 | `claude-code-guide` agent in the init message of a Rust session | done | Proven: offline run of CLI 2.1.329 lists `claude-code-guide` in `init.agents` with `sdk-rs`, not with `sdk-py`, `sdk-cli`, or no label (docs/validation/entrypoint-label.md). |
 | U4 | A tag read after a store reorders keys is correct | done | Proven: `session_store_helpers.rs::a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries` (store sorts keys on load; tag, title and first prompt read correctly). |
-| U5 | Real orphan on macOS | todo | |
+| U5 | Real orphan on macOS | ci-only | Cannot run macOS here. The proof is `shutdown.rs::a_program_that_exits_without_closing_gives_its_sessions_sigterm` (cfg(unix), not ignored), which the gates job runs on macos-latest: a host that leaves through exit() without closing must see its session group get SIGTERM. On Linux it was red before m12 and is green now; the macOS verdict comes from the first CI run of this branch. A host killed by SIGKILL orphans the CLI on macOS on both sides (no hook runs; upstream atexit does not either). |
 
 ## Findings the audit missed
 
