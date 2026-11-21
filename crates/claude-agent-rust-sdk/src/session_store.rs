@@ -338,14 +338,38 @@ pub(crate) fn is_unsupported(error: &SessionStoreError) -> bool {
 
 /// Adapter that mirrors session transcripts to external storage.
 ///
+/// The CLI still writes every transcript to the local disk under
+/// `CLAUDE_CONFIG_DIR`; the store receives a second copy.
+///
 /// Retention is the adapter's responsibility: this crate deletes from a
-/// store only through an explicit delete call.
+/// store only through an explicit delete call
+/// ([`delete_session_via_store`](crate::delete_session_via_store)). Apply a
+/// TTL, a lifecycle policy, or scheduled cleanup as your retention rules
+/// require. The local transcripts are swept by the `cleanupPeriodDays`
+/// setting of the CLI, independently of the store.
+///
+/// Only [`append`](Self::append) and [`load`](Self::load) are required. The
+/// other methods are optional: their default returns
+/// [`UnsupportedStoreOperation`], which the crate reads as "not
+/// implemented". [`run_session_store_conformance`](crate::testing::run_session_store_conformance)
+/// (feature `testing`) checks every contract below.
 pub trait SessionStore: Send + Sync + 'static {
     /// Mirrors a batch of transcript entries.
     ///
-    /// Called after the local write succeeded. Persist entries in call
-    /// order. Most entries carry a stable `uuid` to treat as an idempotency
-    /// key; entries without one are appended as is.
+    /// Called after the local write succeeded, so the entries are already
+    /// durable on disk. Batches arrive about every 100 ms during a turn;
+    /// each entry is a JSON object, one line of the local JSONL file.
+    ///
+    /// Within one process, persist entries in call order; across processes,
+    /// the order is the commit order of the storage. Most entries carry a
+    /// stable `uuid`: treat it as an idempotency key (upsert or ignore the
+    /// duplicate). Entries without one (titles, tags, mode markers) are
+    /// appended as they are.
+    ///
+    /// An error is logged and the CLI goes on: a failed batch is tried three
+    /// times in all, with a short backoff, then dropped and reported as a
+    /// [`MirrorErrorMessage`](crate::MirrorErrorMessage). A call that times
+    /// out is not retried, since it may still land.
     fn append(
         &self,
         key: &SessionKey,
@@ -354,6 +378,19 @@ pub trait SessionStore: Send + Sync + 'static {
 
     /// Loads a whole transcript, or `None` for a key that was never
     /// written.
+    ///
+    /// A store-backed resume calls it before the CLI starts: once for an
+    /// explicit `resume` id; for `continue_conversation`, once per
+    /// candidate, newest first, until a session that is not a sidechain
+    /// loads; and once per subpath when [`list_subkeys`](Self::list_subkeys)
+    /// is implemented. The store readers (`*_from_store`, `*_via_store`)
+    /// call it too.
+    ///
+    /// A store that cannot tell "never written" from "emptied" may return
+    /// `None` for both. The entries must equal what was appended as JSON
+    /// values; the same bytes are not required (a database may reorder the
+    /// keys of an object), since the crate never hashes or byte-compares
+    /// them.
     fn load(
         &self,
         key: &SessionKey,
@@ -370,7 +407,15 @@ pub trait SessionStore: Send + Sync + 'static {
     }
 
     /// Lists the sessions of a project with their modification times, in
-    /// any order. Optional.
+    /// any order (the crate sorts by `mtime`, newest first). `mtime` is in
+    /// Unix epoch milliseconds; a backend without modification times keeps
+    /// its own index. Subpath keys are not listed.
+    ///
+    /// Optional: without it, `continue_conversation` with this store fails
+    /// with a configuration error, and `list_sessions_from_store` reads the
+    /// summaries alone (sessions without one are left out) or, without
+    /// [`list_session_summaries`](Self::list_session_summaries) either,
+    /// fails.
     fn list_sessions(
         &self,
         project_key: &str,
@@ -380,7 +425,18 @@ pub trait SessionStore: Send + Sync + 'static {
     }
 
     /// Returns the summaries of every session of a project in one call.
-    /// Optional.
+    ///
+    /// Maintain them in [`append`](Self::append) with
+    /// [`fold_session_summary`](crate::fold_session_summary), skipping keys
+    /// with a subpath: a subagent transcript must not change the summary of
+    /// its session. As for [`list_sessions`](Self::list_sessions), the
+    /// result covers one project and no subpath. The fold is pure, so a
+    /// store whose appends can race for one session must serialize the
+    /// read, fold, and write (a transaction, a compare-and-swap, or a lock
+    /// per session).
+    ///
+    /// Optional: without it, `list_sessions_from_store` lists the sessions
+    /// and loads each one.
     fn list_session_summaries(
         &self,
         project_key: &str,
@@ -389,8 +445,12 @@ pub trait SessionStore: Send + Sync + 'static {
         async { unsupported("list_session_summaries") }
     }
 
-    /// Deletes a transcript. Deleting a main key also deletes every subkey
-    /// of that session. Optional.
+    /// Deletes a transcript. Deleting a main key (no subpath) also deletes
+    /// every subkey of that session, so no subagent transcript is left
+    /// behind; a key with a subpath deletes that one entry.
+    ///
+    /// Optional: without it, deletion is a no-op, which suits write-once
+    /// storage.
     fn delete(
         &self,
         key: &SessionKey,
@@ -399,7 +459,10 @@ pub trait SessionStore: Send + Sync + 'static {
         async { unsupported("delete") }
     }
 
-    /// Lists the subpaths stored under a session. Optional.
+    /// Lists the subpaths stored under a session, such as subagent
+    /// transcripts. A resume uses it to bring back the subagents too.
+    ///
+    /// Optional: without it, a resume restores the main transcript only.
     fn list_subkeys(
         &self,
         key: &SessionListSubkeysKey,

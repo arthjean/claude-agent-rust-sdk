@@ -1276,7 +1276,7 @@ impl HookOutput {
     ///
     /// Every field is a JSON value or a plain type, so the conversion
     /// cannot fail; the handler of hook callbacks goes through
-    /// [`try_to_wire`](Self::try_to_wire) all the same and answers an
+    /// a fallible conversion all the same and answers an
     /// error, never an empty output that would let the call through.
     #[must_use]
     pub fn to_wire(&self) -> Value {

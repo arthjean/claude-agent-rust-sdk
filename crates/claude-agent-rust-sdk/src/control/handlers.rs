@@ -1,15 +1,14 @@
 //! Handlers of the control requests the CLI sends: tool permission, hook
 //! callbacks, and messages for the in-process MCP servers.
 //!
-//! The handlers differ from upstream in two deliberate ways:
-//!
-//! - every request is answered, a malformed one with an error that names
-//!   what is missing (`Missing required field in can_use_tool request:
-//!   'input'`), where upstream answers the bare `KeyError` text or, for a
-//!   request without `request` or `subtype`, nothing at all
-//!   (`[behavior.malformed-control-request-body]`);
-//! - a panic of an application callback becomes an error answer with the
-//!   message of the panic, as an exception is answered with its text.
+//! The handlers differ from upstream in one deliberate way: every request
+//! is answered, a malformed one with an error that names what is missing
+//! (`Missing required field in can_use_tool request: 'input'`), where
+//! upstream answers the bare `KeyError` text or, for a request without
+//! `request` or `subtype`, nothing at all
+//! (`[behavior.malformed-control-request-body]`). A panic of an application
+//! callback is answered with the message of the panic, as an exception is
+//! answered with its text.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;

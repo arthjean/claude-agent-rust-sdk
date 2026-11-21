@@ -1,4 +1,15 @@
 //! One-shot queries: a prompt in, a stream of messages out.
+//!
+//! `query` differs from upstream's async generator in two deliberate ways,
+//! both forced by Rust:
+//!
+//! - an error is the last item of the stream (`Err`), where upstream raises
+//!   it from the loop;
+//! - a stream dropped before its end closes the CLI on a detached task,
+//!   which nothing waits for, where upstream's generator awaits its cleanup
+//!   when it is closed: Rust has no asynchronous drop
+//!   (`[behavior.client-drop-closes-detached]`). Reading the stream to its
+//!   end waits for the shutdown, as upstream does.
 
 use std::fmt;
 use std::pin::Pin;

@@ -1,4 +1,26 @@
 //! Interactive client: a long-lived session with the Claude Code CLI.
+//!
+//! The client differs from upstream's `ClaudeSDKClient` in these deliberate
+//! ways, each with its entry in `parity/differences.toml`:
+//!
+//! - `connect` on a connected client closes the previous session before
+//!   the new one starts, where upstream leaves it running
+//!   (`[behavior.reconnect-closes-previous]`);
+//! - `disconnect` during a `connect` makes that `connect` fail at once,
+//!   where upstream's waits for the initialize timeout
+//!   (`[behavior.disconnect-during-connect]`);
+//! - the counterpart of `async with` is [`ClaudeSdkClient::scoped`]; a
+//!   client dropped without `disconnect` closes its session on a detached
+//!   task (`[behavior.client-drop-closes-detached]`);
+//! - a `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that is not an integer keeps the
+//!   60 s initialize timeout with a warning, where upstream's `connect`
+//!   fails (`[behavior.malformed-stream-close-timeout]`);
+//! - the answers of `context_usage` and `mcp_status` are typed, a missing
+//!   field reading as its empty value
+//!   (`[behavior.typed-responses-fill-missing-fields]`);
+//! - the `get_` prefix of `get_server_info`, `get_mcp_status`, and
+//!   `get_context_usage` is dropped, as Rust names its getters (each keeps
+//!   the upstream name as a `doc(alias)`).
 
 use std::fmt;
 use std::marker::PhantomData;
