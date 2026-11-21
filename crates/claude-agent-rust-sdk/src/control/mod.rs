@@ -39,10 +39,14 @@
 //!   frames wait for the application, where upstream stops reading the
 //!   output after 100 unread frames, so that an `interrupt` or a hook does
 //!   not time out behind messages the application has not read yet;
-//! - when the output of the CLI ends, pending control requests fail at once
-//!   instead of waiting for their timeout;
-//! - a control request without a request id and a malformed transcript
-//!   mirror frame are ignored instead of stopping the reader;
+//! - when the output of the CLI ends cleanly or the session closes, pending
+//!   control requests fail at once instead of waiting for their timeout
+//!   (an output that ends with an error fails them at once on both sides);
+//! - the timeout of a control request covers its write too
+//!   (`[behavior.control-timeout-covers-write]`);
+//! - a control request without a request id, a control response whose
+//!   `response` is not an object, and a malformed transcript mirror frame
+//!   are ignored instead of stopping the reader;
 //! - a `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` that Python's `int()` rejects
 //!   leaves the initialize timeout at 60 s, with a warning, where upstream
 //!   fails the connect;
@@ -321,6 +325,7 @@ impl Shared {
             .and_then(|response| response.get("request_id"))
             .and_then(Value::as_str)
         else {
+            tracing::warn!("Ignoring a control response without a request id");
             return;
         };
         let Some(waiter) = self.state().pending.remove(request_id) else {

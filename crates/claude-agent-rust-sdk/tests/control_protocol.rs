@@ -321,11 +321,9 @@ async fn clean_end_of_output_fails_pending_requests_at_once() {
     };
     let started = tokio::time::Instant::now();
     let (interrupt, ()) = tokio::join!(client.interrupt(), finish);
-    assert!(
-        interrupt
-            .as_ref()
-            .err()
-            .is_some_and(Error::is_cli_connection)
+    assert_eq!(
+        interrupt.as_ref().err().map(Error::kind),
+        Some(ErrorKind::ConnectionClosed)
     );
     assert!(started.elapsed() < Duration::from_secs(1));
 }
@@ -431,6 +429,7 @@ async fn unsupported_control_request_gets_an_error_and_the_session_continues() {
 
 #[tokio::test(start_paused = true)]
 async fn a_control_response_whose_response_is_not_an_object_is_ignored_and_the_session_goes_on() {
+    let (warnings, _guard) = Warnings::install();
     let transport = cli();
     let client = connected(&transport, default_options()).await;
     transport.push_frame(json!({"type": "control_request", "request": {"subtype": "interrupt"}}));
@@ -438,6 +437,21 @@ async fn a_control_response_whose_response_is_not_an_object_is_ignored_and_the_s
     transport.push_frame(json!({"type": "control_response"}));
     settle().await;
     client.interrupt().await.unwrap();
+    let logged = warnings.all();
+    assert!(
+        logged
+            .iter()
+            .any(|line| line.contains("control request without a request id")),
+        "{logged:?}"
+    );
+    assert_eq!(
+        logged
+            .iter()
+            .filter(|line| line.contains("control response without a request id"))
+            .count(),
+        2,
+        "{logged:?}"
+    );
 }
 
 #[tokio::test(start_paused = true)]
