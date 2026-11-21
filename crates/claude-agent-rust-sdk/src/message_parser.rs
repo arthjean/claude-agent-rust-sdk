@@ -497,7 +497,7 @@ fn parse_assistant(fields: &Fields<'_>) -> Parsed<AssistantMessage> {
     })
 }
 
-fn parse_task_usage(value: &Value) -> TaskUsage {
+fn parse_task_usage(value: &Map<String, Value>) -> TaskUsage {
     let count = |key: &str| value.get(key).and_then(as_unsigned).unwrap_or_default();
     TaskUsage {
         total_tokens: count("total_tokens"),
@@ -533,7 +533,7 @@ fn parse_system(fields: &Fields<'_>) -> Parsed<SystemMessage> {
         "task_progress" => SystemMessage::TaskProgress(TaskProgressMessage {
             task_id: fields.required_str("task_id")?,
             description: fields.required_str("description")?,
-            usage: parse_task_usage(fields.required("usage")?),
+            usage: parse_task_usage(fields.required_object("usage")?.object),
             uuid: fields.required_str("uuid")?,
             session_id: fields.required_str("session_id")?,
             tool_use_id: fields.optional_str("tool_use_id"),
@@ -551,7 +551,7 @@ fn parse_system(fields: &Fields<'_>) -> Parsed<SystemMessage> {
             tool_use_id: fields.optional_str("tool_use_id"),
             usage: fields
                 .get("usage")
-                .filter(|usage| usage.is_object())
+                .and_then(Value::as_object)
                 .map(parse_task_usage),
             subtype,
             data,
@@ -762,8 +762,8 @@ pub(crate) fn parse_content_block(block: &Value) -> Result<ContentBlock, Error> 
 }
 
 /// Reads the usage of a task message as [`TaskUsage`], as the parser does.
-pub(crate) fn read_task_usage(value: &Value) -> TaskUsage {
-    parse_task_usage(value)
+pub(crate) fn read_task_usage(value: &Value) -> Option<TaskUsage> {
+    value.as_object().map(parse_task_usage)
 }
 
 /// Reads the key of a mirror error as the parser does.

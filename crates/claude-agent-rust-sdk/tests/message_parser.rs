@@ -1573,6 +1573,20 @@ fn a_user_message_reads_only_the_blocks_upstream_reads_and_keeps_the_rest_raw() 
 }
 
 #[test]
+fn a_task_progress_usage_that_is_not_an_object_is_an_error_not_zeros() {
+    for usage in [json!(null), json!(7), json!("x")] {
+        let (message, _) = parse_error(json!({
+            "type": "system", "subtype": "task_progress", "task_id": "k",
+            "description": "d", "usage": usage, "uuid": "u", "session_id": "s",
+        }));
+        assert!(
+            message.starts_with("Invalid field in system message: 'usage' (expected dict, got "),
+            "{message}"
+        );
+    }
+}
+
+#[test]
 fn required_field_of_the_wrong_type_is_an_error() {
     let (message, _) = parse_error(with(base_result(), json!({"duration_ms": "fast"})));
     assert_eq!(

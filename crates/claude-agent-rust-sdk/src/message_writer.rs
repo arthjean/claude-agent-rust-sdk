@@ -490,9 +490,7 @@ fn system(message: &SystemMessage) -> Value {
 fn usage(frame: &mut Overlay, key: &str, typed: Option<&TaskUsage>) {
     match typed {
         Some(typed) => frame.value(key, json!(typed), |held| {
-            held.is_some_and(|held| {
-                held.is_object() && message_parser::read_task_usage(held) == *typed
-            })
+            held.is_some_and(|held| message_parser::read_task_usage(held) == Some(*typed))
         }),
         None => {
             if frame.map.get(key).is_some_and(Value::is_object) {
@@ -516,7 +514,7 @@ fn task_progress(frame: &mut Overlay, message: &TaskProgressMessage) {
     frame.text("description", Some(&message.description));
     let typed = message.usage;
     frame.value("usage", json!(typed), |held| {
-        held.is_some_and(|held| message_parser::read_task_usage(held) == typed)
+        held.is_some_and(|held| message_parser::read_task_usage(held) == Some(typed))
     });
     frame.text("uuid", Some(&message.uuid));
     frame.text("session_id", Some(&message.session_id));
