@@ -781,6 +781,16 @@ fn leading_chars(text: &str, count: usize) -> &str {
 /// The text of a process failure: the message and the exit code. The error
 /// output stays out of it, and out of the `Debug` form, so logging an error
 /// never logs what the CLI wrote to stderr; [`Error::stderr`] returns it.
+/// The message of a caught panic, the counterpart of `str(e)` for the
+/// exceptions upstream turns into an answer: the text given to `panic!`,
+/// or `None` for a payload that is not text.
+pub(crate) fn panic_message(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+    payload
+        .downcast_ref::<&str>()
+        .map(|text| (*text).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+}
+
 fn process_text(message: &str, exit_code: Option<i32>) -> String {
     match exit_code {
         Some(code) => format!("{message} (exit code: {code})"),

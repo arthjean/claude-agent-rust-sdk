@@ -665,7 +665,10 @@ impl SdkMcpTool {
                 ToolResult::error(format!("Input validation error: {message}"))
             }
             Ok(Err(ToolFailure::Handler(message))) => ToolResult::error(message),
-            Err(_) => ToolResult::error(format!("Tool '{}' panicked", self.name)),
+            Err(panic) => ToolResult::error(
+                crate::error::panic_message(panic.as_ref())
+                    .unwrap_or_else(|| format!("Tool '{}' panicked", self.name)),
+            ),
         }
     }
 }

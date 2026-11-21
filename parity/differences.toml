@@ -246,8 +246,8 @@ test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::two_tools_with_the_same_n
 
 [behavior.panicking-tool]
 summary = "An in-process tool whose handler panics"
-python = "An exception in a handler becomes an error result."
-rust = "A panic becomes the error result `Tool '<name>' panicked`, and the server keeps serving."
+python = "An exception in a handler becomes an error result whose text is `str(e)`."
+rust = "A panic becomes an error result whose text is the message of the panic, or `Tool '<name>' panicked` for a payload that is not text, and the server keeps serving."
 ref = "src/claude_agent_sdk/__init__.py:640"
 anchor = "except Exception as e:"
 category = "rust-more-robust"

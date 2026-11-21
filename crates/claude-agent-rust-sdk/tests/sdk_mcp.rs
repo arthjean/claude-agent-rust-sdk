@@ -492,9 +492,15 @@ async fn a_tool_is_called_directly_with_the_checks_the_server_applies() {
         panic!("boom");
     })
     .unwrap();
+    assert_eq!(panicking.call(json!({})).await, ToolResult::error("boom"));
+
+    let opaque = SdkMcpTool::raw("opaque", "Panics with a number", json!({}), |_| async {
+        std::panic::panic_any(5_u8);
+    })
+    .unwrap();
     assert_eq!(
-        panicking.call(json!({})).await,
-        ToolResult::error("Tool 'boom' panicked")
+        opaque.call(json!({})).await,
+        ToolResult::error("Tool 'opaque' panicked")
     );
 }
 
@@ -1190,7 +1196,11 @@ async fn handler_panic_is_an_error_result_and_the_server_carries_on() {
     let client = SdkMcpClient::connected(server([panicking, add()])).await;
     let outcome = client.call_tool("srv", "explode", json!({})).await;
     assert_eq!(outcome["isError"], true);
-    assert_eq!(texts(&outcome), ["Tool 'explode' panicked"]);
+    assert_eq!(
+        texts(&outcome),
+        ["boom"],
+        "the message of the panic, as str(e)"
+    );
     let sum = client
         .call_tool("srv", "add", json!({"a": 1, "b": 1}))
         .await;
@@ -1207,7 +1217,11 @@ async fn handler_that_panics_before_returning_its_future_is_an_error_result() {
     let client = SdkMcpClient::connected(server([panicking, add()])).await;
     let outcome = client.call_tool("srv", "explode", json!({})).await;
     assert_eq!(outcome["isError"], true);
-    assert_eq!(texts(&outcome), ["Tool 'explode' panicked"]);
+    assert_eq!(
+        texts(&outcome),
+        ["boom"],
+        "the message of the panic, as str(e)"
+    );
     let sum = client
         .call_tool("srv", "add", json!({"a": 1, "b": 1}))
         .await;

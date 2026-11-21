@@ -29,6 +29,7 @@
 
 ### Fixed
 
+- An in-process tool that panics is answered with the message of the panic, as upstream answers an exception with `str(e)`, instead of a fixed text; a control callback that panics is answered the same way.
 - A `connect` cancelled during the initialize handshake no longer leaves the client reading as connecting, and a `scoped` call cancelled while its body runs disconnects the client, as leaving `async with` does.
 - Closing a session no longer waits out the shutdown grace for a tool the CLI started that is stopped (for example by reading the terminal): the `SIGTERM` to the process group is followed by `SIGCONT`.
 - On Linux, a `connect` cancelled while the CLI is being spawned no longer leaves the child running unsupervised: its process group gets `SIGTERM`.

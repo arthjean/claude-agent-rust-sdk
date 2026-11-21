@@ -111,10 +111,7 @@ pub(super) fn spawn(shared: &Arc<Shared>, frame: Value) {
 /// The text of a panic, as upstream answers with `str(e)` of an exception:
 /// the message of `panic!`, or a fixed text for a payload that is not one.
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|text| (*text).to_owned())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
+    crate::error::panic_message(payload)
         .unwrap_or_else(|| "The control request handler panicked".to_owned())
 }
 
