@@ -219,3 +219,14 @@ summary and conformance entries, the transport OTel and stderr entries):
   fold of a session summary (new lib test).
 - Notes reworded or added: skills from a non-list iterator, OTel without the
   `otel` feature, the example adapter round trips.
+
+## First CI run on macOS and Windows (PR #10, 2026-11-21)
+
+Every job passed on Linux and Windows. On macOS,
+`transport.rs::the_process_runs_as_the_current_user_when_it_is_named` failed:
+the spawn got `EINVAL` from `setgroups`, because the runner user belongs to
+more groups than the 16 a macOS process may hold, and the groups commit of
+this branch passed the whole list. Fixed by cutting the list to
+`sysconf(_SC_NGROUPS_MAX)` before the fork (lib test
+`the_groups_given_to_the_child_never_exceed_what_the_system_allows`); the
+failing macOS run is the red-before, the next run the proof.
