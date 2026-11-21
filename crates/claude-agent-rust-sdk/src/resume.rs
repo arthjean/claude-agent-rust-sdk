@@ -592,13 +592,14 @@ fn keychain_account(
 
 /// Whether a subpath from a store may become a path under the session
 /// directory: not empty, not absolute or drive-prefixed, without `.` or
-/// `..` segments or NUL.
+/// `..` segments or NUL. A drive prefix is any character followed by `:`,
+/// as `ntpath.splitdrive` reads it on every host, so `1:foo` cannot name
+/// an alternate data stream on Windows.
 pub(crate) fn is_safe_subpath(subpath: &str) -> bool {
     if subpath.is_empty() || subpath.contains('\0') || subpath.starts_with(['/', '\\']) {
         return false;
     }
-    let bytes = subpath.as_bytes();
-    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+    if subpath.chars().nth(1) == Some(':') {
         return false;
     }
     if Path::new(subpath).is_absolute() {
@@ -965,6 +966,16 @@ mod tests {
         let path = dropped.path().to_path_buf();
         drop(dropped);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_subpath_with_any_drive_prefix_is_rejected_as_ntpath_splitdrive_does() {
+        for subpath in ["1:foo", "\u{e9}:foo", "::x", "a:"] {
+            assert!(!is_safe_subpath(subpath), "{subpath:?}");
+        }
+        for subpath in [":foo", "ab:c", "subagents/a:b"] {
+            assert!(is_safe_subpath(subpath), "{subpath:?}");
+        }
     }
 
     #[test]
