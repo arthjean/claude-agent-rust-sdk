@@ -122,6 +122,28 @@ impl Drop for Connection {
     }
 }
 
+/// Empties the slot of the session being opened when `open` ends, the
+/// future cancelled included, so a later `server_info` or `disconnect`
+/// does not see a connect that no longer runs.
+struct ClearConnectingOnDrop<'a>(&'a ClaudeSdkClient);
+
+impl Drop for ClearConnectingOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.connecting_slot().take();
+    }
+}
+
+/// Disconnects the client of a `scoped` call whose future is dropped while
+/// its body runs: the connection is taken out of the client and dropped,
+/// which closes the session on a detached task.
+struct DisconnectOnDrop<'a>(&'a ClaudeSdkClient);
+
+impl Drop for DisconnectOnDrop<'_> {
+    fn drop(&mut self) {
+        drop(self.0.take_connection());
+    }
+}
+
 fn not_connected() -> Error {
     Error::not_connected(NOT_CONNECTED)
 }
@@ -206,6 +228,7 @@ impl ClaudeSdkClient {
         });
         let session = &connection.session;
         *self.connecting_slot() = Some(session.clone());
+        let connecting = ClearConnectingOnDrop(self);
         let opened = async {
             session.open().await?;
             match prompt {
@@ -220,7 +243,7 @@ impl ClaudeSdkClient {
             Ok(())
         };
         let opened = opened.await;
-        self.connecting_slot().take();
+        drop(connecting);
         if let Err(error) = opened {
             connection.close().await;
             return Err(error);
@@ -515,9 +538,10 @@ impl ClaudeSdkClient {
     /// failed: the counterpart of upstream's `async with ClaudeSDKClient()`.
     ///
     /// The outcome of `body` wins; an error of the disconnect is returned
-    /// only when `body` succeeded. A future dropped before it completes
-    /// (a cancelled task) cannot wait for anything: the session then closes
-    /// on a detached task, as when the client is dropped.
+    /// only when `body` succeeded. A future dropped while `body` runs (a
+    /// cancelled task) cannot wait for anything: the client is disconnected
+    /// at once and its session closes on a detached task, as when the
+    /// client is dropped.
     ///
     /// ```no_run
     /// use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, Error};
@@ -550,7 +574,9 @@ impl ClaudeSdkClient {
         E: From<Error>,
     {
         self.connect().await?;
+        let scope = DisconnectOnDrop(self);
         let outcome = body(self).await;
+        std::mem::forget(scope);
         let closed = self.disconnect().await;
         let value = outcome?;
         closed?;

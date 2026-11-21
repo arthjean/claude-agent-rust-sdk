@@ -592,3 +592,39 @@ async fn server_info_is_none_while_connecting_and_the_options_stay_readable() {
     assert!(connecting.await.unwrap().is_err());
     assert_not_connected(client.server_info(), "server_info");
 }
+
+/// A `connect` cancelled while it waits for the initialize answer leaves
+/// nothing behind: the client reads as not connected, not as connecting.
+#[tokio::test(start_paused = true)]
+async fn a_cancelled_connect_leaves_the_client_not_connected() {
+    let client = ClaudeSdkClient::with_transport(default_options(), common::mock::silent_cli());
+    let connecting = client.connect();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), connecting)
+            .await
+            .is_err()
+    );
+    assert_not_connected(client.server_info(), "server_info");
+}
+
+/// As leaving `async with` through a cancellation, a `scoped` future dropped
+/// while its body runs disconnects the client and closes the session.
+#[tokio::test(start_paused = true)]
+async fn a_scoped_call_cancelled_in_its_body_disconnects_the_client() {
+    let transport = cli();
+    let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
+    let scoped = client.scoped(async |_client| {
+        std::future::pending::<()>().await;
+        Ok::<(), Error>(())
+    });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), scoped)
+            .await
+            .is_err()
+    );
+    assert_not_connected(client.interrupt().await, "interrupt");
+    for _ in 0..5 {
+        settle().await;
+    }
+    assert_eq!(transport.close_count(), 1);
+}
