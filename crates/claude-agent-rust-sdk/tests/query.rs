@@ -204,6 +204,8 @@ async fn text_prompt_is_written_as_one_user_message_and_messages_are_typed() {
     };
     assert_eq!(outcome.result.as_deref(), Some("4"));
     assert!(!outcome.is_error);
+    assert_eq!(outcome.total_cost_usd, Some(0.001));
+    assert_eq!(outcome.session_id, "test");
 
     assert!(transport.input_ended());
     assert!(transport.is_closed());

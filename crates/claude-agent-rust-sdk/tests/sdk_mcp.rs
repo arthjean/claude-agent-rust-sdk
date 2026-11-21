@@ -945,6 +945,18 @@ async fn tools_list_wire_format_lists_what_upstream_lists() {
         Ok(ToolResult::default())
     })
     .unwrap();
+    let constrained_schema = json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "age": {"type": "integer", "minimum": 0},
+        },
+        "required": ["name"],
+    });
+    let constrained = SdkMcpTool::raw("constrained", "", constrained_schema.clone(), |_| async {
+        Ok(ToolResult::default())
+    })
+    .unwrap();
     let client = SdkMcpClient::connected(server([
         add(),
         read_data,
@@ -952,6 +964,7 @@ async fn tools_list_wire_format_lists_what_upstream_lists() {
         large,
         only_size,
         undescribed,
+        constrained,
     ]))
     .await;
     let tools = client.list_tools("srv").await;
@@ -967,7 +980,8 @@ async fn tools_list_wire_format_lists_what_upstream_lists() {
             "delete_item",
             "large",
             "only_size",
-            "undescribed"
+            "undescribed",
+            "constrained",
         ]
     );
     let tool = |name: &str| {
@@ -1007,6 +1021,7 @@ async fn tools_list_wire_format_lists_what_upstream_lists() {
         tool("undescribed"),
         json!({"name": "undescribed", "description": "", "inputSchema": {"type": "object"}})
     );
+    assert_eq!(tool("constrained")["inputSchema"], constrained_schema);
 
     assert_eq!(client.list_tools("srv").await, tools);
 }
@@ -1485,6 +1500,7 @@ async fn string_prompt_without_callbacks_closes_stdin_at_once() {
 
 #[tokio::test(start_paused = true)]
 async fn closing_ends_every_server_and_the_tool_call_in_flight_and_closing_again_does_nothing() {
+    let (warnings, _guard) = Warnings::install();
     let started = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicUsize::new(0));
     let client = SdkMcpClient::start([
@@ -1516,7 +1532,16 @@ async fn closing_ends_every_server_and_the_tool_call_in_flight_and_closing_again
 
     let before = tokio::time::Instant::now();
     client.close().await;
-    assert!(before.elapsed() < SHUTDOWN_GRACE, "{:?}", before.elapsed());
+    assert!(
+        before.elapsed() < SHUTDOWN_GRACE / 5,
+        "{:?}",
+        before.elapsed()
+    );
+    assert_eq!(
+        warnings.all(),
+        Vec::<String>::new(),
+        "a prompt close is quiet"
+    );
     for _ in 0..10 {
         settle().await;
     }

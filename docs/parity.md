@@ -33,9 +33,9 @@ Every name of the upstream `__all__` is listed in `parity/surface.toml`, and eve
 
 | State | Upstream exports | Upstream tests |
 |---|---|---|
-| Implemented | 147 (92.5%) | 993 (81.0%) |
+| Implemented | 147 (92.5%) | 996 (81.2%) |
 | Adapted | 12 (7.5%) | 0 (0.0%) |
-| Not ported | 0 (0.0%) | 233 (19.0%) |
+| Not ported | 0 (0.0%) | 230 (18.8%) |
 | Pending | 0 (0.0%) | 0 (0.0%) |
 | Total | 159 | 1226 |
 
@@ -170,11 +170,11 @@ Upstream items with no Rust counterpart, each with the reason of its ledger. The
 
 Every upstream export has a Rust counterpart.
 
-233 upstream tests are not ported, by reason:
+230 upstream tests are not ported, by reason:
 
 | Reason | Tests | Why |
 |---|---|---|
-| `derived-client-app` | 27 | Tests the derivation of a client-application label from the running Python program (`python -m` target, distribution metadata). No released CLI receives that label: upstream derives it only from CLI 999.0.0 on (`DERIVED_CLIENT_APP_MINIMUM_CLAUDE_CODE_VERSION`), so every pinned CLI gets none, and the crate removes the inherited variable as upstream does. The explicit `client_app` option is ported and tested. Rust has no `python -m` to derive from; once a CLI accepts the label, the counterpart is a label taken from the binary's package name. |
+| `derived-client-app` | 26 | Tests the derivation of a client-application label from the running Python program (`python -m` target, distribution metadata). No released CLI receives that label: upstream derives it only from CLI 999.0.0 on (`DERIVED_CLIENT_APP_MINIMUM_CLAUDE_CODE_VERSION`), so every pinned CLI gets none, and the crate removes the inherited variable as upstream does. The explicit `client_app` option is ported and tested. Rust has no `python -m` to derive from; once a CLI accepts the label, the counterpart is a label taken from the binary's package name. |
 | `example-store-adapters` | 48 | Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal); the adapter of `examples/session_store_adapter.rs` runs the same conformance suite in `tests/session_store.rs::the_example_adapter_passes_every_contract`. |
 | `export-surface` | 2 | Checks that names are exported from the package. `cargo xtask parity-check` checks every name of `__all__` against the Rust paths in parity/surface.toml, which must resolve in the public API. |
 | `no-sdk-code` | 2 | Asserts only on literals defined in the test file and calls no SDK code. |
@@ -183,7 +183,7 @@ Every upstream export has a Rust counterpart.
 | `python-mcp-library` | 5 | Tests the bridge to the Python `mcp` package; the native dispatcher and the `rmcp` bridge have their own tests. |
 | `python-pickle` | 1 | Checks pickling and copying of exception objects. |
 | `python-runtime` | 24 | Exercises anyio or trio backends, the asyncio event loop, cancel scopes, task groups, thread affinity, or garbage collection, which have no tokio counterpart. |
-| `python-typing` | 34 | Checks Python typing, dataclass, TypedDict, import, or runtime type-validation behavior that the Rust compiler enforces. |
+| `python-typing` | 32 | Checks Python typing, dataclass, TypedDict, import, or runtime type-validation behavior that the Rust compiler enforces. |
 | `python-warnings` | 2 | Checks the filter and deduplication mechanics of the Python `warnings` module. |
 | `upstream-repository` | 6 | Checks files of the upstream repository itself. |
 

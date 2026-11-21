@@ -1117,9 +1117,13 @@ mod tests {
         let line = format!("{}\n", json!({"data": "x".repeat(600)}));
         let items = read_all([line], 512, 0).await;
         assert_eq!(items.len(), 1);
-        assert_eq!(
-            items[0].as_ref().err().map(Error::kind),
-            Some(ErrorKind::JsonDecode)
+        let error = items[0].as_ref().unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::JsonDecode);
+        assert!(
+            error
+                .to_string()
+                .contains("maximum buffer size of 512 bytes"),
+            "{error}"
         );
     }
 

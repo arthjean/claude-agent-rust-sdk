@@ -315,6 +315,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn without_a_config_dir_in_the_options_the_projects_dir_is_the_one_of_the_process() {
+        let of_the_process = config_home_dir().map(|directory| directory.join("projects"));
+        assert!(of_the_process.is_some());
+        let mut empty = IndexMap::new();
+        assert_eq!(projects_dir(None), of_the_process);
+        assert_eq!(projects_dir(Some(&empty)), of_the_process);
+        empty.insert(CONFIG_DIR_VARIABLE.to_owned(), String::new());
+        assert_eq!(projects_dir(Some(&empty)), of_the_process);
+        let mut set = IndexMap::new();
+        set.insert(CONFIG_DIR_VARIABLE.to_owned(), "/options/config".to_owned());
+        assert_eq!(
+            projects_dir(Some(&set)),
+            Some(PathBuf::from("/options/config").join("projects"))
+        );
+    }
+
+    #[test]
     fn the_empty_directory_has_the_project_key_of_the_current_directory() {
         assert_eq!(
             project_key_for_directory(Some(Path::new(""))),

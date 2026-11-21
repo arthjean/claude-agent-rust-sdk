@@ -173,3 +173,30 @@ changes. 57 commits checked:
   `mcp-tool-content`, `mcp-cancel`); `76437ff` (D4) and `3904aee` (D30),
   whose failure branch no input can reach (every `HookOutput` field
   serializes; the exit error is set after the exit code is known).
+
+## Tests ledger, semantic check (2026-11-21)
+
+Six independent read-only reviews compared every entry of `parity/tests.toml`
+(993 mapped, 233 excluded) with the upstream test and the named Rust tests:
+transport and client (225 entries), sessions (184), stores and mirror (193),
+query and callbacks (191), types and MCP (253), end-to-end (48) plus every
+exclusion. No mapping was wrong; 23 findings, each checked and applied:
+
+- 4 exclusions or notes the code contradicted: `test_creation` of
+  `SessionMessage` (a public `new` exists: mapped to `message_serde.rs`, now
+  asserting both parent ids), `test_parent_ids` (note reworded),
+  `test_derives_nothing_for_a_cli_below_the_minimum` and
+  `test_replace_on_shadowed_options_emits_no_warning` (mapped to the Rust
+  tests that show them).
+- 12 entries where another existing Rust test shows the missing assertion:
+  added to the entry.
+- 7 named tests extended with the assertion upstream makes: custom title
+  after a store rename, cost and session id of a query result, the buffer
+  limit text of an oversized line, `--append-system-prompt` and
+  `--system-prompt-snapshot` absent, a constrained raw schema listed as
+  written, a close that is prompt (under a fifth of the grace) and logs no
+  warning, `projects_dir` without a config dir in the options (new lib test).
+- Notes added: the atexit tracking of a child a close could not end (no
+  divergence: Rust untracks a group only where it sends the SIGTERM the
+  upstream hook would send), and the setup of five end-to-end tests (empty
+  setting sources, default model, PowerShell named with Bash).

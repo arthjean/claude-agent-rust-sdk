@@ -876,6 +876,7 @@ async fn store_mutations_write_entries_with_uuid_and_timestamp() {
         .unwrap()
         .unwrap();
     assert_eq!(info.summary, "Renamed");
+    assert_eq!(info.custom_title.as_deref(), Some("Renamed"));
     assert_eq!(info.tag, None);
     assert_eq!(
         rename_session_via_store(&store, &id, " ", directory)

@@ -286,6 +286,7 @@ fn system_prompt_forms() {
 
     let file = build(options().system_prompt(SystemPromptFile::new("/path/to/prompt.md")));
     assert!(!has(&file, "--system-prompt"));
+    assert!(!has(&file, "--append-system-prompt"));
     assert_eq!(
         value_of(&file, "--system-prompt-file"),
         "/path/to/prompt.md"
@@ -295,6 +296,8 @@ fn system_prompt_forms() {
         build(options().system_prompt(SystemPromptCustom::new("You are terse.").snapshot(false)));
     assert_eq!(value_of(&custom, "--system-prompt"), "You are terse.");
     assert!(!has(&custom, "--system-prompt-file"));
+    assert!(!has(&custom, "--append-system-prompt"));
+    assert!(!has_prefix(&custom, "--system-prompt-snapshot"));
 
     let explicit = build(options().system_prompt(SystemPrompt::Text(String::new())));
     assert_eq!(value_of(&explicit, "--system-prompt"), "");

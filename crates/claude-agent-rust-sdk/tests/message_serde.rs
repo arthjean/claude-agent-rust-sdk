@@ -397,4 +397,5 @@ fn messages_and_hook_inputs_built_in_code_round_trip_through_the_wire() {
     assert_eq!(deferred.name, "Bash");
     let stored = SessionMessage::new(SessionMessageType::User, "u1", "s", json!({"role": "user"}));
     assert_eq!(stored.parent_tool_use_id, None);
+    assert_eq!(stored.parent_agent_id, None);
 }
