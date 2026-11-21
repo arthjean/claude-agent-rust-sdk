@@ -79,6 +79,11 @@ pub struct ClaudeSdkClient {
     transport: Option<SharedTransport>,
     lifecycle: tokio::sync::Mutex<()>,
     connection: Mutex<Option<Arc<Connection>>>,
+    /// The session a [`connect`](Self::connect) is opening, published
+    /// before the handshake as upstream publishes its query, so a
+    /// concurrent [`disconnect`](Self::disconnect) can close it instead of
+    /// waiting for the handshake to time out.
+    connecting: Mutex<Option<ControlSession>>,
 }
 
 struct Connection {
@@ -108,6 +113,7 @@ impl ClaudeSdkClient {
             transport: None,
             lifecycle: tokio::sync::Mutex::new(()),
             connection: Mutex::new(None),
+            connecting: Mutex::new(None),
         }
     }
 
@@ -177,6 +183,7 @@ impl ClaudeSdkClient {
             runtime: Handle::try_current().ok(),
         });
         let session = &connection.session;
+        *self.connecting_slot() = Some(session.clone());
         let opened = async {
             session.open().await?;
             match prompt {
@@ -190,12 +197,20 @@ impl ClaudeSdkClient {
             }
             Ok(())
         };
-        if let Err(error) = opened.await {
+        let opened = opened.await;
+        self.connecting_slot().take();
+        if let Err(error) = opened {
             connection.close().await;
             return Err(error);
         }
         *self.slot() = Some(connection);
         Ok(())
+    }
+
+    fn connecting_slot(&self) -> std::sync::MutexGuard<'_, Option<ControlSession>> {
+        self.connecting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     fn slot(&self) -> std::sync::MutexGuard<'_, Option<Arc<Connection>>> {
@@ -440,12 +455,19 @@ impl ClaudeSdkClient {
     /// Ends the session and waits for the transport to close.
     ///
     /// It is safe on a client that never connected, and calling it again
-    /// does nothing.
+    /// does nothing. During a [`connect`](Self::connect) it closes the
+    /// session being opened, so the connect fails at once with
+    /// [`ErrorKind::ConnectionClosed`](crate::ErrorKind::ConnectionClosed)
+    /// instead of waiting for the handshake to time out.
     ///
     /// # Errors
     ///
     /// Returns the error of the transport when closing it fails.
     pub async fn disconnect(&self) -> Result<()> {
+        let connecting = self.connecting_slot().take();
+        if let Some(session) = connecting {
+            session.close().await?;
+        }
         let _lifecycle = self.lifecycle.lock().await;
         match self.take_connection() {
             Some(connection) => connection.session.close().await,

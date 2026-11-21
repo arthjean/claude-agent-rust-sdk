@@ -499,3 +499,25 @@ async fn a_consumer_waiting_in_receive_messages_ends_when_the_client_disconnects
     assert_eq!(count, 0);
     assert_eq!(transport.close_count(), 1);
 }
+
+#[tokio::test(start_paused = true)]
+async fn disconnect_during_a_connect_closes_the_session_being_opened_at_once() {
+    let transport = common::mock::silent_cli();
+    let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
+    let started = tokio::time::Instant::now();
+    let disconnect = async {
+        settle().await;
+        client.disconnect().await
+    };
+    let (connected, disconnected) = tokio::join!(client.connect(), disconnect);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+    let error = connected.unwrap_err();
+    assert!(error.is_cli_connection(), "{error}");
+    disconnected.unwrap();
+    assert!(transport.is_closed());
+    assert_not_connected(client.interrupt().await, "interrupt");
+}

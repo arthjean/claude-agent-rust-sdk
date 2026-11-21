@@ -783,3 +783,13 @@ anchor = "class SystemInitData"
 category = "deliberate"
 reason = "Typed fields cannot hold a value of another type; returning the whole frame untouched keeps every value reachable."
 test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::init_data_is_none_when_a_field_has_the_wrong_type_and_the_frame_stays_reachable"
+
+[behavior.disconnect-during-connect]
+summary = "`disconnect()` called while `connect()` waits for the `initialize` answer"
+python = "`disconnect()` closes the query at once, but `connect()` keeps waiting for its `initialize` answer and fails only at the 60-second timeout (probe of 2026-11-21 with a transport that never answers)."
+rust = "`disconnect()` closes the session being opened, and `connect()` fails at once with `ErrorKind::ConnectionClosed`."
+ref = "src/claude_agent_sdk/client.py:244"
+anchor = "await self._query.initialize()"
+category = "rust-more-robust"
+reason = "No answer can come once the session is closed, as for the other pending requests (`[behavior.pending-requests-fail-at-end]`)."
+test = "crates/claude-agent-rust-sdk/tests/client.rs::disconnect_during_a_connect_closes_the_session_being_opened_at_once"
