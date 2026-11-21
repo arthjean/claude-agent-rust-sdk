@@ -203,8 +203,8 @@ rmcp when the feature is on and keep the native path only without it.
 `indexmap::IndexMap`, re-exported as `claude_agent_rust_sdk::indexmap` and
 named in the crate docs as one of the six public dependencies. Upstream's
 `dict` keeps insertion order, and that order reaches the CLI: the order of
-`--setting-sources`-style arguments, of hook matchers, and of environment
-variables in the differential harness. So the order is behavior, not taste.
+`extra_args` on the command line, of hook matchers in the initialize
+request, and of agents, all compared by the differential harness. So the order is behavior, not taste.
 The cost is that an `indexmap` 3.0 is a major release of this crate.
 Options:
 
