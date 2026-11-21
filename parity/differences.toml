@@ -387,12 +387,12 @@ test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::a_known_content_bl
 [behavior.optional-field-wrong-type]
 summary = "An optional message field of the wrong JSON type"
 python = "Passed through as sent: `data.get(...)` keeps a dict in `result` or a number in a list of strings."
-rust = "Reads as absent (`None`); an optional list of strings keeps its strings and leaves out its other elements."
+rust = "The typed field reads as absent (`None`); an optional list of strings keeps its strings and leaves out its other elements. The value as sent is kept in the `extra` (or `message_extra`) field of the message or block, so the program can still read it."
 ref = "src/claude_agent_sdk/_internal/message_parser.py:334-336"
 anchor = 'errors=data.get("errors"),'
 category = "deliberate"
-reason = "The fields are typed; a value of another type cannot be held in them, and failing the whole message over an optional field would lose the rest of it."
-test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::an_optional_field_of_the_wrong_type_reads_as_absent_and_a_list_keeps_its_strings"
+reason = "The fields are typed; a value of another type cannot be held in them, and failing the whole message over an optional field would lose the rest of it. Keeping the value in `extra` loses nothing Python passes through."
+test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::an_optional_value_the_crate_cannot_read_is_kept_in_extra"
 
 [behavior.permission-update-unmodeled-keys]
 summary = "A key of a permission suggestion this version does not model"

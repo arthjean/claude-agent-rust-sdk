@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- An optional message or block field whose value the typed field cannot hold (`api_error_status: "529"`, `errors: ["boom", {"code": 529}]`) keeps the value as sent in `extra` (or `message_extra`), where it was dropped.
 - On Unix, the processes left in the group of the CLI when it exits get `SIGTERM`, and `SIGKILL` only 5 s later if they are still running, instead of `SIGKILL` at once, so a server the agent started in the background can clean up.
 - In-process MCP tools run in the `tracing` span and the OpenTelemetry context of the caller that connected, as the other callbacks do.
 - A prompt stream that panics closes stdin, so the query ends, as upstream closes it when the iterable raises.

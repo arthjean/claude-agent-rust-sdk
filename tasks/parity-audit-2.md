@@ -33,7 +33,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | M2 | Incomplete hook input becomes `Unknown` silently; example fails open | done | Base fields and `tool_use_id` lenient (absent or null is empty), warn log, `HookInput::tool_name()`/`tool_input()` read typed and `Unknown`, `hooks` example denies what it cannot check. `types.rs::a_hook_input_missing_metadata_the_callback_does_not_need_stays_typed` (Unknown before, as the audit probe showed), `the_tool_of_a_hook_input_is_read_even_when_the_input_is_unknown`; `[behavior.hook-input-shape]` rewritten. |
 | M3 | Message types do not implement `Serialize` | todo | |
 | M4 | In-process MCP tools run outside the caller context | done | MCP calls spawned through `caller_context::spawn` (`src/mcp/server.rs`); `caller_context.rs::in_process_tools_run_in_the_span_of_the_caller_that_connected`, red before. |
-| M5 | Process group gets SIGKILL with no grace at normal exit | todo | |
+| M5 | Process group gets SIGKILL with no grace at normal exit | done | Group policy kept (owner decision A12 of the first audit); Unix sweep is now SIGTERM, 50 ms polls with `killpg(group, 0)`, SIGKILL after 5 s only if a member is left (never once empty); Windows unchanged (no signal), documented. `[behavior.process-tree-ended]` and crate docs rewritten. `shutdown.rs::descendants_left_at_exit_get_sigterm_before_sigkill` (background server with a TERM trap), red before. Opt-out option left to the decision note. |
 | M6 | No pinned CLI; reserved dir never filled; "newer" warning per session | todo | |
 | M7 | `serde_json/preserve_order` forced on the whole dependency graph | todo | |
 

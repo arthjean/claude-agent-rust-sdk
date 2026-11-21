@@ -2124,6 +2124,40 @@ fn an_optional_field_of_the_wrong_type_reads_as_absent_and_a_list_keeps_its_stri
 }
 
 #[test]
+fn an_optional_value_the_crate_cannot_read_is_kept_in_extra() {
+    let message = result(with(
+        base_result(),
+        json!({"result": {"x": 1}, "api_error_status": "529", "errors": ["boom", {"code": 529}], "uuid": null}),
+    ));
+    assert_eq!(message.extra.get("result"), Some(&json!({"x": 1})));
+    assert_eq!(message.extra.get("api_error_status"), Some(&json!("529")));
+    assert_eq!(
+        message.extra.get("errors"),
+        Some(&json!(["boom", {"code": 529}]))
+    );
+    assert!(!message.extra.contains_key("uuid"));
+    assert!(!message.extra.contains_key("subtype"));
+
+    let message = assistant(json!({
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_result", "tool_use_id": "t", "is_error": "yes"}], "model": "m", "id": 12},
+        "error": 7,
+        "user_message_uuids": "not-a-list",
+    }));
+    assert_eq!(message.message_extra.get("id"), Some(&json!(12)));
+    assert_eq!(message.extra.get("error"), Some(&json!(7)));
+    assert_eq!(
+        message.extra.get("user_message_uuids"),
+        Some(&json!("not-a-list"))
+    );
+    let ContentBlock::ToolResult(block) = &message.content[0] else {
+        panic!("expected a tool result block");
+    };
+    assert_eq!(block.is_error, None);
+    assert_eq!(block.extra.get("is_error"), Some(&json!("yes")));
+}
+
+#[test]
 fn a_known_content_block_keeps_the_keys_it_does_not_model() {
     let message = assistant(json!({
         "type": "assistant",

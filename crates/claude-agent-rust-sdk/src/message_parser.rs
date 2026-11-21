@@ -18,7 +18,9 @@
 //! - a required field of the wrong JSON type is an error, and an optional
 //!   field of the wrong JSON type reads as absent, where upstream passes
 //!   the value through; an optional list of strings keeps its strings and
-//!   leaves out its other elements. An integer field accepts
+//!   leaves out its other elements. The value as sent stays in the `extra`
+//!   (or `message_extra`) field of the message or block, so nothing of the
+//!   wire is lost. An integer field accepts
 //!   any JSON number: a fraction is truncated and a value out of range
 //!   saturates, so a negative count reads as zero;
 //! - `modelUsage` is typed as [`ModelUsage`] per model, where upstream keeps
@@ -264,18 +266,18 @@ fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<Conten
     let parsed = match kind {
         Some("text") => ContentBlock::Text(TextBlock {
             text: fields.required_str("text")?,
-            extra: extra_keys(object, &["type", "text"]),
+            extra: extra_keys(object, TEXT_KEYS),
         }),
         Some("thinking") => ContentBlock::Thinking(ThinkingBlock {
             thinking: fields.required_str("thinking")?,
             signature: fields.required_str("signature")?,
-            extra: extra_keys(object, &["type", "thinking", "signature"]),
+            extra: extra_keys(object, THINKING_KEYS),
         }),
         Some("tool_use") => ContentBlock::ToolUse(ToolUseBlock {
             id: fields.required_str("id")?,
             name: fields.required_str("name")?,
             input: fields.required("input")?.clone(),
-            extra: extra_keys(object, &["type", "id", "name", "input"]),
+            extra: extra_keys(object, TOOL_USE_KEYS),
         }),
         Some("tool_result") => ContentBlock::ToolResult(ToolResultBlock {
             tool_use_id: fields.required_str("tool_use_id")?,
@@ -283,33 +285,155 @@ fn parse_block(block: &Value, family: &'static str, turn: Turn) -> Parsed<Conten
                 .optional_value("content")
                 .map(ToolResultContent::from),
             is_error: fields.get("is_error").and_then(Value::as_bool),
-            extra: extra_keys(object, &["type", "tool_use_id", "content", "is_error"]),
+            extra: extra_keys(object, TOOL_RESULT_KEYS),
         }),
         Some("server_tool_use") => ContentBlock::ServerToolUse(ServerToolUseBlock {
             id: fields.required_str("id")?,
             name: ServerToolName::from(fields.required_str("name")?),
             input: fields.required("input")?.clone(),
-            extra: extra_keys(object, &["type", "id", "name", "input"]),
+            extra: extra_keys(object, TOOL_USE_KEYS),
         }),
         Some("advisor_tool_result") => ContentBlock::ServerToolResult(ServerToolResultBlock {
             tool_use_id: fields.required_str("tool_use_id")?,
             content: fields.required("content")?.clone(),
-            extra: extra_keys(object, &["type", "tool_use_id", "content"]),
+            extra: extra_keys(object, SERVER_TOOL_RESULT_KEYS),
         }),
         _ => ContentBlock::Unknown(block.clone()),
     };
     Ok(parsed)
 }
 
-/// The keys of an object outside `modeled`, kept for the `extra` field of
-/// the block or message read from it.
-fn extra_keys(object: &Map<String, Value>, modeled: &[&str]) -> Map<String, Value> {
+/// What a modeled key must hold for the typed field to read all of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reads {
+    /// Any value: a required field, which fails the message otherwise, or
+    /// a field typed as raw JSON.
+    Any,
+    /// A string.
+    Str,
+    /// A number.
+    Number,
+    /// A boolean.
+    Bool,
+    /// A list of strings, every element a string.
+    Strings,
+    /// A list.
+    List,
+    /// An object.
+    Object,
+    /// An object with a string `kind`, read as a [`MessageOrigin`].
+    Origin,
+}
+
+impl Reads {
+    /// True when the typed field holds all of `value`.
+    pub(crate) fn reads(self, value: &Value) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Str => value.is_string(),
+            Self::Number => value.is_number(),
+            Self::Bool => value.is_boolean(),
+            Self::Strings => value
+                .as_array()
+                .is_some_and(|items| items.iter().all(Value::is_string)),
+            Self::List => value.is_array(),
+            Self::Object => value.is_object(),
+            Self::Origin => value.get("kind").is_some_and(Value::is_string),
+        }
+    }
+}
+
+/// The keys a message, a message body, or a block models, with what each
+/// must hold to be read.
+pub(crate) type Keys = &'static [(&'static str, Reads)];
+
+/// The keys of an object kept for the `extra` field of the block or
+/// message read from it: every key outside `modeled`, and every modeled
+/// key whose value the typed field could not hold, so that no value of
+/// the wire is lost. A `null` reads as absent and is not kept.
+fn extra_keys(object: &Map<String, Value>, modeled: Keys) -> Map<String, Value> {
     object
         .iter()
-        .filter(|(key, _)| !modeled.contains(&key.as_str()))
+        .filter(
+            |(key, value)| match modeled.iter().find(|(name, _)| *name == key.as_str()) {
+                None => true,
+                Some((_, kind)) => !value.is_null() && !kind.reads(value),
+            },
+        )
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect()
 }
+
+pub(crate) const TEXT_KEYS: Keys = &[("type", Reads::Any), ("text", Reads::Any)];
+pub(crate) const THINKING_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("thinking", Reads::Any),
+    ("signature", Reads::Any),
+];
+pub(crate) const TOOL_USE_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("id", Reads::Any),
+    ("name", Reads::Any),
+    ("input", Reads::Any),
+];
+pub(crate) const TOOL_RESULT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("tool_use_id", Reads::Any),
+    ("content", Reads::Any),
+    ("is_error", Reads::Bool),
+];
+pub(crate) const SERVER_TOOL_RESULT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("tool_use_id", Reads::Any),
+    ("content", Reads::Any),
+];
+pub(crate) const USER_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("message", Reads::Any),
+    ("uuid", Reads::Str),
+    ("parent_tool_use_id", Reads::Str),
+    ("tool_use_result", Reads::Any),
+    ("origin", Reads::Origin),
+];
+pub(crate) const USER_MESSAGE_KEYS: Keys = &[("content", Reads::Any)];
+pub(crate) const ASSISTANT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("message", Reads::Any),
+    ("parent_tool_use_id", Reads::Str),
+    ("error", Reads::Str),
+    ("session_id", Reads::Str),
+    ("uuid", Reads::Str),
+    ("user_message_uuid", Reads::Str),
+    ("user_message_uuids", Reads::Strings),
+];
+pub(crate) const ASSISTANT_MESSAGE_KEYS: Keys = &[
+    ("content", Reads::Any),
+    ("model", Reads::Any),
+    ("usage", Reads::Any),
+    ("id", Reads::Str),
+    ("stop_reason", Reads::Str),
+];
+pub(crate) const STREAM_EVENT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("uuid", Reads::Any),
+    ("session_id", Reads::Any),
+    ("event", Reads::Any),
+    ("parent_tool_use_id", Reads::Str),
+    ("user_message_uuid", Reads::Str),
+    ("user_message_uuids", Reads::Strings),
+];
+pub(crate) const RATE_LIMIT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("rate_limit_info", Reads::Any),
+    ("uuid", Reads::Any),
+    ("session_id", Reads::Any),
+];
+pub(crate) const CONVERSATION_RESET_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("new_conversation_id", Reads::Any),
+    ("uuid", Reads::Any),
+    ("session_id", Reads::Any),
+];
 
 fn parse_blocks(blocks: &[Value], family: &'static str, turn: Turn) -> Parsed<Vec<ContentBlock>> {
     blocks
@@ -337,18 +461,8 @@ fn parse_user(fields: &Fields<'_>) -> Parsed<UserMessage> {
         parent_tool_use_id: fields.optional_str("parent_tool_use_id"),
         tool_use_result: fields.optional_value("tool_use_result"),
         origin: MessageOrigin::from_wire(fields.get("origin")),
-        message_extra: extra_keys(fields.required_object("message")?.object, &["content"]),
-        extra: extra_keys(
-            fields.object,
-            &[
-                "type",
-                "message",
-                "uuid",
-                "parent_tool_use_id",
-                "tool_use_result",
-                "origin",
-            ],
-        ),
+        message_extra: extra_keys(fields.required_object("message")?.object, USER_MESSAGE_KEYS),
+        extra: extra_keys(fields.object, USER_KEYS),
     })
 }
 
@@ -377,23 +491,8 @@ fn parse_assistant(fields: &Fields<'_>) -> Parsed<AssistantMessage> {
         uuid: fields.optional_str("uuid"),
         user_message_uuid: fields.optional_str("user_message_uuid"),
         user_message_uuids: fields.optional_string_list("user_message_uuids"),
-        message_extra: extra_keys(
-            message.object,
-            &["content", "model", "usage", "id", "stop_reason"],
-        ),
-        extra: extra_keys(
-            fields.object,
-            &[
-                "type",
-                "message",
-                "parent_tool_use_id",
-                "error",
-                "session_id",
-                "uuid",
-                "user_message_uuid",
-                "user_message_uuids",
-            ],
-        ),
+        message_extra: extra_keys(message.object, ASSISTANT_MESSAGE_KEYS),
+        extra: extra_keys(fields.object, ASSISTANT_KEYS),
     })
 }
 
@@ -585,29 +684,29 @@ fn parse_result(fields: &Fields<'_>) -> Parsed<ResultMessage> {
 }
 
 /// The keys of a `result` frame [`ResultMessage`] models.
-const RESULT_KEYS: &[&str] = &[
-    "type",
-    "subtype",
-    "duration_ms",
-    "duration_api_ms",
-    "is_error",
-    "num_turns",
-    "session_id",
-    "stop_reason",
-    "total_cost_usd",
-    "usage",
-    "result",
-    "structured_output",
-    "modelUsage",
-    "permission_denials",
-    "deferred_tool_use",
-    "errors",
-    "api_error_status",
-    "uuid",
-    "terminal_reason",
-    "origin",
-    "user_message_uuid",
-    "user_message_uuids",
+pub(crate) const RESULT_KEYS: Keys = &[
+    ("type", Reads::Any),
+    ("subtype", Reads::Any),
+    ("duration_ms", Reads::Any),
+    ("duration_api_ms", Reads::Any),
+    ("is_error", Reads::Any),
+    ("num_turns", Reads::Any),
+    ("session_id", Reads::Any),
+    ("stop_reason", Reads::Str),
+    ("total_cost_usd", Reads::Number),
+    ("usage", Reads::Any),
+    ("result", Reads::Str),
+    ("structured_output", Reads::Any),
+    ("modelUsage", Reads::Object),
+    ("permission_denials", Reads::List),
+    ("deferred_tool_use", Reads::Any),
+    ("errors", Reads::Strings),
+    ("api_error_status", Reads::Number),
+    ("uuid", Reads::Str),
+    ("terminal_reason", Reads::Str),
+    ("origin", Reads::Origin),
+    ("user_message_uuid", Reads::Str),
+    ("user_message_uuids", Reads::Strings),
 ];
 
 fn parse_stream_event(fields: &Fields<'_>) -> Parsed<StreamEvent> {
@@ -618,18 +717,7 @@ fn parse_stream_event(fields: &Fields<'_>) -> Parsed<StreamEvent> {
         parent_tool_use_id: fields.optional_str("parent_tool_use_id"),
         user_message_uuid: fields.optional_str("user_message_uuid"),
         user_message_uuids: fields.optional_string_list("user_message_uuids"),
-        extra: extra_keys(
-            fields.object,
-            &[
-                "type",
-                "uuid",
-                "session_id",
-                "event",
-                "parent_tool_use_id",
-                "user_message_uuid",
-                "user_message_uuids",
-            ],
-        ),
+        extra: extra_keys(fields.object, STREAM_EVENT_KEYS),
     })
 }
 
@@ -652,10 +740,7 @@ fn parse_rate_limit(fields: &Fields<'_>) -> Parsed<RateLimitEvent> {
         rate_limit_info,
         uuid: fields.required_str("uuid")?,
         session_id: fields.required_str("session_id")?,
-        extra: extra_keys(
-            fields.object,
-            &["type", "rate_limit_info", "uuid", "session_id"],
-        ),
+        extra: extra_keys(fields.object, RATE_LIMIT_KEYS),
     })
 }
 
@@ -664,9 +749,6 @@ fn parse_conversation_reset(fields: &Fields<'_>) -> Parsed<ConversationResetMess
         new_conversation_id: fields.required_str("new_conversation_id")?,
         uuid: fields.required_str("uuid")?,
         session_id: fields.required_str("session_id")?,
-        extra: extra_keys(
-            fields.object,
-            &["type", "new_conversation_id", "uuid", "session_id"],
-        ),
+        extra: extra_keys(fields.object, CONVERSATION_RESET_KEYS),
     })
 }
