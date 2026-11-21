@@ -464,6 +464,16 @@ category = "rust-more-robust"
 reason = "Without a bundled CLI, the installed one can be any release; an older one exits with an error on an option it does not know, and the warning names the cause."
 test = "crates/claude-agent-rust-sdk/tests/transport.rs::a_cli_older_or_newer_than_the_tested_version_warns_once"
 
+[behavior.no-bundled-cli]
+summary = "Where the CLI comes from when `cli_path` is not set"
+python = "The wheel bundles the CLI of its release for each platform, and `_find_cli` runs that one first, before `PATH` and the known install locations."
+rust = "The crate bundles no CLI and downloads none. It runs the one in the directory reserved for it (`~/.local/share/claude-agent-rust-sdk/cli`, or the platform equivalent), then the one on `PATH`, then the known install locations; the README and the migration guide say how to pin a release there."
+ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:275"
+anchor = "bundled_cli = self._find_bundled_cli()"
+category = "deliberate"
+reason = "A crate cannot carry the CLI: the binary is about 380 MB per platform (2.1.329 on Linux x86-64) and crates.io refuses packages over 10 MB, and a build script that downloads it would run Anthropic's binary distribution from every build. The reserved directory keeps the lookup order of a bundled CLI for whoever installs one there, and the version warning names any release other than the tested one. An opt-in installer is described in `tasks/parity-audit-2-decisions.md`."
+test = "crates/claude-agent-rust-sdk/src/lib.rs::cli::tests::managed_install_directory_takes_precedence_over_path"
+
 [behavior.lone-surrogate-escape]
 summary = "A line of CLI output that escapes a lone UTF-16 surrogate (`\\ud83d`)"
 python = "`json.loads` keeps the lone surrogate in the string."
