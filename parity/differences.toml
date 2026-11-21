@@ -477,7 +477,7 @@ test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::raw_schema_whose_type_is_
 [behavior.untested-cli-version]
 summary = "A CLI whose version is not the tested one"
 python = "Runs the CLI bundled in its wheel by default, and warns only when the CLI reports no version."
-rust = "Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`."
+rust = "Runs the CLI installed on the machine, and also warns when it reports a version older or newer than `CLI_VERSION`, once per process for each path and version."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:1153-1175"
 anchor = "is too old to report its version"
 category = "rust-more-robust"

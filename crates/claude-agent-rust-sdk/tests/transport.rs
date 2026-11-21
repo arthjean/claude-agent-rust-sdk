@@ -615,6 +615,21 @@ async fn a_cli_older_or_newer_than_the_tested_version_warns_once() {
 }
 
 #[tokio::test]
+async fn an_untested_cli_warns_once_per_process_not_once_per_session() {
+    let (warnings, _guard) = Warnings::install();
+    for _ in 0..3 {
+        let fake = Fake::new(json!({"claude_code_version": "99.0.1", "steps": [{"exit": 0}]}));
+        let transport = SubprocessTransport::new(fake.build());
+        transport.connect().await.unwrap();
+        collect(transport.read_messages()).await;
+        transport.close().await.unwrap();
+    }
+    let messages = warnings.about_the_cli_version();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("99.0.1"), "{}", messages[0]);
+}
+
+#[tokio::test]
 async fn verbatim_prompts_warns_on_a_cli_that_ignores_it() {
     let (warnings, _guard) = Warnings::install();
     for version in ["2.1.247", "2.1.248"] {

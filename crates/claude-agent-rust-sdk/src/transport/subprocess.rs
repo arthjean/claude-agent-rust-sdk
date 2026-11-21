@@ -701,14 +701,33 @@ impl VersionCheck {
     }
 }
 
+/// A CLI install, by path and version.
+type CliRelease = (String, (u64, u64, u64));
+
+/// The CLI installs already warned about as untested in this process.
+static WARNED_UNTESTED: std::sync::Mutex<std::collections::BTreeSet<CliRelease>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
 /// Warns when the CLI is not [`CLI_VERSION`](crate::CLI_VERSION), the one
-/// release this crate is tested against. Python runs the CLI bundled in its
-/// wheel, so the two always match there; this crate runs the CLI installed
-/// on the machine, which can be any release.
+/// release this crate is tested against, once per process for each path
+/// and version. Python runs the CLI bundled in its wheel, so the two always
+/// match there; this crate runs the CLI installed on the machine, which can
+/// be any release, and a program that opens many sessions would otherwise
+/// log the same warning for each.
 fn warn_if_untested(version: (u64, u64, u64), cli_path: &str) {
     let Some(tested) = parse_version(crate::CLI_VERSION) else {
         return;
     };
+    if version == tested {
+        return;
+    }
+    let first = WARNED_UNTESTED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert((cli_path.to_owned(), version));
+    if !first {
+        return;
+    }
     let (major, minor, patch) = version;
     let tested_text = crate::CLI_VERSION;
     match version.cmp(&tested) {
