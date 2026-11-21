@@ -36,7 +36,7 @@ location = "env CLAUDE_AGENT_SDK_VERSION"
 python = '"{upstream_version}"'
 rust = '"{crate_version}"'
 category = "deliberate"
-reason = "Each SDK sends its own package version (subprocess_cli.py:769 sends __version__)."
+reason = "Each SDK sends its own package version (subprocess_cli.py:769 sends __version__). The numbers overlap (both SDKs are at 0.2.x), but CLI 2.1.329 never reads the version alone: it writes `agent-sdk/<version>` into the User-Agent right after the entrypoint, so a request reads `sdk-rs, agent-sdk/0.2.0` against `sdk-py, agent-sdk/0.2.186`, and only tests whether the variable is set elsewhere. A prefixed version would break any reader that parses it as semver, for no gain."
 
 [wire.budget-exponent-spelling]
 case = "budget-in-exponent-form"
