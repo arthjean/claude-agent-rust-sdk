@@ -196,3 +196,24 @@ MCP cases against both `mcp` 1.x and 2.x. Options: keep it (recommended,
 with the harness as the argument), or route `create_sdk_mcp_server` through
 rmcp when the feature is on and keep the native path only without it.
 
+
+**`IndexMap` in public fields (D21).** `ClaudeAgentOptions::env`,
+`extra_args`, `hooks`, `agents`, the `env` and `headers` of MCP configs,
+`SandboxIgnoreViolations`, and `ResultMessage::model_usage` are
+`indexmap::IndexMap`, re-exported as `claude_agent_rust_sdk::indexmap` and
+named in the crate docs as one of the six public dependencies. Upstream's
+`dict` keeps insertion order, and that order reaches the CLI: the order of
+`--setting-sources`-style arguments, of hook matchers, and of environment
+variables in the differential harness. So the order is behavior, not taste.
+The cost is that an `indexmap` 3.0 is a major release of this crate.
+Options:
+
+1. Keep `IndexMap` (recommended). `indexmap` has been at 2.x since 2023,
+   and the re-export spares users a version match.
+2. Wrap each field in a crate-owned ordered map type (`OrderedMap<K, V>`)
+   that derefs to a slice of pairs. Frees the semver, costs a new type
+   every user has to learn and a breaking change now.
+3. Take `Vec<(K, V)>` in the setters and keep the map private. Simplest
+   type, but loses key lookup, which `options.env.get("X")` callers use.
+
+This changes the type of public fields, so it is yours to decide.
