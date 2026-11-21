@@ -489,7 +489,10 @@ fn percentage(count: usize, total: usize) -> f64 {
     if total == 0 {
         return 0.0;
     }
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "ledger counts are far below 2^52, where f64 is exact"
+    )]
     let ratio = count as f64 / total as f64;
     ratio * 100.0
 }

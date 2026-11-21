@@ -194,7 +194,10 @@ pub mod sessions;
 /// The `tracing` capture helper of the unit tests. The integration tests
 /// load the same file, so both assert logged warnings the same way.
 #[cfg(test)]
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "shared with the integration tests, which use helpers the unit tests do not"
+)]
 mod test_capture;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

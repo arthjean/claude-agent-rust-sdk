@@ -85,7 +85,10 @@ impl Shares {
         if total == 0 {
             return count.to_string();
         }
-        #[allow(clippy::cast_precision_loss)]
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "ledger counts are far below 2^52, where f64 is exact"
+        )]
         let share = count as f64 * 100.0 / total as f64;
         format!("{count} ({share:.1}%)")
     }

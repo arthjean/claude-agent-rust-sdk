@@ -147,7 +147,11 @@ where
 /// # Errors
 ///
 /// Returns the first [`ConformanceFailure`].
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the contracts run in upstream's order, one after the other, so each one reads \
+              against its upstream counterpart"
+)]
 pub async fn run_session_store_conformance_skipping<S, F, Fut>(
     mut make_store: F,
     skip_optional: SessionStoreCapabilities,

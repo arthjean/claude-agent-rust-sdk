@@ -1258,7 +1258,11 @@ impl Default for AsyncHookOutput {
 /// Output of a hook callback.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "`Sync` is the variant nearly every hook returns; boxing it would allocate on \
+              every answer to spare the rare `Async` a few hundred bytes"
+)]
 pub enum HookOutput {
     /// The hook answered.
     Sync(SyncHookOutput),

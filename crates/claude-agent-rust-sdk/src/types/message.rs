@@ -12,7 +12,12 @@ use crate::session_store::SessionKey;
 /// One message of the output stream.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "`ResultMessage` (808 bytes against 456 for the next variant) is moved once per \
+              message, after a JSON parse that costs far more; a `Box` would make every \
+              `Message::Result(result)` pattern of the callers deref it"
+)]
 pub enum Message {
     /// A user-role message, including tool results and injected turns.
     User(UserMessage),

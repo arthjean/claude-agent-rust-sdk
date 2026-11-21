@@ -97,7 +97,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D15 | Sync `remove_dir_all` in a `Drop`; no home reads `./.claude` | done | Drop part: kept synchronous on purpose (a blocking job may never run at runtime shutdown and the directory holds credentials; upstream rmtree is synchronous on the loop in every case). Module doc no longer claims every file op runs on the blocking pool. Home part done with m14. |
 | D16 | Conformance takes the first summary instead of the last | done | Both remaining lookups (listed mtime, summary after the subagent append) take the last entry. `session_store.rs::conformance_reads_the_last_listing_of_a_session_as_upstream`, red before (contract 14). |
 | D17 | `ToolContent::Resource.mime_type` never settable or sent | done | New `ToolContent::with_mime_type`; field documented as kept, not sent (upstream flattens a resource to text and drops mimeType too). Asserted in `sdk_mcp.rs::tool_results_convert_each_content_type` (wire unchanged). |
-| D18 | CLI discovery: empty `PATH` looks for `./claude`; exec bit instead of access | todo | |
+| D18 | CLI discovery: empty `PATH` looks for `./claude`; exec bit instead of access | done | New `sys::may_execute` (libc::access X_OK, documented unsafe); empty PATH searches nothing (Python `if not path: return None`; ":" still searches cwd as Python). Lib test `cli::tests::unix_skips_a_file_its_user_may_not_execute_and_an_empty_path_searches_nothing`, red before (mode 0o611 accepted). |
 | D19 | `#[allow]` without reason; `Message` is 808 bytes | todo | |
 | D20 | `syn` 2 and 3 built together with `macros` | todo | |
 | D21 | `IndexMap` in public fields couples semver | todo | |
