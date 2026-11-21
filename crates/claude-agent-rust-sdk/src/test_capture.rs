@@ -28,7 +28,15 @@ thread_local! {
 static COLLECTOR: Once = Once::new();
 
 #[derive(Clone, Default)]
-pub struct Warnings(Arc<Mutex<Vec<String>>>);
+pub struct Warnings(Arc<Mutex<Vec<String>>>, Arc<Mutex<Vec<Tagged>>>);
+
+/// The target, the `code` field, and the message of one captured event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tagged {
+    pub target: String,
+    pub code: Option<String>,
+    pub message: String,
+}
 
 /// Stops the capture of its [`Warnings`] when dropped. It belongs to the
 /// thread that installed it.
@@ -70,6 +78,11 @@ impl Warnings {
         self.0.lock().unwrap().clone()
     }
 
+    /// Every captured event with its target and `code` field.
+    pub fn tagged(&self) -> Vec<Tagged> {
+        self.1.lock().unwrap().clone()
+    }
+
     pub fn about_the_cli_version(&self) -> Vec<String> {
         self.0
             .lock()
@@ -87,12 +100,22 @@ impl Warnings {
 
 struct Collector;
 
-struct Message(String);
+struct Message(String, Option<String>);
 
 impl Visit for Message {
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-        if field.name() == "message" {
-            self.0 = format!("{value:?}");
+        match field.name() {
+            "message" => self.0 = format!("{value:?}"),
+            "code" => self.1 = Some(format!("{value:?}")),
+            _ => {}
+        }
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        match field.name() {
+            "message" => self.0 = value.to_owned(),
+            "code" => self.1 = Some(value.to_owned()),
+            _ => {}
         }
     }
 }
@@ -125,8 +148,13 @@ impl Subscriber for Collector {
         if *event.metadata().level() != level {
             return;
         }
-        let mut message = Message(String::new());
+        let mut message = Message(String::new(), None);
         event.record(&mut message);
+        sink.1.lock().unwrap().push(Tagged {
+            target: event.metadata().target().to_owned(),
+            code: message.1,
+            message: message.0.clone(),
+        });
         sink.0.lock().unwrap().push(message.0);
     }
 

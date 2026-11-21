@@ -349,6 +349,14 @@ impl ClaudeAgentOptions {
     /// tool (`Read`, `Read()`, or `Read(*)`). Enabling every skill counts
     /// as allowing the whole `Skill` tool. The warning is advisory:
     /// shadowing can be intentional.
+    ///
+    /// Each connect logs this text once the options pass validation, at
+    /// the `warn` level under the target
+    /// `claude_agent_rust_sdk::can_use_tool_shadowed` with the field
+    /// `code = "CLAUDE_SDK_CAN_USE_TOOL_SHADOWED"`, so a `tracing` filter
+    /// such as `claude_agent_rust_sdk::can_use_tool_shadowed=off` drops it
+    /// alone, as the Python SDK lets a program filter
+    /// `CanUseToolShadowedWarning`.
     #[must_use]
     pub fn can_use_tool_shadowed_warning(&self) -> Option<String> {
         self.can_use_tool.as_ref()?;

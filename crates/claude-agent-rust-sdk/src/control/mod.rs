@@ -104,6 +104,17 @@ use crate::session_store::SessionKey;
 use crate::transport::{SharedTransport, SubprocessTransport};
 use crate::types::{BoxFuture, ClaudeAgentOptions};
 
+/// The `tracing` target of the warning that `can_use_tool` is shadowed, the
+/// counterpart of the `CanUseToolShadowedWarning` category of the Python
+/// SDK: filter it out with `claude_agent_rust_sdk::can_use_tool_shadowed=off`
+/// in an `EnvFilter`.
+pub(crate) const CAN_USE_TOOL_SHADOWED_TARGET: &str =
+    "claude_agent_rust_sdk::can_use_tool_shadowed";
+
+/// The `code` field of that warning, the code the TypeScript SDK gives the
+/// same condition.
+pub(crate) const CAN_USE_TOOL_SHADOWED_CODE: &str = "CLAUDE_SDK_CAN_USE_TOOL_SHADOWED";
+
 pub(crate) use initialize::SessionConfig;
 use run_end::RunEndTracker;
 
@@ -741,10 +752,15 @@ impl ControlSession {
         options: &ClaudeAgentOptions,
         transport: Option<SharedTransport>,
     ) -> Result<(Self, Inbox)> {
-        if let Some(warning) = options.can_use_tool_shadowed_warning() {
-            tracing::warn!("{warning}");
-        }
+        let shadowed = options.can_use_tool_shadowed_warning();
         let options = options.for_session()?;
+        if let Some(warning) = shadowed {
+            tracing::warn!(
+                target: CAN_USE_TOOL_SHADOWED_TARGET,
+                code = CAN_USE_TOOL_SHADOWED_CODE,
+                "{warning}"
+            );
+        }
         let materialized = match transport {
             None => materialize_resume_session(&options).await?,
             Some(_) => None,

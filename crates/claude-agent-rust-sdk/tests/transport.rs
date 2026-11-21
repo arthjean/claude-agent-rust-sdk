@@ -1075,6 +1075,53 @@ async fn connect_warns_once_when_the_permission_callback_is_shadowed() {
 }
 
 #[tokio::test]
+async fn the_shadow_warning_has_its_own_target_and_code_so_it_can_be_filtered_alone() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let options = with_permission_callback(fake.options())
+        .allowed_tools(["Read"])
+        .build()
+        .unwrap();
+    let client = ClaudeSdkClient::new(options);
+    client.connect().await.unwrap();
+    client.disconnect().await.unwrap();
+
+    let tagged: Vec<_> = warnings
+        .tagged()
+        .into_iter()
+        .filter(|event| event.message.contains(SHADOWED_WARNING))
+        .collect();
+    assert_eq!(tagged.len(), 1, "{tagged:?}");
+    assert_eq!(
+        tagged[0].target,
+        "claude_agent_rust_sdk::can_use_tool_shadowed"
+    );
+    assert_eq!(
+        tagged[0].code.as_deref(),
+        Some("CLAUDE_SDK_CAN_USE_TOOL_SHADOWED")
+    );
+}
+
+#[tokio::test]
+async fn options_that_fail_validation_at_connect_do_not_warn_first() {
+    let (warnings, _guard) = Warnings::install();
+    let fake = Fake::new(json!({"auto_reply": true, "steps": []}));
+    let mut options = with_permission_callback(fake.options())
+        .allowed_tools(["Read"])
+        .build()
+        .unwrap();
+    options.permission_prompt_tool_name = Some("mcp__perm__ask".to_owned());
+    let client = ClaudeSdkClient::new(options);
+    let error = client.connect().await.unwrap_err();
+    assert_eq!(
+        error.kind(),
+        claude_agent_rust_sdk::ErrorKind::Config,
+        "{error}"
+    );
+    assert_eq!(shadowed_warnings(&warnings), Vec::<String>::new());
+}
+
+#[tokio::test]
 async fn the_shadow_warning_is_logged_again_on_every_session() {
     let (warnings, _guard) = Warnings::install();
     let fake = Fake::new(json!({"auto_reply": true, "steps": []}));

@@ -9,6 +9,7 @@
 
 ### Changed
 
+- The warning that `can_use_tool` is shadowed is logged under its own target, `claude_agent_rust_sdk::can_use_tool_shadowed`, with `code = "CLAUDE_SDK_CAN_USE_TOOL_SHADOWED"`, and only once the options pass validation at connect.
 - `create_sdk_mcp_server` refuses with `Error::Config` a typed tool whose argument type cannot be read from a JSON object (`String`, a `Vec`, an enum of unit variants), which failed every call before.
 - The `Debug` output of `ClaudeAgentOptions`, `McpStdioServerConfig`, and `McpRemoteServerConfig` prints the keys of `env`, `extra_args`, and `headers` with a placeholder for each value, and inline JSON `settings` as a placeholder, so logging options with `{:?}` no longer leaks API keys or tokens.
 - The warning that the CLI is older or newer than the tested version is logged once per process for each CLI path and version, instead of once per session.
