@@ -1,5 +1,15 @@
 //! Handlers of the control requests the CLI sends: tool permission, hook
 //! callbacks, and messages for the in-process MCP servers.
+//!
+//! The handlers differ from upstream in two deliberate ways:
+//!
+//! - every request is answered, a malformed one with an error that names
+//!   what is missing (`Missing required field in can_use_tool request:
+//!   'input'`), where upstream answers the bare `KeyError` text or, for a
+//!   request without `request` or `subtype`, nothing at all
+//!   (`[behavior.malformed-control-request-body]`);
+//! - a panic of an application callback becomes an error answer with a
+//!   fixed text, where an exception upstream is answered with its text.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -117,7 +127,11 @@ fn required<'a>(request: &'a Value, subtype: &str, field: &str) -> Result<&'a Va
         .ok_or_else(|| format!("Missing required field in {subtype} request: '{field}'"))
 }
 
+/// Reads the request in upstream's order: `input` first, then the
+/// callback, then `tool_name`, so the same malformed request is refused for
+/// the same reason.
 async fn can_use_tool(shared: &Shared, request: &Value) -> Result<Value, String> {
+    let original_input = required(request, "can_use_tool", "input")?.clone();
     let callback = shared
         .config
         .can_use_tool
@@ -126,7 +140,6 @@ async fn can_use_tool(shared: &Shared, request: &Value) -> Result<Value, String>
     let tool_name = required(request, "can_use_tool", "tool_name")?
         .as_str()
         .ok_or_else(|| "Invalid can_use_tool request: 'tool_name' must be a string".to_owned())?;
-    let original_input = required(request, "can_use_tool", "input")?.clone();
     let suggestions = match request.get("permission_suggestions") {
         Some(Value::Array(suggestions)) => suggestions
             .iter()

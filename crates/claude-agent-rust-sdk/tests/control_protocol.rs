@@ -430,6 +430,47 @@ async fn unsupported_control_request_gets_an_error_and_the_session_continues() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_control_response_whose_response_is_not_an_object_is_ignored_and_the_session_goes_on() {
+    let transport = cli();
+    let client = connected(&transport, default_options()).await;
+    transport.push_frame(json!({"type": "control_request", "request": {"subtype": "interrupt"}}));
+    transport.push_frame(json!({"type": "control_response", "response": "not an object"}));
+    transport.push_frame(json!({"type": "control_response"}));
+    settle().await;
+    client.interrupt().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn disconnect_fails_pending_requests_at_once() {
+    let transport = cli_answering_only_initialize();
+    let client = connected(&transport, default_options()).await;
+    let started = tokio::time::Instant::now();
+    let close = async {
+        settle().await;
+        client.disconnect().await.unwrap();
+    };
+    let (interrupt, ()) = tokio::join!(client.interrupt(), close);
+    assert!(interrupt.is_err());
+    assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_permission_request_without_input_names_the_field_before_the_missing_callback() {
+    let transport = cli();
+    let _client = connected(&transport, default_options()).await;
+    transport.push_frame(json!({
+        "type": "control_request",
+        "request_id": "cli-perm",
+        "request": {"subtype": "can_use_tool", "tool_name": "Bash"},
+    }));
+    settle().await;
+    assert_eq!(
+        response_to(&transport, "cli-perm").unwrap()["error"],
+        "Missing required field in can_use_tool request: 'input'"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn cancel_request_aborts_the_handler_which_writes_no_response() {
     let started = Arc::new(AtomicBool::new(false));
     let dropped = Arc::new(AtomicBool::new(false));

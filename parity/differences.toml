@@ -195,14 +195,14 @@ reason = "A typed response holds a value in every field. CLI 2.1.329 sends every
 test = "crates/claude-agent-rust-sdk/tests/types.rs::a_context_usage_answer_without_its_required_fields_reads_them_as_empty_values"
 
 [behavior.malformed-control-frames]
-summary = "A control request without `request_id`"
-python = "A `KeyError` ends the reader task, and the session with it."
+summary = "A control request without `request_id`, or a control response whose `response` is not an object"
+python = "A `KeyError` (or, for the response, an `AttributeError`) ends the reader task, and the session with it."
 rust = "The frame is logged and ignored; the session goes on."
 ref = "src/claude_agent_sdk/_internal/query.py:433"
 anchor = "req_id = request[\"request_id\"]"
 category = "rust-more-robust"
 reason = "One malformed frame from the CLI must not end the session."
-test = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::each_control_request_runs_one_handler_tracked_until_it_answers"
+test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::a_control_response_whose_response_is_not_an_object_is_ignored_and_the_session_goes_on"
 
 [behavior.malformed-control-request-body]
 summary = "A control request without `request`, whose `request` has no `subtype`, or that lacks a field its subtype needs"
@@ -225,13 +225,13 @@ reason = "One malformed frame from the CLI must not end the session."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::tests::mirror_frames_go_to_the_attached_mirror_and_results_wait_for_its_flush"
 
 [behavior.pending-requests-fail-at-end]
-summary = "Control requests pending when the CLI output ends"
-python = "They wait for their 60-second timeout."
-rust = "They fail at once with `ErrorKind::ConnectionClosed`."
+summary = "Control requests pending when the CLI output ends or the session closes"
+python = "They wait for their 60-second timeout: neither the end of the output nor `close()` wakes them."
+rust = "They fail at once with `ErrorKind::ConnectionClosed` (`crates/claude-agent-rust-sdk/tests/control_protocol.rs::disconnect_fails_pending_requests_at_once` shows the close)."
 ref = "src/claude_agent_sdk/_internal/query.py:791-793"
 anchor = "with anyio.fail_after(timeout):"
 category = "rust-more-robust"
-reason = "No answer can come once the output has ended."
+reason = "No answer can come once the output has ended or the session is closed."
 test = "crates/claude-agent-rust-sdk/tests/control_protocol.rs::clean_end_of_output_fails_pending_requests_at_once"
 
 [behavior.reconnect-closes-previous]
