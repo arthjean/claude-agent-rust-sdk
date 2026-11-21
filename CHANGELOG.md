@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `HookInput::tool_name()` and `HookInput::tool_input()` read the tool of a `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, or `PermissionRequest` input, typed or `Unknown`, so a hook that guards tool calls keeps checking an input whose shape changed. The `hooks` example uses them and denies a call it cannot check.
+
+### Changed
+
+- A hook input with a missing or `null` `session_id`, `transcript_path`, `cwd`, or `tool_use_id` stays typed, with an empty string, instead of becoming `HookInput::Unknown`; an input that still does not match its event is logged at warn level instead of debug.
+
 ### Fixed
 
 - In-process MCP tools run in the `tracing` span and the OpenTelemetry context of the caller that connected, as the other callbacks do.

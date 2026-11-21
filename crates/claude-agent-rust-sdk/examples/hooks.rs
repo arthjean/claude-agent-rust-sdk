@@ -79,29 +79,47 @@ async fn turn(client: &ClaudeSdkClient, prompt: &str) -> Result<(), BoxError> {
     Ok(())
 }
 
+/// A `PreToolUse` answer that denies the call.
+fn deny(reason: impl Into<String>) -> HookOutput {
+    let decision = PreToolUseHookSpecificOutput::default()
+        .permission_decision(HookPermissionDecision::Deny)
+        .permission_decision_reason(reason);
+    SyncHookOutput::default()
+        .hook_specific_output(decision)
+        .into()
+}
+
 /// Denies shell commands that contain a blocked pattern.
+///
+/// The tool is read with `HookInput::tool_name` and `tool_input`, which
+/// also read an input of a shape this crate does not know
+/// (`HookInput::Unknown`), and a call whose tool or command cannot be read
+/// is denied: a guard that cannot check a command must not let it through.
 async fn check_bash_command(
     input: HookInput,
     _tool_use_id: Option<String>,
     _context: HookContext,
 ) -> Result<HookOutput, BoxError> {
-    let HookInput::PreToolUse(input) = input else {
+    if input.hook_event_name() != "PreToolUse" {
         return Ok(HookOutput::default());
+    }
+    let Some(tool_name) = input.tool_name() else {
+        return Ok(deny("The hook input names no tool to check"));
     };
-    if !SHELL_TOOLS.contains(&input.tool_name.as_str()) {
+    if !SHELL_TOOLS.contains(&tool_name) {
         return Ok(HookOutput::default());
     }
 
-    let command = input.tool_input["command"].as_str().unwrap_or_default();
+    let Some(command) = input
+        .tool_input()
+        .and_then(|tool_input| tool_input["command"].as_str())
+    else {
+        return Ok(deny("The hook input holds no command to check"));
+    };
     for pattern in BLOCKED_PATTERNS {
         if command.contains(pattern) {
             eprintln!("Blocked command: {command}");
-            let decision = PreToolUseHookSpecificOutput::default()
-                .permission_decision(HookPermissionDecision::Deny)
-                .permission_decision_reason(format!("Command contains invalid pattern: {pattern}"));
-            return Ok(SyncHookOutput::default()
-                .hook_specific_output(decision)
-                .into());
+            return Ok(deny(format!("Command contains invalid pattern: {pattern}")));
         }
     }
     Ok(HookOutput::default())
@@ -155,12 +173,20 @@ async fn strict_approval_hook(
     _tool_use_id: Option<String>,
     _context: HookContext,
 ) -> Result<HookOutput, BoxError> {
-    let HookInput::PreToolUse(input) = input else {
+    if input.hook_event_name() != "PreToolUse" {
         return Ok(HookOutput::default());
+    }
+    let Some(tool_name) = input.tool_name() else {
+        return Ok(deny("The hook input names no tool to check"));
     };
 
-    if input.tool_name == "Write" {
-        let file_path = input.tool_input["file_path"].as_str().unwrap_or_default();
+    if tool_name == "Write" {
+        let Some(file_path) = input
+            .tool_input()
+            .and_then(|tool_input| tool_input["file_path"].as_str())
+        else {
+            return Ok(deny("The hook input holds no file path to check"));
+        };
         if file_path.to_lowercase().contains("important") {
             eprintln!("Blocked Write to: {file_path}");
             let decision = PreToolUseHookSpecificOutput::default()

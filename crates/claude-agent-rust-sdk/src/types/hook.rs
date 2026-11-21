@@ -65,6 +65,14 @@ fn lenient_milliseconds<'de, D: Deserializer<'de>>(
     }))
 }
 
+/// Reads a string a callback can do without: absent or `null` reads as
+/// the empty string, so a CLI that drops or nulls it does not turn the
+/// whole input into [`HookInput::Unknown`]. Another JSON type is still an
+/// error.
+fn lenient_string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// Reads the effort of a hook input from an object or a bare level.
 fn lenient_effort<'de, D: Deserializer<'de>>(
     deserializer: D,
@@ -87,11 +95,14 @@ fn lenient_effort<'de, D: Deserializer<'de>>(
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct HookInputBase {
-    /// Session the hook fired in.
+    /// Session the hook fired in; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub session_id: String,
-    /// Path of the session transcript.
+    /// Path of the session transcript; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub transcript_path: String,
-    /// Working directory of the session.
+    /// Working directory of the session; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub cwd: String,
     /// Permission mode in effect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,7 +141,8 @@ pub struct PreToolUseHookInput {
     pub tool_name: String,
     /// Input of the tool, normally a JSON object.
     pub tool_input: Value,
-    /// Identifier of the tool call.
+    /// Identifier of the tool call; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub tool_use_id: String,
 }
 
@@ -148,7 +160,8 @@ pub struct PostToolUseHookInput {
     /// Output of the tool; `Value::Null` when the CLI sent none.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub tool_response: Value,
-    /// Identifier of the tool call.
+    /// Identifier of the tool call; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub tool_use_id: String,
     /// Tool execution time in milliseconds, without prompt and hook time.
     /// Any JSON number is read, as the message parser reads counts: a
@@ -172,7 +185,8 @@ pub struct PostToolUseFailureHookInput {
     pub tool_name: String,
     /// Input of the tool, normally a JSON object.
     pub tool_input: Value,
-    /// Identifier of the tool call.
+    /// Identifier of the tool call; empty when the CLI sends none.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub tool_use_id: String,
     /// Error text.
     pub error: String,
@@ -372,7 +386,10 @@ pub struct PermissionRequestHookInput {
 ///
 /// An event unknown to this version of the crate, or a payload that does not
 /// have the documented shape, becomes [`HookInput::Unknown`] with the raw
-/// JSON: reading a hook input never fails.
+/// JSON: reading a hook input never fails. A mismatch is logged at warn
+/// level. A hook that guards tool calls reads the tool through
+/// [`HookInput::tool_name`] and [`HookInput::tool_input`], which read both
+/// forms, so that an input of an unexpected shape is still checked.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum HookInput {
@@ -414,7 +431,7 @@ macro_rules! hook_input_variants {
                                 Self::$variant(input)
                             }
                             Err(error) => {
-                                tracing::debug!(
+                                tracing::warn!(
                                     event = $wire,
                                     %error,
                                     "a hook input does not match the type of its event; it is \
@@ -486,6 +503,41 @@ hook_input_variants! {
 }
 
 impl HookInput {
+    /// Name of the tool the hook is about, for the events that carry one
+    /// (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
+    /// `PermissionRequest`), read from the raw JSON of an
+    /// [`Unknown`](Self::Unknown) input too.
+    ///
+    /// A hook that guards tool calls should read the tool through this
+    /// method rather than match only the typed variant: an input whose
+    /// shape changed is then still checked, instead of let through.
+    #[must_use]
+    pub fn tool_name(&self) -> Option<&str> {
+        match self {
+            Self::PreToolUse(input) => Some(&input.tool_name),
+            Self::PostToolUse(input) => Some(&input.tool_name),
+            Self::PostToolUseFailure(input) => Some(&input.tool_name),
+            Self::PermissionRequest(input) => Some(&input.tool_name),
+            Self::Unknown(wire) => wire.get("tool_name").and_then(Value::as_str),
+            _ => None,
+        }
+    }
+
+    /// Input of the tool the hook is about, for the same events as
+    /// [`tool_name`](Self::tool_name), read from the raw JSON of an
+    /// [`Unknown`](Self::Unknown) input too.
+    #[must_use]
+    pub fn tool_input(&self) -> Option<&Value> {
+        match self {
+            Self::PreToolUse(input) => Some(&input.tool_input),
+            Self::PostToolUse(input) => Some(&input.tool_input),
+            Self::PostToolUseFailure(input) => Some(&input.tool_input),
+            Self::PermissionRequest(input) => Some(&input.tool_input),
+            Self::Unknown(wire) => wire.get("tool_input"),
+            _ => None,
+        }
+    }
+
     /// Id of the subagent the hook fired in, when any.
     #[must_use]
     pub fn agent_id(&self) -> Option<&str> {

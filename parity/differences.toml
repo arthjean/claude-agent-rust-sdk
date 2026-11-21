@@ -437,12 +437,12 @@ test = "crates/claude-agent-rust-sdk/tests/message_parser.rs::integer_fields_acc
 [behavior.hook-input-shape]
 summary = "A hook input that does not match the type of its event"
 python = "The callback receives the raw dict whatever its shape."
-rust = "Read leniently (a missing `tool_response` is null, a fractional `duration_ms` is truncated, a bare `effort` string is its level); an input that still does not match is `HookInput::Unknown` with its raw JSON, and the reason is logged at debug level."
+rust = "Read leniently (a missing `tool_response` is null, a fractional `duration_ms` is truncated, a bare `effort` string is its level, and a missing or null `session_id`, `transcript_path`, `cwd`, or `tool_use_id` is empty); an input that still does not match is `HookInput::Unknown` with its raw JSON, and the reason is logged at warn level. `HookInput::tool_name` and `tool_input` read the tool from either form, so a guard hook still sees the tool of an input whose shape changed."
 ref = "src/claude_agent_sdk/_internal/query.py:702-706"
 anchor = 'request_data.get("input"),'
 category = "deliberate"
-reason = "Hook inputs are typed per event; what the CLI schema allows stays typed, and anything else still reaches the callback."
-test = "crates/claude-agent-rust-sdk/tests/types.rs::a_hook_input_the_cli_schema_allows_stays_typed"
+reason = "Hook inputs are typed per event; what the CLI schema allows stays typed, metadata a callback can do without never hides the tool, and anything else still reaches the callback with the tool readable, so a security hook that matches on the tool does not fail open."
+test = "crates/claude-agent-rust-sdk/tests/types.rs::a_hook_input_missing_metadata_the_callback_does_not_need_stays_typed"
 
 [behavior.windows-environment-case]
 summary = "Environment variables that differ only in case, on Windows"

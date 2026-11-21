@@ -47,7 +47,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | m4 | `continue_conversation` refused for a store that implements `list_sessions` undeclared | todo | |
 | m5 | Wrongly typed optional field is lost | todo | |
 | m6 | `task_progress` null/non-object `usage` read as zeros | todo | |
-| m7 | `close()` does not close stdin when the write lock times out | todo | |
+| m7 | `close()` does not close stdin when the write lock times out | done | After the 5 s lock wait, a `Notify` makes the blocked writer drop the pipe (upstream order). Through the client the writer task is aborted on close, so only a direct `SubprocessTransport` writer was affected. `transport.rs::close_ends_stdin_even_while_a_write_is_blocked_on_a_full_pipe` (fake CLI), red before (no `stdin_eof`, 10.3 s). |
 | m8 | Derived `Debug` prints secrets of options | todo | |
 | m9 | Control request timeout does not cover the write | done | One `timeout` around write and wait; `[behavior.control-timeout-covers-write]`; `control_protocol.rs::a_control_request_whose_write_never_completes_times_out`, red before. |
 | m10 | No `async with` equivalent; drop closes on a detached task | todo | |

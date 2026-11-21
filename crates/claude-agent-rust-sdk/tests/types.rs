@@ -702,8 +702,47 @@ fn a_hook_input_the_cli_schema_allows_stays_typed() {
 }
 
 #[test]
+fn a_hook_input_missing_metadata_the_callback_does_not_need_stays_typed() {
+    let mut wire = base_hook_input(
+        "PreToolUse",
+        json!({"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}}),
+    );
+    wire["transcript_path"] = Value::Null;
+    wire.as_object_mut().unwrap().shift_remove("cwd");
+    let HookInput::PreToolUse(input) = HookInput::from_wire(wire) else {
+        panic!("a missing tool_use_id or cwd, or a null transcript_path, must not hide the tool");
+    };
+    assert_eq!(input.tool_name, "Bash");
+    assert_eq!(input.tool_use_id, "");
+    assert_eq!(input.base.transcript_path, "");
+    assert_eq!(input.base.cwd, "");
+}
+
+#[test]
+fn the_tool_of_a_hook_input_is_read_even_when_the_input_is_unknown() {
+    let typed = HookInput::from_wire(base_hook_input(
+        "PreToolUse",
+        json!({"tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_use_id": "t"}),
+    ));
+    assert_eq!(typed.tool_name(), Some("Bash"));
+    assert_eq!(typed.tool_input(), Some(&json!({"command": "ls"})));
+
+    let unknown = HookInput::from_wire(base_hook_input(
+        "PreToolUse",
+        json!({"tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_use_id": 7}),
+    ));
+    assert!(matches!(unknown, HookInput::Unknown(_)));
+    assert_eq!(unknown.tool_name(), Some("Bash"));
+    assert_eq!(unknown.tool_input(), Some(&json!({"command": "ls"})));
+
+    let prompt = HookInput::from_wire(base_hook_input("UserPromptSubmit", json!({"prompt": "hi"})));
+    assert_eq!(prompt.tool_name(), None);
+    assert_eq!(prompt.tool_input(), None);
+}
+
+#[test]
 fn a_hook_input_that_does_not_match_its_event_is_unknown_and_logged() {
-    let (warnings, _guard) = common::capture::Warnings::install_at(tracing::Level::DEBUG);
+    let (warnings, _guard) = common::capture::Warnings::install_at(tracing::Level::WARN);
     let wire = base_hook_input("PostToolUse", json!({"tool_name": 7}));
     assert_eq!(HookInput::from_wire(wire.clone()), HookInput::Unknown(wire));
     assert!(
