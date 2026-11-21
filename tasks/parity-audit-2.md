@@ -84,7 +84,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D2 | Handler with a reused id survives `close()` | done | Handler tasks are also tracked in `state.tasks`, which close aborts. `control_protocol.rs::closing_stops_both_handlers_of_a_reused_request_id`, red before (1 of 2 stopped). |
 | D3 | Callback panic text replaced by a fixed message | done | Panic payload (&str or String) becomes the error text, as upstream str(e); fixed text only for other payloads. `control_protocol.rs::a_callback_that_panics_is_answered_with_the_message_of_the_panic`, red before (fixed text). |
 | D4 | `HookOutput::to_wire` falls back to `{}` on serialization failure | done | Handler uses new `HookOutput::try_to_wire` and answers an error on failure (as upstream would on an exception); public `to_wire` kept, documented as infallible (every field is a JSON value or plain type). No red test possible: the failure path is unreachable with the current types; existing hook tests cover the Ok path. |
-| D5 | Run end decided before the mirror flush | todo | |
+| D5 | Run end decided before the mirror flush | decision | Recorded as deliberate `[behavior.run-end-before-mirror-flush]`: the non-blocking reader is kept (control traffic flows during a slow store); test `transcript_mirror.rs::the_run_ends_at_the_result_while_the_flush_still_runs_and_the_result_waits_for_it` shows stdin closing before the append and the result waiting for it. |
 | D6 | `receive_messages()` checks the connection at call time | todo | |
 | D7 | `ClaudeSdkClient::query` error docs wrong | todo | |
 | D8 | `server_info()` returns an `Option` never `None`; no `options()` accessor | todo | |

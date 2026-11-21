@@ -78,7 +78,7 @@ pub struct ClaudeSdkClient {
     options: ClaudeAgentOptions,
     transport: Option<SharedTransport>,
     lifecycle: tokio::sync::Mutex<()>,
-    connection: Mutex<Option<Arc<Connection>>>,
+    connection: Arc<Mutex<Option<Arc<Connection>>>>,
     /// The session a [`connect`](Self::connect) is opening, published
     /// before the handshake as upstream publishes its query, so a
     /// concurrent [`disconnect`](Self::disconnect) can close it instead of
@@ -112,7 +112,7 @@ impl ClaudeSdkClient {
             options,
             transport: None,
             lifecycle: tokio::sync::Mutex::new(()),
-            connection: Mutex::new(None),
+            connection: Arc::new(Mutex::new(None)),
             connecting: Mutex::new(None),
         }
     }
@@ -235,7 +235,8 @@ impl ClaudeSdkClient {
     /// # Errors
     ///
     /// Returns [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected) when the client is not connected,
-    /// when an input stream fails, or when a write fails.
+    /// [`ErrorKind::PromptStream`](crate::ErrorKind::PromptStream) when an input stream fails, and the
+    /// error of the transport when a write fails.
     pub async fn query(&self, prompt: impl Into<Prompt>) -> Result<()> {
         self.query_with_session_id(prompt, DEFAULT_SESSION_ID).await
     }
@@ -279,8 +280,9 @@ impl ClaudeSdkClient {
     /// share the same queue: each message goes to one of them. An error,
     /// such as a message that cannot be parsed, is yielded and ends the
     /// stream, as upstream's iterator raises; a new call resumes with the
-    /// next message. Before [`connect`](Self::connect) the stream yields one
-    /// [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected).
+    /// next message. Polled before [`connect`](Self::connect), the stream
+    /// yields one [`ErrorKind::NotConnected`](crate::ErrorKind::NotConnected); created before and polled
+    /// after, it reads the session.
     pub fn receive_messages(&self) -> Messages<'_> {
         self.messages(false)
     }
@@ -295,21 +297,42 @@ impl ClaudeSdkClient {
         self.messages(true)
     }
 
+    /// The connection is looked up at the first poll, as upstream's async
+    /// generator checks it at the first iteration: a stream created before
+    /// [`connect`](Self::connect) reads the session connected since.
     fn messages(&self, until_result: bool) -> Messages<'_> {
-        let Ok(connection) = self.connection() else {
-            return Messages::new(stream::once(std::future::ready(Err(not_connected()))));
-        };
-        Messages::new(stream::unfold(
-            Some(connection),
-            move |connection| async move {
-                let connection = connection?;
+        enum Step {
+            Start,
+            Reading(Arc<Connection>),
+            Done,
+        }
+        let slot = Arc::clone(&self.connection);
+        Messages::new(stream::unfold(Step::Start, move |step| {
+            let slot = Arc::clone(&slot);
+            async move {
+                let connection = match step {
+                    Step::Done => return None,
+                    Step::Reading(connection) => connection,
+                    Step::Start => {
+                        let current = slot.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                        match current {
+                            Some(connection) => connection,
+                            None => return Some((Err(not_connected()), Step::Done)),
+                        }
+                    }
+                };
                 let frame = connection.inbox.lock().await.recv().await?;
                 let message = frame.and_then(parse_message);
                 let ends =
                     message.is_err() || (until_result && matches!(message, Ok(Message::Result(_))));
-                Some((message, (!ends).then_some(connection)))
-            },
-        ))
+                let next = if ends {
+                    Step::Done
+                } else {
+                    Step::Reading(connection)
+                };
+                Some((message, next))
+            }
+        }))
     }
 
     async fn control(&self, request: Value) -> Result<Value> {

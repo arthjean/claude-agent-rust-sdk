@@ -550,3 +550,23 @@ async fn scoped_closes_the_session_before_returning_on_success_and_on_error() {
     assert_eq!(failed.to_string(), "the body failed");
     assert_eq!(transport.close_count(), 1);
 }
+
+/// Upstream's `receive_messages` is an async generator: the connection is
+/// checked at the first iteration, so an iterator created before `connect`
+/// reads the session opened since.
+#[tokio::test(start_paused = true)]
+async fn a_message_stream_created_before_connect_reads_the_session_connected_since() {
+    let transport = cli();
+    let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
+    let mut messages = client.receive_messages();
+    client.connect().await.unwrap();
+    transport.push_frame(assistant("hello"));
+    let first = messages.next().await.unwrap().unwrap();
+    assert!(matches!(first, Message::Assistant(_)), "{first:?}");
+    drop(messages);
+
+    let unconnected = ClaudeSdkClient::with_transport(default_options(), cli());
+    let mut messages = unconnected.receive_response();
+    assert_not_connected(messages.next().await.unwrap(), "receive_response");
+    assert!(messages.next().await.is_none());
+}
