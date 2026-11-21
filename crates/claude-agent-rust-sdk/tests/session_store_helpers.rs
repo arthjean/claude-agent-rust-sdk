@@ -1887,3 +1887,60 @@ async fn a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries
     assert_eq!(info.custom_title.as_deref(), Some("Renamed"));
     assert_eq!(info.first_prompt.as_deref(), Some("hello"));
 }
+
+/// Lists every session twice and has no summaries, so each one is filled
+/// by a load.
+#[derive(Clone, Default)]
+struct DoubleListingStore(InMemorySessionStore);
+
+impl SessionStore for DoubleListingStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        self.0.load(key).await
+    }
+
+    async fn list_sessions(
+        &self,
+        project_key: &str,
+    ) -> Result<Vec<SessionStoreListEntry>, SessionStoreError> {
+        let listing = self.0.list_sessions(project_key).await?;
+        Ok(listing.iter().chain(&listing).cloned().collect())
+    }
+
+    async fn list_session_summaries(
+        &self,
+        _project_key: &str,
+    ) -> Result<Vec<SessionSummaryEntry>, SessionStoreError> {
+        Ok(Vec::new())
+    }
+}
+
+/// Upstream fills each slot of the page from one map of loaded infos, so a
+/// session listed twice appears twice; it is not filled once and dropped.
+#[tokio::test]
+async fn a_session_listed_twice_by_the_store_fills_both_slots_of_the_page() {
+    let project = Project::new();
+    let store = DoubleListingStore::default();
+    let id = new_id();
+    let key = SessionKey::new(project_key_for_directory(Some(project.path())), &id);
+    store
+        .append(&key, &[entry(user("u1", None, &id, json!("hello")))])
+        .await
+        .unwrap();
+    let infos =
+        list_sessions_from_store(&store, ListSessionsOptions::new().directory(project.path()))
+            .await
+            .unwrap();
+    let ids: Vec<&str> = infos.iter().map(|info| info.session_id.as_str()).collect();
+    assert_eq!(ids, [id.as_str(), id.as_str()]);
+}

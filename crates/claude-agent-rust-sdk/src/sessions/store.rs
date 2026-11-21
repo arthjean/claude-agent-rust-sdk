@@ -233,7 +233,7 @@ pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
                     Slot::Ready(..) => None,
                 })
                 .collect();
-            let mut filled: HashMap<String, SdkSessionInfo> =
+            let filled: HashMap<String, SdkSessionInfo> =
                 derive_infos_via_load(store, &pending, &project_key, &project_path)
                     .await
                     .into_iter()
@@ -243,7 +243,7 @@ pub async fn list_sessions_from_store<S: SessionStore + ?Sized>(
                 .into_iter()
                 .filter_map(|slot| match slot {
                     Slot::Ready(_, info) => Some(info),
-                    Slot::Pending(entry) => filled.remove(&entry.session_id),
+                    Slot::Pending(entry) => filled.get(&entry.session_id).cloned(),
                 })
                 .collect());
         }
