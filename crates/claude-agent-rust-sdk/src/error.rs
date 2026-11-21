@@ -430,7 +430,7 @@ impl Error {
     /// | Kind | Retryable |
     /// |---|---|
     /// | [`ControlTimeout`](ErrorKind::ControlTimeout), [`ConnectionClosed`](ErrorKind::ConnectionClosed) | always |
-    /// | [`ResultError`](ErrorKind::ResultError) | when the failing API call answered 429, 529, or a 5xx status |
+    /// | [`ResultError`](ErrorKind::ResultError) | when the failing API call answered 429, 529, or a 5xx status, or, with no status, when the run ended on an API error (`terminal_reason` is `api_error`, such as a stream idle timeout: the case upstream's `ResultError` docs give for a retry) |
     /// | [`Process`](ErrorKind::Process) | when the process was killed by a signal (on Unix a negative exit code, `-signal`), or ended without an exit code |
     /// | [`Io`](ErrorKind::Io), [`Spawn`](ErrorKind::Spawn) | when the I/O error is `Interrupted`, `TimedOut`, or `WouldBlock` |
     /// | [`SessionStore`](ErrorKind::SessionStore) | when the store took too long |
@@ -439,12 +439,16 @@ impl Error {
     pub fn is_retryable(&self) -> bool {
         match self.0.kind {
             ErrorKind::ControlTimeout | ErrorKind::ConnectionClosed => true,
-            ErrorKind::ResultError => self
-                .result()
-                .and_then(ResultErrorData::api_error_status)
-                .is_some_and(|status| {
-                    RETRYABLE_HTTP_STATUSES.contains(&status) || (500..600).contains(&status)
-                }),
+            ErrorKind::ResultError => {
+                self.result()
+                    .is_some_and(|result| match result.api_error_status() {
+                        Some(status) => {
+                            RETRYABLE_HTTP_STATUSES.contains(&status)
+                                || (500..600).contains(&status)
+                        }
+                        None => result.terminal_reason() == Some("api_error"),
+                    })
+            }
             ErrorKind::Process => self
                 .0
                 .detail
@@ -873,6 +877,31 @@ mod tests {
         let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
         assert!(!Error::io("read", missing).is_retryable());
         assert!(Error::session_store_timeout("load timed out").is_retryable());
+    }
+
+    #[test]
+    fn an_api_error_result_without_a_status_is_retryable_as_upstream_documents() {
+        let idle = Error::result_error(
+            json!({
+                "type": "result",
+                "subtype": "success",
+                "is_error": true,
+                "errors": [],
+                "result": "API Error: Stream idle timeout - no chunks received",
+                "api_error_status": null,
+                "terminal_reason": "api_error",
+                "session_id": "s-1",
+            }),
+            Some(1),
+        );
+        assert!(idle.is_retryable());
+        let refused = Error::result_error(
+            json!({"terminal_reason": "api_error", "api_error_status": 400}),
+            Some(1),
+        );
+        assert!(!refused.is_retryable());
+        let max_turns = Error::result_error(json!({"terminal_reason": "max_turns"}), Some(1));
+        assert!(!max_turns.is_retryable());
     }
 
     #[test]

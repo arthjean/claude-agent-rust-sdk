@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- In-process MCP tools run in the `tracing` span and the OpenTelemetry context of the caller that connected, as the other callbacks do.
+- A prompt stream that panics closes stdin, so the query ends, as upstream closes it when the iterable raises.
+- `Error::is_retryable()` is true for an API error result with no HTTP status (`terminal_reason` is `api_error`, such as a stream idle timeout), the case upstream's `ResultError` docs give for a retry.
+
 ## 0.2.0 - 2026-11-20
 
 Upstream: Python SDK 0.2.183 to 0.2.186, CLI 2.1.329
