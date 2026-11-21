@@ -1269,13 +1269,22 @@ pub enum HookOutput {
 impl HookOutput {
     /// Converts the output to the form the CLI expects, with the `continue`
     /// and `async` key names.
+    ///
+    /// Every field is a JSON value or a plain type, so the conversion
+    /// cannot fail; the handler of hook callbacks goes through
+    /// [`try_to_wire`](Self::try_to_wire) all the same and answers an
+    /// error, never an empty output that would let the call through.
     #[must_use]
     pub fn to_wire(&self) -> Value {
-        let wire = match self {
+        self.try_to_wire()
+            .unwrap_or_else(|_| Value::Object(Map::new()))
+    }
+
+    pub(crate) fn try_to_wire(&self) -> Result<Value, serde_json::Error> {
+        match self {
             Self::Sync(output) => serde_json::to_value(output),
             Self::Async(output) => serde_json::to_value(output),
-        };
-        wire.unwrap_or_else(|_| Value::Object(Map::new()))
+        }
     }
 }
 

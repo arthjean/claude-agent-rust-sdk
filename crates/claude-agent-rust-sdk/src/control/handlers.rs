@@ -260,7 +260,9 @@ async fn hook_callback(shared: &Shared, request: &Value) -> Result<Value, String
         .call(input, tool_use_id, HookContext::default())
         .await
         .map_err(|error| error.to_string())?;
-    Ok(output.to_wire())
+    output
+        .try_to_wire()
+        .map_err(|error| format!("Cannot serialize the hook output: {error}"))
 }
 
 async fn mcp_message(shared: &Shared, request: &Value) -> Result<Value, String> {
