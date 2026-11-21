@@ -8,6 +8,7 @@
 - A prompt stream that panics closes stdin, so the query ends, as upstream closes it when the iterable raises.
 - `Error::is_retryable()` is true for an API error result with no HTTP status (`terminal_reason` is `api_error`, such as a stream idle timeout), the case upstream's `ResultError` docs give for a retry.
 - A store subpath whose second character is `:` (`1:foo`, not only a letter drive) is refused, as `ntpath.splitdrive` reads a drive, so it cannot name an alternate data stream on Windows.
+- The transcript mirror matches frames under the real path of a linked config directory even when its `projects` directory does not exist yet at connect, as `[behavior.mirror-canonical-projects-dir]` states.
 
 ## 0.2.0 - 2026-11-20
 

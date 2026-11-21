@@ -103,7 +103,7 @@ impl TranscriptMirrorBatcher {
     ) -> Arc<Self> {
         let canonical = PathBuf::from(crate::sessions::canonicalize_path(&projects_dir));
         let mut projects_dirs = vec![projects_dir];
-        if canonical.is_dir() && !projects_dirs.contains(&canonical) {
+        if !projects_dirs.contains(&canonical) {
             projects_dirs.push(canonical);
         }
         Arc::new_cyclic(|this| Self {
@@ -627,6 +627,27 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let real = root.path().join("real");
         std::fs::create_dir_all(real.join("projects")).unwrap();
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let store = InMemorySessionStore::new();
+        let batcher = TranscriptMirrorBatcher::new(
+            SharedSessionStore::new(store.clone()),
+            link.join("projects"),
+            &SessionStoreFlushMode::Batched,
+        );
+        let canonical = PathBuf::from(crate::sessions::canonicalize_path(&real));
+        let file = canonical.join("projects").join("proj").join("s.jsonl");
+        batcher.enqueue(file.to_string_lossy().into_owned(), entries(1, "r"));
+        batcher.flush().await;
+        assert_eq!(store.get_entries(&SessionKey::new("proj", "s")).len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn real_path_frames_are_mirrored_before_the_projects_directory_exists() {
+        let root = tempfile::tempdir().unwrap();
+        let real = root.path().join("real");
+        std::fs::create_dir_all(&real).unwrap();
         let link = root.path().join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
         let store = InMemorySessionStore::new();
