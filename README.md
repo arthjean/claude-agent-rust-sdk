@@ -192,7 +192,7 @@ is a runnable program:
 | Example | Shows |
 |---|---|
 | `quick_start` | One-shot queries with `query`. |
-| `interactive_client` | Multi-turn sessions, interrupts, and prompt streams with `ClaudeSdkClient`. |
+| `interactive_client` | Multi-turn sessions, interrupts, prompt streams, concurrent reading, tool calls, server info, and timeouts with `ClaudeSdkClient`. |
 | `hooks` | Hooks that observe, block, and steer tool calls. |
 | `tool_permission_callback` | Approving, changing, and denying tool calls from a callback. |
 | `mcp_calculator` | Tools served from your process. |
@@ -203,6 +203,9 @@ is a runnable program:
 | `stderr_callback` | Receiving the error output of the CLI. |
 | `setting_sources` | Choosing which settings files the CLI loads. |
 | `session_store_adapter` | Writing a session store and resuming from it. |
+| `tools_option` | Choosing the base set of built-in tools. |
+| `plugin_example` | Loading a local plugin. |
+| `filesystem_agents` | Agents defined in files under `.claude/agents/`. |
 
 Run one with `cargo run -p claude-agent-rust-sdk --example quick_start`. The examples
 call the real API with your credentials.

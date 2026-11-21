@@ -57,7 +57,7 @@ CI runs the gates on Linux, macOS, and Windows. Gate platform-specific code and 
 
 - **Doc comments only** in `crates/claude-agent-rust-sdk/src` and `crates/fake-claude/src`: a line starting with `//` fails. Put the reason for a choice in a `///` or `//!` comment, as the surrounding code does.
 - **`unsafe` lives only in `src/process/sys.rs`**. An operating-system call that needs it goes there, with a doc comment that justifies the block.
-- **Twelve examples**: the README Examples table and the example files match one to one. Adding an example means adding its row and raising the count in the test.
+- **Fifteen examples**: the README Examples table and the example files match one to one. Adding an example means adding its row and raising the count in the test.
 - **Every Cargo feature** is described in the crate docs of `src/lib.rs` as ``//! - `name`:``.
 - **Pinned versions**: the tested CLI version (`CLI_VERSION`), the upstream SDK version (`UPSTREAM_SDK_VERSION`), and the upstream commit are repeated across `src/lib.rs`, `README.md`, `docs/migration.md`, `THIRD_PARTY_NOTICES`, `.github/workflows/e2e.yml`, `crates/fake-claude`, and the test itself. `cargo xtask upstream-sync` moves every copy together.
 - **README statements**: the authentication, non-affiliation, and license sentences are matched word for word.

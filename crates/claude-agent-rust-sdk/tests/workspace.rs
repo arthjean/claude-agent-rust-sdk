@@ -771,7 +771,7 @@ fn every_example_of_the_readme_exists() {
         .filter_map(|line| line.strip_prefix("| `"))
         .filter_map(|line| line.split('`').next())
         .collect();
-    assert_eq!(named.len(), 12, "{named:?}");
+    assert_eq!(named.len(), 15, "{named:?}");
     for example in named {
         let file = workspace_root()
             .join("crates/claude-agent-rust-sdk/examples")
