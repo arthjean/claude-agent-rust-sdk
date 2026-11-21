@@ -19,6 +19,11 @@
 //! a resume never stalls the runtime. The directory moves into each
 //! blocking job and comes back with its result: a resume cancelled while a
 //! job runs removes the directory once that job is done, never under it.
+//! One removal is synchronous: a resume future dropped between two jobs
+//! removes the directory in `Drop`, on the thread that drops it, because a
+//! job queued at that point may never run if the runtime is shutting down,
+//! and the directory holds a copy of the credentials. Upstream removes it
+//! with a synchronous `shutil.rmtree` on the event loop in every case.
 
 use crate::json_map::RemoveKey;
 use std::ffi::OsString;
@@ -140,6 +145,9 @@ async fn or_remove<T>(directory: ResumeDir, result: Result<T>) -> Result<(Resume
     }
 }
 
+/// The removal of a directory that was not removed with
+/// [`ResumeDir::remove`]: synchronous, so the copy of the credentials goes
+/// away even when the runtime is shutting down (see the module docs).
 impl Drop for ResumeDir {
     fn drop(&mut self) {
         if let Some(path) = &self.path {
