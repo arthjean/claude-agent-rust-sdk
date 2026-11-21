@@ -236,6 +236,42 @@ mod imp {
             assert!(path.split(':').any(|entry| entry == "/usr/bin"), "{path}");
         }
 
+        /// A member stopped by `SIGTTIN` (a tool that read the terminal)
+        /// ends on the `SIGTERM` of a terminate, which a `SIGCONT` lets it
+        /// handle, instead of waiting for the `SIGKILL`.
+        #[cfg(target_os = "linux")]
+        #[tokio::test]
+        async fn a_stopped_member_of_the_group_ends_on_terminate() {
+            let mut command = Command::new("sh");
+            command.arg("-c").arg("kill -STOP $$; sleep 30");
+            prepare(&mut command);
+            let mut child = command.spawn().unwrap();
+            let tree = ProcessTree::attach(&child);
+            let pid = child.id().unwrap();
+            let stopped = || {
+                std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                    .ok()
+                    .and_then(|stat| {
+                        stat.rsplit_once(") ")
+                            .map(|(_, rest)| rest.starts_with('T'))
+                    })
+                    .unwrap_or(false)
+            };
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !stopped() {
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "the child never stopped"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            tree.terminate(&mut child);
+            let exited =
+                tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await;
+            assert!(exited.is_ok(), "a stopped child ignored SIGTERM");
+            tree.kill(&mut child);
+        }
+
         #[tokio::test]
         async fn a_group_is_tracked_for_the_exit_hook_until_it_is_swept() {
             let mut command = Command::new("sleep");
@@ -375,9 +411,7 @@ mod imp {
 
         fn signal(&self, signal: libc::c_int) {
             if let Some(group) = self.group {
-                unsafe {
-                    libc::killpg(group, signal);
-                }
+                signal_group(group, signal);
             }
         }
     }
@@ -440,17 +474,26 @@ mod imp {
                 Err(TryLockError::WouldBlock) => return,
             };
             for group in live.iter() {
-                unsafe {
-                    libc::killpg(*group, libc::SIGTERM);
-                }
+                super::signal_group(*group, libc::SIGTERM);
             }
         }
     }
 
     /// Sends `signal` to the group, `0` only checking that it still has a
     /// member. False when no process of the group is left.
+    ///
+    /// `SIGTERM` is followed by `SIGCONT`: a stopped member (a tool that
+    /// read the terminal from this background group got `SIGTTIN`) keeps a
+    /// `SIGTERM` pending until it runs again, so without it the group would
+    /// wait out the whole grace and end on `SIGKILL`.
     fn signal_group(group: libc::pid_t, signal: libc::c_int) -> bool {
-        unsafe { libc::killpg(group, signal) == 0 }
+        let sent = unsafe { libc::killpg(group, signal) == 0 };
+        if sent && signal == libc::SIGTERM {
+            unsafe {
+                libc::killpg(group, libc::SIGCONT);
+            }
+        }
+        sent
     }
 }
 

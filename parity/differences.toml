@@ -127,11 +127,11 @@ test = "crates/claude-agent-rust-sdk/tests/errors.rs::result_error_is_a_process_
 [behavior.separate-process-group]
 summary = "Where the CLI process is placed"
 python = "The CLI is spawned in the process group of the program, and on Windows in its console, so a Ctrl+C in the terminal reaches it directly."
-rust = "On Unix the CLI leads its own process group; on Windows it starts with `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, so no console window opens for it and it has a console process group of its own. A terminal Ctrl+C reaches it on neither; the session ends through the transport instead."
+rust = "On Unix the CLI leads its own process group; on Windows it starts with `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, so no console window opens for it and it has a console process group of its own. A terminal Ctrl+C reaches it on neither; the session ends through the transport instead. On Unix the group is in the background of the terminal of the program: a tool the CLI runs that reads `/dev/tty` (a `sudo` or `ssh` prompt) is stopped by `SIGTTIN` instead of prompting, as measured under a pseudo-terminal (state `T` against `S` for a child of the program's own group). Closing the session still ends such a tool at once: the `SIGTERM` to the group is followed by `SIGCONT`."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:828-836"
 anchor = "self._process = await anyio.open_process("
 category = "deliberate"
-reason = "A group of its own lets the SDK end the CLI and every process it started in one signal."
+reason = "A group of its own lets the SDK end the CLI and every process it started in one signal. The CLI of a session reads its prompts from a pipe, not the terminal, so only a tool that opens the terminal itself is affected; in the same group it would read the keystrokes of the program's own terminal interface."
 test = "crates/claude-agent-rust-sdk/tests/shutdown.rs::the_process_leads_its_own_process_group @unix"
 
 [behavior.process-tree-ended]

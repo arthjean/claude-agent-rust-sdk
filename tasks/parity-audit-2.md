@@ -109,7 +109,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 | D27 | `agent-sdk/0.2.0` overlaps Python's 0.2.x numbering | decision | Kept. CLI 2.1.329 binary read: User-Agent is `claude-cli/V (external, <entrypoint>, agent-sdk/<version>...)`, and the version is otherwise only tested for presence; the pair sdk-rs + version is distinct. Reason written on `[wire.sdk-version]`. |
 | D28 | Module docs without "differs from upstream" bullets; `SessionStore` doc omits obligations | done | client.rs and query.rs module docs list their deliberate differences, each naming its ledger entry; handlers.rs bullets updated after D1/D3 (panic text now matches). SessionStore trait docs carry every obligation of upstream types.py:2066-2191 (disk copy, retention, cadence, order, idempotency, retries and timeouts, load callers, deep-equal, mtime units, fold and serialization, cascade delete, subkeys). |
 | D29 | `Error::data()` only for `MessageParse` | done | New `Error::result_error_with_message` (result_error builds on it); data() docs point to result()/as_map(); migration guide paragraph; surface note. `errors.rs::result_error_carries_payload` extended (did not compile before). |
-| D30 | Process exit error kept as text | todo | |
+| D30 | Process exit error kept as text | done | exit_error is now Mutex<Option<Error>> and a later write names it as source (upstream `from`). Not testable red: the branch is unreachable today (exit_error is set after the exit code is known, so the terminated-process check answers first; a failed write sets ready=false, so the not-ready check answers first). The session layer already carries the typed source (`control_protocol.rs::a_control_request_after_the_cli_died_is_a_connection_error`). |
 
 ## Unconfirmed points
 
