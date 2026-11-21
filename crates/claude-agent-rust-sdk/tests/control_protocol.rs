@@ -1516,3 +1516,27 @@ async fn a_control_request_whose_write_never_completes_times_out() {
 
     assert_eq!(outcome.unwrap_err().kind(), ErrorKind::ControlTimeout);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_control_call_whose_future_is_dropped_leaves_the_session_usable_and_its_late_answer_ignored()
+ {
+    let transport = cli_answering(|frame| {
+        if is_control_request(frame, "set_model") {
+            vec![json!({"type": "ignored"})]
+        } else {
+            Vec::new()
+        }
+    });
+    let client = connected(&transport, default_options()).await;
+    let abandoned = tokio::time::timeout(Duration::from_secs(1), client.set_model(Some("x"))).await;
+    assert!(abandoned.is_err(), "the call was still waiting");
+    let request = requests(&transport, "set_model").pop().unwrap();
+    transport.push_frame(success(&request, json!({"late": true})));
+    settle().await;
+
+    client.interrupt().await.unwrap();
+    assert_eq!(requests(&transport, "interrupt").len(), 1);
+    transport.push_frame(success(&request, json!({"late": "again"})));
+    settle().await;
+    client.interrupt().await.unwrap();
+}

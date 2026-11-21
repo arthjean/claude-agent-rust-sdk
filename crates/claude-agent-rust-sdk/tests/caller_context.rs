@@ -8,17 +8,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, Once};
 
 use claude_agent_rust_sdk::{
-    ClaudeAgentOptions, HookCallback, HookMatcher, HookOutput, PermissionResult, SdkMcpTool,
-    ToolResult, create_sdk_mcp_server,
+    ClaudeAgentOptions, HookCallback, HookMatcher, HookOutput, InputMessage, PermissionResult,
+    Prompt, SdkMcpTool, SessionKey, SessionStore, SessionStoreEntry, SessionStoreError,
+    StderrCallback, SubprocessTransport, ToolResult, create_sdk_mcp_server, query_with_transport,
 };
+use futures_util::{StreamExt, stream};
 use serde_json::json;
 use tracing::span::{Attributes, Id, Record};
 use tracing::subscriber::Interest;
 use tracing::{Event, Instrument, Metadata, Subscriber};
 use tracing_core::span::Current;
 
+use common::Fake;
 use common::mcp::SdkMcpClient;
-use common::mock::{Recorder, cli, connected, hook_request, response_to, settle};
+use common::mock::{Recorder, cli, connected, hook_request, response_to, result, settle};
 
 thread_local! {
     /// The spans entered on this thread, the innermost last.
@@ -168,4 +171,103 @@ async fn in_process_tools_run_in_the_span_of_the_caller_that_connected() {
     assert_eq!(answer["isError"], false);
     assert_eq!(seen.all(), [Some("caller")]);
     client.close().await;
+}
+
+/// A store that records the span each append runs in.
+#[derive(Clone)]
+struct SpanStore(Recorder<Option<&'static str>>);
+
+impl SessionStore for SpanStore {
+    async fn append(
+        &self,
+        _key: &SessionKey,
+        _entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.push(current_span_name());
+        Ok(())
+    }
+
+    async fn load(
+        &self,
+        _key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        Ok(None)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_session_store_runs_in_the_span_of_the_caller_that_connected() {
+    track_spans();
+    let seen = Recorder::<Option<&'static str>>::new();
+    let config = tempfile::tempdir().unwrap();
+    let options = ClaudeAgentOptions::builder()
+        .session_store(SpanStore(seen.clone()))
+        .env_var("CLAUDE_CONFIG_DIR", config.path().to_string_lossy())
+        .build()
+        .unwrap();
+    let transport = cli();
+    let client = connected(&transport, options)
+        .instrument(tracing::info_span!("caller"))
+        .await;
+    let file = config.path().join("projects").join("proj").join("s.jsonl");
+    transport.push_frame(json!({
+        "type": "transcript_mirror",
+        "filePath": file.to_string_lossy(),
+        "entries": [{"type": "user", "uuid": "u1", "sessionId": "s"}],
+    }));
+    transport.push_frame(result("done"));
+    let mut messages = client.receive_response();
+    while let Some(message) = messages.next().await {
+        message.unwrap();
+    }
+    drop(messages);
+    assert_eq!(seen.all(), [Some("caller")]);
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_input_stream_is_read_in_the_span_of_the_caller_that_reads_the_query() {
+    track_spans();
+    let seen = Recorder::<Option<&'static str>>::new();
+    let probe = seen.clone();
+    let prompt = Prompt::stream(stream::iter([()]).map(move |()| {
+        probe.push(current_span_name());
+        InputMessage::user("Hello")
+    }));
+    let transport = cli();
+    let stream = query_with_transport(prompt, ClaudeAgentOptions::default(), transport.clone());
+    let reader = tokio::spawn(
+        stream
+            .collect::<Vec<_>>()
+            .instrument(tracing::info_span!("caller")),
+    );
+    settle().await;
+    transport.push_frame(result("done"));
+    let messages = reader.await.unwrap();
+    assert!(messages.iter().all(Result::is_ok), "{messages:?}");
+    assert_eq!(seen.all(), [Some("caller")]);
+}
+
+#[tokio::test]
+async fn the_stderr_callback_runs_in_the_span_of_the_caller_that_connected() {
+    track_spans();
+    let seen = Recorder::<Option<&'static str>>::new();
+    let probe = seen.clone();
+    let callback = StderrCallback::from_sync(move |_line| probe.push(current_span_name()));
+    let fake = Fake::new(json!({
+        "steps": [{"stderr": "one line\n"}, {"wait_for_eof": true}],
+    }));
+    let transport = SubprocessTransport::new(fake.options().stderr(callback).build().unwrap());
+    transport
+        .connect()
+        .instrument(tracing::info_span!("caller"))
+        .await
+        .unwrap();
+    let deadline = tokio::time::Instant::now() + common::STEP_LIMIT;
+    while seen.all().is_empty() {
+        assert!(tokio::time::Instant::now() < deadline, "no stderr line");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    transport.close().await.unwrap();
+    assert_eq!(seen.all(), [Some("caller")]);
 }

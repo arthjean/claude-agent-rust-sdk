@@ -747,3 +747,19 @@ async fn system_messages_are_delivered_with_their_subtype() {
     assert_eq!(system_subtypes(&items), ["init", "compact_boundary"]);
     assert_eq!(result_texts(&items), ["done"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn query_fails_after_the_default_initialize_timeout_when_the_cli_never_answers() {
+    if std::env::var_os("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT").is_some() {
+        return;
+    }
+    let transport = silent_cli();
+    let started = tokio::time::Instant::now();
+    let mut stream = query_with_transport("Hi", ClaudeAgentOptions::default(), transport.clone());
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(started.elapsed(), Duration::from_secs(60));
+    assert_eq!(error.control_subtype(), Some("initialize"));
+    assert!(stream.next().await.is_none());
+    assert!(transport.is_closed());
+    assert!(written(&transport, "user").is_empty());
+}

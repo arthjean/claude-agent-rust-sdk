@@ -1421,3 +1421,44 @@ async fn invalid_utf8_from_the_cli_is_replaced_and_does_not_end_the_session() {
         Some(Ok(claude_agent_rust_sdk::Message::Result(_)))
     ));
 }
+
+/// Upstream `test_query_with_async_iterable`: the CLI process reads its
+/// input to the end before it answers, so the result arrives only once the
+/// query has closed stdin after the last input message.
+#[tokio::test]
+async fn a_streamed_prompt_reaches_a_cli_process_whose_answer_waits_for_stdin_to_close() {
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user", "message": {"content": "First"}}},
+            {"expect": {"type": "user", "message": {"content": "Second"}}},
+            {"wait_for_eof": true},
+            {"emit": {
+                "type": "result", "subtype": "success", "duration_ms": 100,
+                "duration_api_ms": 50, "is_error": false, "num_turns": 1,
+                "session_id": "test", "total_cost_usd": 0.001,
+            }},
+            {"exit": 0},
+        ],
+    }));
+    let prompt = claude_agent_rust_sdk::Prompt::stream(futures_util::stream::iter([
+        claude_agent_rust_sdk::InputMessage::user("First"),
+        claude_agent_rust_sdk::InputMessage::user("Second"),
+    ]));
+    let items: Vec<_> = tokio::time::timeout(
+        common::STEP_LIMIT,
+        query(prompt, fake.options().build().unwrap()).collect(),
+    )
+    .await
+    .expect("the query ends");
+    let messages: Vec<_> = items
+        .into_iter()
+        .map(Result::unwrap)
+        .filter(|message| !matches!(message, claude_agent_rust_sdk::Message::System(_)))
+        .collect();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let claude_agent_rust_sdk::Message::Result(result) = &messages[0] else {
+        panic!("a result: {messages:?}");
+    };
+    assert_eq!(result.subtype, "success");
+}
