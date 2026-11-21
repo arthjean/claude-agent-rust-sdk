@@ -697,7 +697,7 @@ test = "crates/claude-agent-rust-sdk/tests/message_serde.rs::every_message_read_
 [behavior.run-as-user-groups]
 summary = "The groups of the CLI process started with the `user` option"
 python = "`Popen(user=...)` only switches the user id: the child keeps the group and the supplementary groups of the parent, root's when the parent is root."
-rust = "The child takes the user id, the primary group, and the supplementary groups the group database lists for the user, as `sudo -u` gives them."
+rust = "The child takes the user id, the primary group, and the supplementary groups the group database lists for the user, as `sudo -u` gives them, up to the `NGROUPS_MAX` the system allows (16 on macOS, where `setgroups` refuses a longer list)."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:835"
 anchor = "user=self._options.user,"
 category = "deliberate"

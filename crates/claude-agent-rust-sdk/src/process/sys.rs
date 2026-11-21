@@ -54,7 +54,7 @@ mod imp {
         let name = CString::new(user).map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidInput, format!("unknown user: {user}"))
         })?;
-        let groups = supplementary_groups(&name, group_id)?;
+        let groups = within_group_limit(supplementary_groups(&name, group_id)?, group_limit());
         unsafe {
             command.pre_exec(move || switch_user(user_id, group_id, &groups));
         }
@@ -91,6 +91,27 @@ mod imp {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    /// The most supplementary groups a process may hold, `NGROUPS_MAX` as
+    /// the system reports it: 16 on macOS, 65536 on Linux. No limit when
+    /// the system reports none.
+    fn group_limit() -> usize {
+        let limit = unsafe { libc::sysconf(libc::_SC_NGROUPS_MAX) };
+        usize::try_from(limit)
+            .ok()
+            .filter(|&limit| limit > 0)
+            .unwrap_or(usize::MAX)
+    }
+
+    /// The first `limit` groups of the list, the primary group first as
+    /// `getgrouplist` puts it. `setgroups` refuses a longer list with
+    /// `EINVAL`, and a user on macOS often belongs to more than the 16
+    /// groups a process may hold there, so the list is cut as a login keeps
+    /// it rather than failing the spawn.
+    fn within_group_limit(mut groups: Vec<libc::gid_t>, limit: usize) -> Vec<libc::gid_t> {
+        groups.truncate(limit);
+        groups
     }
 
     /// The groups of a user, its primary group included, from the group
@@ -293,6 +314,17 @@ mod imp {
             child.wait().await.unwrap();
             tree.sweep(std::time::Duration::from_millis(100));
             assert!(!exit_registry::tracked(group));
+        }
+
+        #[test]
+        fn the_groups_given_to_the_child_never_exceed_what_the_system_allows() {
+            assert_eq!(within_group_limit(vec![20, 12, 61, 79], 2), [20, 12]);
+            assert_eq!(within_group_limit(vec![20, 12], 16), [20, 12]);
+            let limit = group_limit();
+            assert!(limit >= 16, "{limit}");
+            if cfg!(target_os = "macos") {
+                assert_eq!(limit, 16);
+            }
         }
 
         #[test]
