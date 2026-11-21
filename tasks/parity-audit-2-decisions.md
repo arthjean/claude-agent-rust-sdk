@@ -100,6 +100,8 @@ Remaining choice, until the CLI knows `sdk-rs` (A1):
 
 ## A2: crate name, copyright, and license
 
+**Decided by the owner (2026-11-21):** keep `claude-agent-rust-sdk` and `MIT OR Apache-2.0` for the next publication; the official name is a question for the proposal to Anthropic.
+
 Today: crate `claude-agent-rust-sdk`, license `MIT OR Apache-2.0`, copyright
 "2026 Arthur Jean" in both license files, run-time names
 `CLAUDE_AGENT_RUST_SDK_*` and the `claude-agent-rust-sdk` install directory.
@@ -128,6 +130,8 @@ and the macros crate together.
 
 ## A3: the billing paragraph of the README
 
+**Decided by the owner (2026-11-21):** removed from the README; the observation is kept in `docs/validation/entrypoint-billing.md` as evidence for A1.
+
 `README.md` ("Plan API credits may not apply") reports how a third party
 billed calls carrying `sdk-rs` on 2026-11-15. No policy test pins it
 (`tests/workspace.rs` matches the authentication, non-affiliation, and
@@ -138,6 +142,8 @@ does not know the label). It stays until you decide, since the README
 statement is yours.
 
 ## A4: who maintains the tooling, and the end-to-end cadence
+
+**Decided by the owner (2026-11-21):** the recommendation is adopted for the proposal.
 
 Size today: `xtask` about 13,300 lines of Rust, `fake-claude` and
 `parity-driver` about 3,100, the `parity/` ledgers about 2,200. The real-CLI end-to-end
@@ -153,6 +159,8 @@ options in the init message, the `sdk-rs` agent list, project directory
 names), so only the turns that need the model wait for those credentials.
 
 ## m34: shape of the public surface, and the native MCP dispatcher
+
+**Decided by the owner (2026-11-21):** keep the public API as it is (flat root, synchronous disk readers, native dispatcher), and keep `IndexMap` (D21) and the variant names (D22); no rename.
 
 Three questions, all of them public API, so none was changed in this run.
 
