@@ -375,6 +375,10 @@ impl Fixture {
             &format!("env:\n  CLAUDE_CODE_VERSION: {PIN_CLI}\n"),
         );
         file(
+            ".github/workflows/ci.yml",
+            &format!("  offline-cli:\n    env:\n      CLAUDE_CODE_VERSION: {PIN_CLI}\n"),
+        );
+        file(
             "crates/claude-agent-rust-sdk/tests/workspace.rs",
             &format!(
                 "const UPSTREAM_COMMIT: &str = \"{commit}\";\nassert_eq!(CLI_VERSION, \"{PIN_CLI}\");\nassert_eq!(UPSTREAM_SDK_VERSION, \"{PIN_SDK}\");\n"
@@ -1168,11 +1172,14 @@ fn sync_to_a_cli_only_release_moves_every_copy_and_the_pin() {
             format!("Pinned at commit\n{tag} (v0.2.183).\n")
         );
     }
-    assert!(
-        fixture
-            .read(".github/workflows/e2e.yml")
-            .contains("CLAUDE_CODE_VERSION: 2.1.326\n")
-    );
+    for workflow in [".github/workflows/e2e.yml", ".github/workflows/ci.yml"] {
+        assert!(
+            fixture
+                .read(workflow)
+                .contains("CLAUDE_CODE_VERSION: 2.1.326\n"),
+            "{workflow}"
+        );
+    }
     assert_eq!(
         fixture.read("crates/claude-agent-rust-sdk/tests/workspace.rs"),
         format!(

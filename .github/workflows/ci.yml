@@ -353,3 +353,46 @@ jobs:
       # locked commit can no longer be verified in the repository of its action.
       - name: Verify the lockfile
         run: gh actions-lock --verify
+
+  offline-cli:
+    name: Real CLI without the API
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLAUDE_CODE_VERSION: 2.1.329
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2.9.3
+
+      - name: Install Claude Code
+        shell: bash
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Claude Code installation
+        shell: bash
+        run: |
+          installed="$(claude -v)"
+          echo "$installed"
+          case "$installed" in
+            "$CLAUDE_CODE_VERSION "*|"$CLAUDE_CODE_VERSION") ;;
+            *) echo "expected Claude Code $CLAUDE_CODE_VERSION" >&2; exit 1 ;;
+          esac
+
+      # No credentials: the CLI runs with a placeholder key and an API base
+      # URL on a closed local port, so no request reaches the API.
+      - name: Handshake, options, and init data against the pinned CLI
+        run: cargo test -p claude-agent-rust-sdk --all-features --test offline_cli -- --ignored
+
+      - name: Project directory names against the pinned CLI
+        run: >-
+          cargo test -p claude-agent-rust-sdk --all-features --test project_dir_naming
+          project_directory_naming_matches_the_cli_without_calling_the_api -- --ignored --nocapture

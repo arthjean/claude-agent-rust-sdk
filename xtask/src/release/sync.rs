@@ -18,7 +18,7 @@ use crate::parity::diff::{self, Verdict};
 
 /// Every copy of the upstream SDK version (`{sdk}`), the CLI version
 /// (`{cli}`), and the upstream commit (`{commit}`) the policy tests pin.
-pub const UPSTREAM_COPIES: [Pinned; 17] = [
+pub const UPSTREAM_COPIES: [Pinned; 18] = [
     Pinned {
         file: repo::LIBRARY_ROOT,
         template: "pub const CLI_VERSION: &str = \"{cli}\";",
@@ -53,6 +53,10 @@ pub const UPSTREAM_COPIES: [Pinned; 17] = [
     },
     Pinned {
         file: ".github/workflows/e2e.yml",
+        template: "CLAUDE_CODE_VERSION: {cli}\n",
+    },
+    Pinned {
+        file: ".github/workflows/ci.yml",
         template: "CLAUDE_CODE_VERSION: {cli}\n",
     },
     Pinned {

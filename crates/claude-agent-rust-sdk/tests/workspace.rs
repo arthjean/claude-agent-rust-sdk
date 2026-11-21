@@ -1790,6 +1790,20 @@ fn the_end_to_end_suite_runs_only_on_request_on_linux_after_the_tests_and_never_
 }
 
 #[test]
+fn the_pinned_cli_runs_without_the_api_on_every_push_and_never_with_a_secret() {
+    let workflow = read(".github/workflows/ci.yml");
+    let job = ci_job(&workflow, "offline-cli");
+    assert!(job.contains("runs-on: ubuntu-latest"));
+    assert!(job.contains(&format!("CLAUDE_CODE_VERSION: {CLI_VERSION}")));
+    assert!(job.contains("| bash -s \"$CLAUDE_CODE_VERSION\""));
+    assert!(job.contains("--test offline_cli -- --ignored"));
+    assert!(job.contains("project_directory_naming_matches_the_cli_without_calling_the_api"));
+    assert!(!job.contains("secrets."), "{job}");
+    let suite = read("crates/claude-agent-rust-sdk/tests/offline_cli.rs");
+    assert!(suite.contains(r#""ANTHROPIC_BASE_URL", "http://127.0.0.1:9""#));
+}
+
+#[test]
 fn upstream_sdk_is_a_submodule_pinned_to_the_reference_commit() {
     let modules = compact(&read(".gitmodules"));
     assert!(modules.contains(&format!("path = {UPSTREAM_PATH}")));

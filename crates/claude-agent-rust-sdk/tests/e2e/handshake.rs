@@ -58,24 +58,6 @@ async fn the_handshake_and_one_turn_succeed_with_the_sdk_rs_entrypoint() {
     );
 }
 
-/// CLI 2.1.329 adds its built-in `claude-code-guide` agent for every
-/// entrypoint that is not an SDK it knows (`sdk-ts`, `sdk-py`, `sdk-cli`),
-/// so a session started with `sdk-rs` lists it where a Python session does
-/// not, and the description of the Agent tool the model sees differs. The
-/// assertion flips once the CLI knows `sdk-rs` (see `[wire.entrypoint-label]`
-/// in `parity/differences.toml`).
-#[tokio::test]
-#[ignore = "runs the real CLI; run with `cargo xtask e2e`"]
-async fn a_session_with_the_sdk_rs_entrypoint_lists_the_agent_a_python_session_does_not() {
-    let options = suite::options().max_turns(1).build().unwrap();
-    let messages = suite::run("Reply with the single word OK.", options).await;
-    let agents = suite::init_list(&messages, "agents");
-    assert!(
-        agents.iter().any(|agent| agent == "claude-code-guide"),
-        "the CLI no longer adds claude-code-guide for {ENTRYPOINT}: {agents:?}"
-    );
-}
-
 #[derive(Deserialize, JsonSchema)]
 struct Operands {
     a: i64,
