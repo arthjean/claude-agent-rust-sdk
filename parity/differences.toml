@@ -277,7 +277,7 @@ test = "crates/claude-agent-rust-sdk/tests/sdk_mcp.rs::tools_list_wire_format_li
 [behavior.project-directory-utf16]
 summary = "The project directory name of a path outside ASCII"
 python = "Characters are counted as code points, so an emoji is one character."
-rust = "Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 in `docs/validation/project-dir-naming.md`."
+rust = "Characters are counted in UTF-16 units, as the CLI (JavaScript) counts them, so an emoji is two; validated against CLI 2.1.325 on Windows in `docs/validation/project-dir-naming.md` and CLI 2.1.329 on Linux in `docs/validation/project-dir-naming-linux.md`."
 ref = "src/claude_agent_sdk/_internal/sessions.py:81-114"
 anchor = "def _simple_hash(s: str) -> str:"
 category = "rust-follows-cli"
