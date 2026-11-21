@@ -628,3 +628,23 @@ async fn a_scoped_call_cancelled_in_its_body_disconnects_the_client() {
     }
     assert_eq!(transport.close_count(), 1);
 }
+
+/// A status answer that no reading can type (an object where a count is
+/// expected) fails the call, and the raw answer stays in `Error::data()`.
+#[tokio::test(start_paused = true)]
+async fn an_unreadable_status_answer_fails_the_call_with_the_raw_answer_in_its_data() {
+    let answer =
+        json!({"mcpServers": [{"name": "files", "status": "connected", "tools": {"count": {}}}]});
+    let sent = answer.clone();
+    let transport = cli_answering(move |frame| {
+        if frame["request"]["subtype"] == "mcp_status" {
+            vec![success(frame, sent.clone())]
+        } else {
+            Vec::new()
+        }
+    });
+    let client = connected(&transport, default_options()).await;
+    let error = client.mcp_status().await.unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::MessageParse, "{error}");
+    assert_eq!(error.data(), Some(&answer));
+}

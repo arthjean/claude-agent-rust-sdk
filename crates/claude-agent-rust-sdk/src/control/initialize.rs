@@ -218,6 +218,19 @@ mod tests {
     }
 
     #[test]
+    fn a_stream_close_timeout_that_is_not_an_integer_is_ignored_with_a_warning() {
+        let (warnings, _guard) = crate::test_capture::Warnings::install();
+        assert_eq!(initialize_timeout(Some("soon")), Duration::from_secs(60));
+        let logged = warnings.all();
+        assert!(
+            logged
+                .iter()
+                .any(|line| line.contains("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT=\"soon\"")),
+            "{logged:?}"
+        );
+    }
+
+    #[test]
     fn the_stream_close_timeout_is_read_with_the_grammar_of_python_int() {
         let cases: [(&str, u64); 5] = [
             ("120_000", 120_000),

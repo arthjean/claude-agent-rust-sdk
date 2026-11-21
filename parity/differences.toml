@@ -161,7 +161,7 @@ rust = "A count is truncated toward zero, a negative count is 0, and `null` is 0
 ref = "src/claude_agent_sdk/types.py:1075-1090"
 anchor = "    totalTokens: int"
 category = "deliberate"
-reason = "The responses are typed; reading the values a JavaScript number or a missing value can take keeps the call working, and a value no field can hold is reported with the whole response instead of being guessed."
+reason = "The responses are typed; reading the values a JavaScript number or a missing value can take keeps the call working, and a value no field can hold is reported with the whole response instead of being guessed. Also shown for the failed call: `tests/client.rs::an_unreadable_status_answer_fails_the_call_with_the_raw_answer_in_its_data`."
 test = "crates/claude-agent-rust-sdk/tests/types.rs::a_status_response_with_a_fractional_or_null_number_or_string_is_still_read"
 
 [behavior.user-message-blocks-kept]
@@ -341,7 +341,7 @@ rust = "The initialize timeout stays at 60 s and a warning is logged. A value `i
 ref = "src/claude_agent_sdk/client.py:178-181"
 anchor = 'initialize_timeout_ms = int('
 category = "rust-more-robust"
-reason = "The variable only lengthens a timeout; a typo in it should not stop the session."
+reason = "The variable only lengthens a timeout; a typo in it should not stop the session. Also shown for the warning: `control::initialize::tests::a_stream_close_timeout_that_is_not_an_integer_is_ignored_with_a_warning`; `120_000`: `control::initialize::tests::the_stream_close_timeout_is_read_with_the_grammar_of_python_int`."
 test = "crates/claude-agent-rust-sdk/src/lib.rs::control::initialize::tests::initialize_timeout_is_the_larger_of_sixty_seconds_and_the_variable"
 
 [behavior.read-messages-once-per-connection]
