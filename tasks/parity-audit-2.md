@@ -19,11 +19,11 @@ evidence), `owner` (decision note written, waiting on the owner).
 
 | Id | Title | Status | Proof / note |
 |---|---|---|---|
-| A1 | CLI must know `sdk-rs` | todo | |
-| A2 | Crate name, copyright, license | todo | |
-| A3 | README billing statement | todo | |
-| A4 | Maintenance of the tooling, e2e cadence | todo | |
-| B1 | CLI does not know `sdk-rs`: ledger entry wrong; never send `sdk-py` | todo | |
+| A1 | CLI must know `sdk-rs` | owner | Decision note "B1 and A1": keep `sdk-rs` or send `sdk-cli` until the CLI knows `sdk-rs`, with measured effects. |
+| A2 | Crate name, copyright, license | owner | Decision note: `claude-agent-sdk` taken on crates.io by a personal account (repo link 404), `claude-agent-sdk-rs` taken, `anthropic-claude-agent-sdk` free; name, license, rights to settle before the next publication. |
+| A3 | README billing statement | owner | Not pinned by `workspace.rs`; removal recommended, kept until the owner decides; cause documented in `docs/validation/entrypoint-label.md`. |
+| A4 | Maintenance of the tooling, e2e cadence | owner | Decision note with measured sizes and the e2e cadence proposal. |
+| B1 | CLI does not know `sdk-rs`: ledger entry wrong; never send `sdk-py` | done | Rechecked in the 2.1.329 binary: 0 occurrence of `sdk-rs`; SDK switch `sdk-ts\|sdk-py\|sdk-cli`. Measured offline (real CLI, empty config, placeholder key, closed-port base URL, nothing spent): `init.agents` gains `claude-code-guide` with `sdk-rs` only. `[wire.entrypoint-label]` reason rewritten with the effects; dated record `docs/validation/entrypoint-label.md`; e2e test `a_session_with_the_sdk_rs_entrypoint_lists_the_agent_a_python_session_does_not` (not run: real API). `sdk-py` never sent; `sdk-cli` interim in the decision note. |
 
 ## Major
 
@@ -117,7 +117,7 @@ evidence), `owner` (decision note written, waiting on the owner).
 |---|---|---|---|
 | U1 | A tool reading `/dev/tty` is stopped (SIGTTIN) since the CLI has its own process group | todo | |
 | U2 | OTel context carried by tracing spans not propagated to the CLI | todo | |
-| U3 | `claude-code-guide` agent in the init message of a Rust session | todo | |
+| U3 | `claude-code-guide` agent in the init message of a Rust session | done | Proven: offline run of CLI 2.1.329 lists `claude-code-guide` in `init.agents` with `sdk-rs`, not with `sdk-py`, `sdk-cli`, or no label (docs/validation/entrypoint-label.md). |
 | U4 | A tag read after a store reorders keys is correct | todo | |
 | U5 | Real orphan on macOS | todo | |
 

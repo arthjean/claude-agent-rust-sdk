@@ -97,3 +97,54 @@ Remaining choice, until the CLI knows `sdk-rs` (A1):
   test that pins it, the README paragraph on billing (A3), and the ledger
   entry; it should follow the conversation with Anthropic, since it changes
   how they would count Rust sessions.
+
+## A2: crate name, copyright, and license
+
+Today: crate `claude-agent-rust-sdk`, license `MIT OR Apache-2.0`, copyright
+"2026 Arthur Jean" in both license files, run-time names
+`CLAUDE_AGENT_RUST_SDK_*` and the `claude-agent-rust-sdk` install directory.
+Upstream: package `claude-agent-sdk`, MIT only, copyright "2025 Anthropic,
+PBC".
+
+Checked on crates.io on 2026-11-21:
+
+- `claude-agent-sdk` is taken: version 0.1.1 of 2025-09-30, owned by a single
+  personal account, with a repository link to
+  `github.com/anthropics/claude-agent-sdk-rust` that answers 404. The natural
+  official name would need a transfer from its owner, which only Anthropic
+  can credibly ask for.
+- `claude-agent-sdk-rs` is taken by an unrelated project (0.6.4,
+  2026-02-09).
+- `anthropic-claude-agent-sdk` is free.
+
+To settle before the next publication, since a rename after users depend on
+the crate breaks their builds: the target name (a transfer of
+`claude-agent-sdk`, or keeping `claude-agent-rust-sdk`), the license
+(`MIT OR Apache-2.0` is the Rust convention and includes MIT; Anthropic may
+want MIT alone to match upstream), and the assignment of rights or a
+contributor agreement. A rename moves the crate name, the run-time names
+(pinned by `workspace.rs::the_entrypoint_label_and_the_run_time_names_follow_the_crate_name`),
+and the macros crate together.
+
+## A3: the billing paragraph of the README
+
+`README.md` ("Plan API credits may not apply") reports how a third party
+billed calls carrying `sdk-rs` on 2026-11-15. No policy test pins it
+(`tests/workspace.rs` matches the authentication, non-affiliation, and
+license sentences only), so removing it is a plain edit. Recommendation:
+remove it from the published README and keep it in the proposal as evidence
+for A1; `docs/validation/entrypoint-label.md` now explains the cause (the CLI
+does not know the label). It stays until you decide, since the README
+statement is yours.
+
+## A4: who maintains the tooling, and the end-to-end cadence
+
+Size today: `xtask` about 13,300 lines of Rust, `fake-claude` and
+`parity-driver` about 3,100, the `parity/` ledgers about 2,200. The real-CLI end-to-end
+workflow runs by hand only (`e2e.yml`, `workflow_dispatch`, about 0.80 USD a
+run); upstream runs its end-to-end tests on every push and pull request on
+three systems. Recommendation for the proposal: present the differential
+harness and the ledgers as what makes the port reviewable (each difference
+from Python is measured, classified, and tested), offer to keep maintaining
+them, and propose running `e2e.yml` on every push with Anthropic's
+credentials once adopted.
