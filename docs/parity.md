@@ -172,7 +172,7 @@ Every upstream export has a Rust counterpart.
 | Reason | Tests | Why |
 |---|---|---|
 | `derived-client-app` | 27 | Tests the derived client-application label, which is not ported (non-goal); only the explicit `client_app` option is. |
-| `example-store-adapters` | 48 | Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal). |
+| `example-store-adapters` | 48 | Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal); the adapter of `examples/session_store_adapter.rs` runs the same conformance suite in `tests/session_store.rs::the_example_adapter_passes_every_contract`. |
 | `no-sdk-code` | 2 | Asserts only on literals defined in the test file and calls no SDK code. |
 | `packaging` | 78 | Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine. |
 | `python-aliasing` | 4 | Checks defensive copies of shared mutable objects, which Rust ownership rules out. |

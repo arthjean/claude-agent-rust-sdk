@@ -54,7 +54,7 @@ const SUMMARY_SUFFIX: &str = ".summary.json";
 /// It implements every optional method of the trait. Clones share the
 /// same directory and the same write lock.
 #[derive(Debug, Clone)]
-struct JsonlDirectoryStore {
+pub struct JsonlDirectoryStore {
     root: PathBuf,
     writes: Arc<Mutex<()>>,
 }
@@ -131,7 +131,9 @@ where
 }
 
 impl JsonlDirectoryStore {
-    fn new(root: impl Into<PathBuf>) -> Self {
+    /// A store whose files live under `root`. `tests/session_store.rs`
+    /// passes it through the conformance suite.
+    pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
             writes: Arc::default(),

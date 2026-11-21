@@ -1,6 +1,10 @@
 #![cfg(feature = "testing")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+#[path = "../examples/session_store_adapter.rs"]
+#[allow(dead_code, clippy::all)]
+mod adapter;
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -674,4 +678,21 @@ async fn the_in_memory_summaries_follow_each_append() {
     assert_eq!(data("a")["custom_title"], "Title A");
     assert_eq!(data("a")["first_prompt"], "hello a");
     assert_eq!(data("b")["first_prompt"], "hello b");
+}
+
+/// Each upstream example adapter runs the conformance suite; so does the
+/// adapter of `examples/session_store_adapter.rs`.
+#[tokio::test]
+async fn the_example_adapter_passes_every_contract() {
+    let root = tempfile::tempdir().unwrap();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    run_session_store_conformance(|| {
+        let directory = root.path().join(
+            next.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                .to_string(),
+        );
+        async move { adapter::JsonlDirectoryStore::new(directory) }
+    })
+    .await
+    .unwrap();
 }

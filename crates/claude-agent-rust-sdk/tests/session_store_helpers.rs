@@ -1822,3 +1822,68 @@ async fn import_without_a_directory_keys_the_session_by_the_project_it_was_found
     );
     assert_eq!(store.size(), 1);
 }
+
+/// A store that hands entries back with their keys sorted, as an adapter
+/// over Postgres JSONB does; `SessionStore::load` allows it.
+struct ReorderingStore(InMemorySessionStore);
+
+impl SessionStore for ReorderingStore {
+    async fn append(
+        &self,
+        key: &SessionKey,
+        entries: &[SessionStoreEntry],
+    ) -> Result<(), SessionStoreError> {
+        self.0.append(key, entries).await
+    }
+
+    async fn load(
+        &self,
+        key: &SessionKey,
+    ) -> Result<Option<Vec<SessionStoreEntry>>, SessionStoreError> {
+        Ok(self.0.load(key).await?.map(|entries| {
+            entries
+                .into_iter()
+                .map(|entry| {
+                    let mut sorted: Vec<(String, Value)> = entry.into_iter().collect();
+                    sorted.sort_by(|left, right| left.0.cmp(&right.0));
+                    sorted.into_iter().collect()
+                })
+                .collect()
+        }))
+    }
+}
+
+#[tokio::test]
+async fn a_tag_and_a_title_survive_a_store_that_reorders_the_keys_of_its_entries() {
+    let project = Project::new();
+    let directory = Some(project.path());
+    let key_text = project_key_for_directory(directory);
+    let store = ReorderingStore(InMemorySessionStore::new());
+    let id = new_id();
+    let key = SessionKey::new(key_text.as_str(), id.as_str());
+    let lines: Vec<SessionStoreEntry> = conversation(&id, "hello", json!({}))
+        .into_iter()
+        .map(entry)
+        .collect();
+    store.append(&key, &lines).await.unwrap();
+    let loaded = store.load(&key).await.unwrap().unwrap();
+    assert_ne!(
+        loaded[0].keys().next().map(String::as_str),
+        Some("type"),
+        "the store must reorder"
+    );
+
+    tag_session_via_store(&store, &id, Some("exp"), directory)
+        .await
+        .unwrap();
+    rename_session_via_store(&store, &id, "Renamed", directory)
+        .await
+        .unwrap();
+    let info = get_session_info_from_store(&store, &id, directory)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(info.tag.as_deref(), Some("exp"));
+    assert_eq!(info.custom_title.as_deref(), Some("Renamed"));
+    assert_eq!(info.first_prompt.as_deref(), Some("hello"));
+}

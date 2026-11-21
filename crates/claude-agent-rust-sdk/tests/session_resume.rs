@@ -1921,3 +1921,43 @@ async fn keychain_credentials_are_copied_without_the_refresh_token() {
     let _: Vec<_> = messages.collect().await;
     wait_until_removed(&config).await;
 }
+
+/// Upstream checks that the mirror of a resumed client points at the
+/// projects directory of the materialized configuration directory: a
+/// transcript frame for a file under it reaches the store under its key.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_resume_the_mirror_maps_files_of_the_materialized_config_dir_to_store_keys() {
+    let _serial = SERIAL.lock().await;
+    let id = uuid::Uuid::new_v4().to_string();
+    let fake = Fake::new(json!({
+        "auto_reply": true,
+        "steps": [
+            {"expect": {"type": "user"}},
+            {"emit": {
+                "type": "transcript_mirror",
+                "filePath": format!("$config_dir/projects/proj/{id}.jsonl"),
+                "entries": [{"type": "user", "uuid": "u2", "sessionId": id, "message": {"content": "again"}}],
+            }},
+            {"emit": {"type": "result", "subtype": "success", "duration_ms": 1, "duration_api_ms": 1,
+                      "is_error": false, "num_turns": 1, "session_id": id, "result": "ok"}},
+        ],
+    }));
+    let setup = Setup::with(fake, caller_config());
+    let store = InMemorySessionStore::new();
+    store
+        .append(&setup.key(&id), &transcript(&id))
+        .await
+        .unwrap();
+    let options = setup
+        .options(store.clone())
+        .resume(id.as_str())
+        .build()
+        .unwrap();
+    let items: Vec<_> = query("continue", options).collect().await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+
+    let mirrored = store.get_entries(&SessionKey::new("proj", id.as_str()));
+    assert_eq!(mirrored.len(), 1, "{mirrored:?}");
+    assert_eq!(mirrored[0]["uuid"], "u2");
+    assert!(setup.resume_dirs().is_empty());
+}

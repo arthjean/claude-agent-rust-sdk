@@ -37,7 +37,7 @@
 //!
 //! | Action | Effect |
 //! |---|---|
-//! | `{"emit": frame}` | Writes the frame and a line feed to stdout. A string equal to `$hook_callback_id` is replaced by the first hook callback id of the `initialize` request. |
+//! | `{"emit": frame}` | Writes the frame and a line feed to stdout. A string equal to `$hook_callback_id` is replaced by the first hook callback id of the `initialize` request, and the prefix `$config_dir` of a string by the value of `CLAUDE_CONFIG_DIR`. |
 //! | `{"emit_raw": text}` | Writes the text to stdout as is, without a line feed. An array of byte values instead of a string writes those bytes, which need not be UTF-8. |
 //! | `{"stderr": text}` | Writes the text to stderr as is. |
 //! | `{"expect": pattern, "timeout_ms": n}` | Waits for a stdin frame containing the pattern: every key of a pattern object must be present with a matching value. Frames that do not match are skipped. The limit defaults to 10,000 ms. |

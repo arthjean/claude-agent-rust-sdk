@@ -42,6 +42,11 @@ const EMIT_SESSION_STATE_VARIABLE: &str = "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS
 const SDK_READS_SESSION_STATE_VARIABLE: &str = "CLAUDE_CODE_SDK_READS_SESSION_STATE";
 const HOOK_CALLBACK_PLACEHOLDER: &str = "$hook_callback_id";
 
+/// The prefix of an emitted string replaced by the value of
+/// `CLAUDE_CONFIG_DIR`, so a scenario can name a file under the
+/// configuration directory the SDK chose.
+const CONFIG_DIR_PLACEHOLDER: &str = "$config_dir";
+
 const EXIT_BAD_SCENARIO: u8 = 64;
 const EXIT_UNMET_EXPECTATION: u8 = 65;
 const EXIT_INPUT_CLOSED: u8 = 66;
@@ -418,6 +423,13 @@ fn substitute(frame: &Value, hook_callback_id: Option<&str>) -> Value {
     match frame {
         Value::String(text) if text == HOOK_CALLBACK_PLACEHOLDER => {
             hook_callback_id.map_or(Value::Null, |id| Value::String(id.to_owned()))
+        }
+        Value::String(text) if text.starts_with(CONFIG_DIR_PLACEHOLDER) => {
+            let directory = std::env::var("CLAUDE_CONFIG_DIR").unwrap_or_default();
+            Value::String(format!(
+                "{directory}{}",
+                &text[CONFIG_DIR_PLACEHOLDER.len()..]
+            ))
         }
         Value::Array(items) => items
             .iter()
