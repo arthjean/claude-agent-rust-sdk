@@ -24,7 +24,8 @@ python-warnings = "Checks the filter and deduplication mechanics of the Python `
 no-sdk-code = "Asserts only on literals defined in the test file and calls no SDK code."
 packaging = "Tests the wheel build, the bundled CLI, the CLI download, or the release scripts of the Python package; the crate bundles no CLI and runs the one installed on the machine."
 example-store-adapters = "Tests the Postgres, Redis, and S3 reference adapters, which are not ported (non-goal); the adapter of `examples/session_store_adapter.rs` runs the same conformance suite in `tests/session_store.rs::the_example_adapter_passes_every_contract`."
-derived-client-app = "Tests the derived client-application label, which is not ported (non-goal); only the explicit `client_app` option is."
+derived-client-app = "Tests the derivation of a client-application label from the running Python program (`python -m` target, distribution metadata). No released CLI receives that label: upstream derives it only from CLI 999.0.0 on (`DERIVED_CLIENT_APP_MINIMUM_CLAUDE_CODE_VERSION`), so every pinned CLI gets none, and the crate removes the inherited variable as upstream does. The explicit `client_app` option is ported and tested. Rust has no `python -m` to derive from; once a CLI accepts the label, the counterpart is a label taken from the binary's package name."
+export-surface = "Checks that names are exported from the package. `cargo xtask parity-check` checks every name of `__all__` against the Rust paths in parity/surface.toml, which must resolve in the public API."
 upstream-repository = "Checks files of the upstream repository itself."
 
 [tests."tests/test_build_wheel.py"]
@@ -1214,7 +1215,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestHookSpecificOutputTypes::test_output_key_sets_match_typescript" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::hook_specific_output_key_sets_match_upstream" }
 "TestHookSpecificOutputTypes::test_output_literals" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::output_literals_match_upstream" }
 "TestHookSpecificOutputTypes::test_hook_specific_output_members_have_distinct_event_names" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::hook_specific_output_has_the_21_typed_variants" }
-"TestHookSpecificOutputTypes::test_every_hook_specific_output_is_exported" = { excluded = "python-typing", note = "Checks __all__ membership of each union member; the public export surface is tracked in parity/surface.toml." }
+"TestHookSpecificOutputTypes::test_every_hook_specific_output_is_exported" = { excluded = "export-surface", note = "Each member of the union has its own row in parity/surface.toml." }
 "TestHookInputFieldParity::test_base_hook_input_prompt_id_and_effort" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::base_hook_input_prompt_id_and_effort" }
 "TestHookInputFieldParity::test_base_hook_input_new_fields_are_optional" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::base_hook_input_prompt_id_and_effort" }
 "TestHookInputFieldParity::test_post_tool_use_duration_ms" = { rust = ["crates/claude-agent-rust-sdk/tests/types.rs::post_tool_use_hook_input_with_agent_id_and_duration", "crates/claude-agent-rust-sdk/tests/types.rs::post_tool_use_failure_hook_input_optional_fields"] }
@@ -1225,7 +1226,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestSystemInitData::test_nested_key_sets" = { rust = ["crates/claude-agent-rust-sdk/tests/message_parser.rs::init_frame_parses_to_a_generic_system_message_with_a_typed_view", "crates/claude-agent-rust-sdk/tests/message_parser.rs::init_frame_optional_fields_are_typed"], note = "Asserts mcp server name, status, source, plugin version, and plugin error plugin, type, path; plugin name, plugin path and plugin error message are not asserted." }
 "TestSystemInitData::test_fast_mode_literals" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::fast_mode_literals" }
 "TestSystemInitData::test_init_frame_still_parses_to_plain_system_message" = { rust = "crates/claude-agent-rust-sdk/tests/message_parser.rs::init_frame_parses_to_a_generic_system_message_with_a_typed_view" }
-"TestMcpServerStatusTypes::test_mcp_server_status_importable_from_package" = { excluded = "python-typing", note = "Import-only check; the public export surface is tracked in parity/surface.toml." }
+"TestMcpServerStatusTypes::test_mcp_server_status_importable_from_package" = { excluded = "export-surface" }
 "TestMcpServerStatusTypes::test_mcp_server_status_connected" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::mcp_server_status_connected" }
 "TestMcpServerStatusTypes::test_mcp_server_status_minimal" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::mcp_server_status_minimal_and_failed" }
 "TestMcpServerStatusTypes::test_mcp_server_status_failed_with_error" = { rust = "crates/claude-agent-rust-sdk/tests/types.rs::mcp_server_status_minimal_and_failed" }
