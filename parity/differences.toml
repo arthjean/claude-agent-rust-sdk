@@ -126,8 +126,8 @@ test = "crates/claude-agent-rust-sdk/tests/errors.rs::result_error_is_a_process_
 
 [behavior.separate-process-group]
 summary = "Where the CLI process is placed"
-python = "The CLI is spawned in the process group of the program, so a Ctrl+C in the terminal reaches it directly."
-rust = "On Unix the CLI leads its own process group, so a terminal Ctrl+C does not reach it; the session ends through the transport instead."
+python = "The CLI is spawned in the process group of the program, and on Windows in its console, so a Ctrl+C in the terminal reaches it directly."
+rust = "On Unix the CLI leads its own process group; on Windows it starts with `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP`, so no console window opens for it and it has a console process group of its own. A terminal Ctrl+C reaches it on neither; the session ends through the transport instead."
 ref = "src/claude_agent_sdk/_internal/transport/subprocess_cli.py:828-836"
 anchor = "self._process = await anyio.open_process("
 category = "deliberate"
@@ -525,7 +525,7 @@ reason = "Rust cannot see whether a trait method is overridden, and building opt
 test = "crates/claude-agent-rust-sdk/tests/options.rs::continue_conversation_reads_the_declaration_of_list_sessions"
 
 [behavior.transcript-line-json-reading]
-summary = "A transcript line that escapes a lone UTF-16 surrogate, or nests more than 128 levels deep"
+summary = "A transcript line that escapes a lone UTF-16 surrogate, or nests more than 512 levels deep"
 python = "`json.loads` reads the line, keeps the lone surrogate in the string, and reads any depth until the interpreter runs out of recursion."
 rust = "The session readers, fork, and import read the line with the reader of the CLI output: a lone surrogate becomes U+FFFD, and in a line nested more than 512 levels deep each array or object at depth 512 is kept as its JSON text, a string, so the line, its parent link, and the history before it are kept; a fork or an import writes that string where the nested value was."
 ref = "src/claude_agent_sdk/_internal/sessions.py:918"
@@ -545,7 +545,7 @@ reason = "A corrupt transcript must not hang the program that forks it."
 test = "crates/claude-agent-rust-sdk/tests/session_mutations.rs::fork_ends_on_a_cycle_of_progress_parents"
 
 [behavior.transcript-raw-utf8]
-summary = "Text outside ASCII in the lines `rename_session`, `tag_session`, and `fork_session` write"
+summary = "Text outside ASCII in the lines `rename_session`, `tag_session`, `fork_session`, and a resume from a session store write"
 python = "`json.dumps` escapes every character outside ASCII (`\\u00e9`)."
 rust = "The characters are written as raw UTF-8, as the CLI writes its own transcript lines."
 ref = "src/claude_agent_sdk/_internal/session_mutations.py:98"

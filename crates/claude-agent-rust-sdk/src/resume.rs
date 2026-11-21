@@ -755,6 +755,44 @@ mod tests {
     use crate::session_store::{InMemorySessionStore, SessionStore};
     use crate::types::ClaudeAgentOptionsBuilder;
 
+    /// Upstream `test_write_jsonl_round_trip`: the streamed file is the
+    /// compact JSON of each entry in its key order, one per line, and reads
+    /// back to the entries. Text outside ASCII stays raw UTF-8, as the CLI
+    /// writes it, where `json.dumps` escapes it.
+    #[cfg(feature = "preserve-order")]
+    #[test]
+    fn a_materialized_transcript_is_the_compact_json_of_each_entry_in_its_key_order() {
+        let entries: Vec<SessionStoreEntry> = (0..100)
+            .map(|i| {
+                let Value::Object(entry) = json!({
+                    "type": if i % 2 == 0 { "user" } else { "assistant" },
+                    "uuid": format!("uuid-{i}"),
+                    "message": {"role": "user", "content": format!("line {i} \"q\" \n nl caf\u{e9}")},
+                    "nested": {"a": [i, i + 1], "b": null},
+                }) else {
+                    unreachable!()
+                };
+                entry
+            })
+            .collect();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("stream.jsonl");
+        write_jsonl(&path, &entries).unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        let reference: String = entries
+            .iter()
+            .map(|entry| format!("{}\n", serde_json::to_string(entry).unwrap()))
+            .collect();
+        assert_eq!(written, reference);
+        assert!(written.contains("caf\u{e9}"));
+        let read: Vec<SessionStoreEntry> = written
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(read, entries);
+    }
+
     /// The config directories whose credentials writes fail, each with the
     /// path of every attempt. Keyed by directory, not by thread, since the
     /// writes run on the blocking pool.
