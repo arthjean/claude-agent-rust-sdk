@@ -34,8 +34,11 @@ while let Some(message) = messages.next().await {
   `Result<Message, Error>`. An error is the last item of the stream instead of
   an exception raised from the loop.
 - `async with ClaudeSDKClient(options) as client:` becomes
-  `ClaudeSdkClient::new(options)`, `client.connect().await?`, and
-  `client.disconnect().await?` when you are done.
+  `ClaudeSdkClient::new(options).scoped(async |client| { ... }).await`, which
+  connects, runs the body, and waits for the disconnect on both outcomes, or
+  `client.connect().await?` and `client.disconnect().await?` by hand. A client
+  dropped without either closes its session on a detached task, which nothing
+  waits for.
 - `client.receive_response()` and `client.receive_messages()` return streams
   too.
 - The `get_` prefix is dropped, as Rust names its getters:

@@ -793,3 +793,13 @@ anchor = "await self._query.initialize()"
 category = "rust-more-robust"
 reason = "No answer can come once the session is closed, as for the other pending requests (`[behavior.pending-requests-fail-at-end]`)."
 test = "crates/claude-agent-rust-sdk/tests/client.rs::disconnect_during_a_connect_closes_the_session_being_opened_at_once"
+
+[behavior.client-drop-closes-detached]
+summary = "A client left without `disconnect`, the counterpart of leaving `async with` early"
+python = "`__aexit__` awaits `disconnect()` on every exit from the block, an exception included."
+rust = "`ClaudeSdkClient::scoped` awaits the disconnect on success and on error; a client dropped without it (or a `scoped` future cancelled part-way) closes its session on a detached task of the runtime, which nothing waits for, so a runtime that shuts down first may cut the final transcript mirror flush."
+ref = "src/claude_agent_sdk/client.py:628-631"
+anchor = "async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:"
+category = "deliberate"
+reason = "Rust has no asynchronous drop: a destructor cannot wait for a future, so the waiting form is a method the caller awaits."
+test = "crates/claude-agent-rust-sdk/tests/client.rs::scoped_closes_the_session_before_returning_on_success_and_on_error"

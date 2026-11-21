@@ -521,3 +521,32 @@ async fn disconnect_during_a_connect_closes_the_session_being_opened_at_once() {
     assert!(transport.is_closed());
     assert_not_connected(client.interrupt().await, "interrupt");
 }
+
+/// Upstream `async with` awaits `disconnect()` on leaving the block, even
+/// on an exception; `scoped` does on both outcomes, before it returns.
+#[tokio::test(start_paused = true)]
+async fn scoped_closes_the_session_before_returning_on_success_and_on_error() {
+    let transport = cli();
+    let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
+    let answer = client
+        .scoped(async |client| {
+            client.interrupt().await?;
+            Ok::<_, Error>(42)
+        })
+        .await
+        .unwrap();
+    assert_eq!(answer, 42);
+    assert_eq!(transport.close_count(), 1);
+    assert_not_connected(client.interrupt().await, "interrupt");
+
+    let transport = cli();
+    let client = ClaudeSdkClient::with_transport(default_options(), transport.clone());
+    let failed = client
+        .scoped(async |_client| {
+            Err::<(), claude_agent_rust_sdk::BoxError>("the body failed".into())
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(failed.to_string(), "the body failed");
+    assert_eq!(transport.close_count(), 1);
+}

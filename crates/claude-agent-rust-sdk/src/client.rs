@@ -452,6 +452,53 @@ impl ClaudeSdkClient {
         Ok(self.connection()?.session.server_info())
     }
 
+    /// Connects, runs `body` with the connected client, then disconnects
+    /// and waits for the session to close, whether `body` succeeded or
+    /// failed: the counterpart of upstream's `async with ClaudeSDKClient()`.
+    ///
+    /// The outcome of `body` wins; an error of the disconnect is returned
+    /// only when `body` succeeded. A future dropped before it completes
+    /// (a cancelled task) cannot wait for anything: the session then closes
+    /// on a detached task, as when the client is dropped.
+    ///
+    /// ```no_run
+    /// use claude_agent_rust_sdk::{ClaudeAgentOptions, ClaudeSdkClient, Error};
+    /// use futures_util::StreamExt;
+    ///
+    /// # async fn demo() -> Result<(), Error> {
+    /// let client = ClaudeSdkClient::new(ClaudeAgentOptions::default());
+    /// client
+    ///     .scoped(async |client| {
+    ///         client.query("What is 2 + 2?").await?;
+    ///         let mut response = client.receive_response();
+    ///         while let Some(message) = response.next().await {
+    ///             println!("{:?}", message?);
+    ///         }
+    ///         Ok::<(), Error>(())
+    ///     })
+    ///     .await
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the error of [`connect`](Self::connect), else the error of
+    /// `body`, else the error of [`disconnect`](Self::disconnect).
+    pub async fn scoped<T, E>(
+        &self,
+        body: impl AsyncFnOnce(&Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E>
+    where
+        E: From<Error>,
+    {
+        self.connect().await?;
+        let outcome = body(self).await;
+        let closed = self.disconnect().await;
+        let value = outcome?;
+        closed?;
+        Ok(value)
+    }
+
     /// Ends the session and waits for the transport to close.
     ///
     /// It is safe on a client that never connected, and calling it again
