@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, Once};
 
 use claude_agent_rust_sdk::{
-    ClaudeAgentOptions, HookCallback, HookMatcher, HookOutput, PermissionResult,
+    ClaudeAgentOptions, HookCallback, HookMatcher, HookOutput, PermissionResult, SdkMcpTool,
+    ToolResult, create_sdk_mcp_server,
 };
 use serde_json::json;
 use tracing::span::{Attributes, Id, Record};
@@ -16,6 +17,7 @@ use tracing::subscriber::Interest;
 use tracing::{Event, Instrument, Metadata, Subscriber};
 use tracing_core::span::Current;
 
+use common::mcp::SdkMcpClient;
 use common::mock::{Recorder, cli, connected, hook_request, response_to, settle};
 
 thread_local! {
@@ -136,4 +138,34 @@ async fn callbacks_run_in_the_span_of_the_caller_that_connected() {
         [("can_use_tool", Some("caller")), ("hook", Some("caller"))]
     );
     client.disconnect().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn in_process_tools_run_in_the_span_of_the_caller_that_connected() {
+    track_spans();
+    let seen = Recorder::<Option<&'static str>>::new();
+    let tool = {
+        let seen = seen.clone();
+        SdkMcpTool::raw(
+            "probe",
+            "Records the span it runs in",
+            json!({"type": "object", "properties": {}}),
+            move |_arguments| {
+                seen.push(current_span_name());
+                async { Ok(ToolResult::default()) }
+            },
+        )
+        .unwrap()
+    };
+    let server = create_sdk_mcp_server("srv", None, [tool]).unwrap();
+    let client = SdkMcpClient::start([("srv", server)])
+        .instrument(tracing::info_span!("caller"))
+        .await;
+    client.initialize("srv").await;
+
+    let answer = client.call_tool("srv", "probe", json!({})).await;
+
+    assert_eq!(answer["isError"], false);
+    assert_eq!(seen.all(), [Some("caller")]);
+    client.close().await;
 }

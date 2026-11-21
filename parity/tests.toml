@@ -957,7 +957,7 @@ upstream-repository = "Checks files of the upstream repository itself."
 "TestExceptionPropagation::test_exception_propagates_via_wait_asyncio" = { excluded = "python-runtime" }
 "TestExceptionPropagation::test_exception_propagates_via_wait_trio" = { excluded = "python-runtime" }
 "TestExceptionPropagation::test_unhandled_exception_logged_under_trio" = { excluded = "python-runtime" }
-"TestContextVarPropagation::test_contextvar_propagates_asyncio" = { rust = ["crates/claude-agent-rust-sdk/tests/caller_context.rs::callbacks_run_in_the_span_of_the_caller_that_connected", "crates/claude-agent-rust-sdk/tests/otel.rs::callbacks_run_in_the_open_telemetry_context_active_at_connect"], note = "Rust has no contextvars; the tasks the session spawns carry the tracing span and the OpenTelemetry context of the caller instead." }
+"TestContextVarPropagation::test_contextvar_propagates_asyncio" = { rust = ["crates/claude-agent-rust-sdk/tests/caller_context.rs::callbacks_run_in_the_span_of_the_caller_that_connected", "crates/claude-agent-rust-sdk/tests/caller_context.rs::in_process_tools_run_in_the_span_of_the_caller_that_connected", "crates/claude-agent-rust-sdk/tests/otel.rs::callbacks_run_in_the_open_telemetry_context_active_at_connect"], note = "Rust has no contextvars; the tasks the session spawns carry the tracing span and the OpenTelemetry context of the caller instead." }
 "TestContextVarPropagation::test_contextvar_propagates_trio" = { excluded = "python-runtime" }
 "TestCrossTaskCancel::test_cancel_from_different_task_trio" = { excluded = "python-runtime" }
 

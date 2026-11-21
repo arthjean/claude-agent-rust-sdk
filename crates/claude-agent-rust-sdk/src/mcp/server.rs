@@ -341,7 +341,7 @@ impl NativeSession {
         let server = Arc::clone(&self.server);
         let method = method.to_owned();
         let params = params.clone();
-        let call = tokio::spawn(async move {
+        let call = crate::caller_context::spawn(async move {
             let outcome = tokio::select! {
                 biased;
                 Ok(()) = cancelled => Err(RpcError {
