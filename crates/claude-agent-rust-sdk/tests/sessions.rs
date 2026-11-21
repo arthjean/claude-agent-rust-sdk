@@ -17,8 +17,8 @@ use claude_agent_rust_sdk::{
 use serde_json::{Value, json};
 
 use common::transcripts::{
-    Project, assistant, config_dir, conversation, new_id, projects_dir, set_mtime, type_first,
-    user, write_lines,
+    Project, assistant, config_dir, conversation, new_id, projects_dir, python_dumps, set_mtime,
+    type_first, user, write_lines,
 };
 
 fn ids(sessions: &[SdkSessionInfo]) -> Vec<String> {
@@ -1458,4 +1458,61 @@ async fn a_transcript_line_with_a_lone_surrogate_or_deep_nesting_keeps_the_histo
         .unwrap();
         assert_eq!(uuids(&stored), ["u1", "a1", "c1", "a2"], "{marker}");
     }
+}
+
+#[test]
+fn python_dumps_writes_the_bytes_of_json_dumps() {
+    assert_eq!(
+        python_dumps(&json!({"a": [1, "caf\u{e9} \u{1F600}"], "b": null})),
+        r#"{"a": [1, "caf\u00e9 \ud83d\ude00"], "b": null}"#
+    );
+}
+
+#[test]
+fn transcripts_written_with_python_spacing_read_as_compact_ones_do() {
+    let lines = |id: &str| {
+        let mut meta = user("u0", None, id, Value::from("ignored meta"));
+        meta["isMeta"] = json!(true);
+        let mut compact = user("u1", Some("u0"), id, Value::from("ignored compact"));
+        compact["isCompactSummary"] = json!(true);
+        vec![
+            meta,
+            compact,
+            user(
+                "u2",
+                Some("u1"),
+                id,
+                json!([{"type": "tool_result", "tool_use_id": "x", "content": "res"}]),
+            ),
+            user("u3", Some("u2"), id, Value::from("real first caf\u{e9}")),
+            assistant("a1", Some("u3"), id, "answer"),
+            json!({"type": "custom-title", "customTitle": "Titr\u{e9}", "sessionId": id}),
+        ]
+    };
+    let project = Project::new();
+    let compact_id = new_id();
+    let spaced_id = new_id();
+    project.write(&compact_id, &lines(&compact_id));
+    let spaced = project.write_spaced(&spaced_id, &lines(&spaced_id));
+    assert!(
+        std::fs::read_to_string(&spaced)
+            .unwrap()
+            .contains(r#""isMeta": true"#)
+    );
+
+    let compact = get_session_info(&compact_id, Some(project.path())).unwrap();
+    let spaced = get_session_info(&spaced_id, Some(project.path())).unwrap();
+    assert_eq!(spaced.first_prompt.as_deref(), Some("real first caf\u{e9}"));
+    assert_eq!(spaced.first_prompt, compact.first_prompt);
+    assert_eq!(spaced.custom_title.as_deref(), Some("Titr\u{e9}"));
+    assert_eq!(spaced.summary, compact.summary);
+    let read = |id: &str| {
+        get_session_messages(id, SessionMessagesOptions::new().directory(project.path()))
+            .into_iter()
+            .map(|message| message.uuid)
+            .collect::<Vec<_>>()
+    };
+    let spaced_chain = read(&spaced_id);
+    assert!(spaced_chain.len() >= 2, "{spaced_chain:?}");
+    assert_eq!(spaced_chain, read(&compact_id));
 }

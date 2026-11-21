@@ -636,3 +636,42 @@ fn file_paths_differing_in_case_from_the_projects_directory_map_to_keys_on_windo
         Some(SessionKey::new("Proj", "sess"))
     );
 }
+
+/// Upstream `TestInMemoryListSessionSummaries::test_tracks_appends`: a
+/// title appended in a second batch reaches the summary of its session.
+#[tokio::test]
+async fn the_in_memory_summaries_follow_each_append() {
+    use serde_json::Value;
+    let store = InMemorySessionStore::new();
+    let entry = |value: Value| value.as_object().unwrap().clone();
+    let user = |text: &str, timestamp: &str| {
+        entry(json!({"type": "user", "timestamp": timestamp, "message": {"content": text}}))
+    };
+    let a = SessionKey::new("proj", "a");
+    let b = SessionKey::new("proj", "b");
+    store
+        .append(&a, &[user("hello a", "2024-01-01T00:00:00Z")])
+        .await
+        .unwrap();
+    store
+        .append(&a, &[entry(json!({"type": "x", "customTitle": "Title A"}))])
+        .await
+        .unwrap();
+    store
+        .append(&b, &[user("hello b", "2024-01-02T00:00:00Z")])
+        .await
+        .unwrap();
+    let summaries = store.list_session_summaries("proj").await.unwrap();
+    let data = |id: &str| {
+        summaries
+            .iter()
+            .find(|summary| summary.session_id == id)
+            .unwrap()
+            .data
+            .clone()
+    };
+    assert_eq!(summaries.len(), 2);
+    assert_eq!(data("a")["custom_title"], "Title A");
+    assert_eq!(data("a")["first_prompt"], "hello a");
+    assert_eq!(data("b")["first_prompt"], "hello b");
+}

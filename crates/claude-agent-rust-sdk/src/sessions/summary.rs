@@ -234,6 +234,60 @@ mod tests {
         assert_eq!(info.file_size, None);
     }
 
+    /// Upstream `test_tag_set_and_clear`: only a `tag` entry sets or clears
+    /// the tag; a `tag` key on an entry of another type is ignored.
+    #[test]
+    fn only_a_tag_entry_sets_or_clears_the_tag() {
+        let key = SessionKey::new("p", "s");
+        let set = fold_session_summary(
+            None,
+            &key,
+            &entries(&[json!({"type": "tag", "tag": "wip"})]),
+        );
+        assert_eq!(set.data["tag"], "wip");
+        let cleared = fold_session_summary(
+            Some(&set),
+            &key,
+            &entries(&[json!({"type": "tag", "tag": ""})]),
+        );
+        assert!(cleared.data.get("tag").is_none());
+        let kept = fold_session_summary(
+            Some(&set),
+            &key,
+            &entries(&[json!({"type": "user", "tag": "ignored"})]),
+        );
+        assert_eq!(kept.data["tag"], "wip");
+    }
+
+    /// Upstream `test_first_prompt_skips_meta_tool_result_and_compact`, with
+    /// the meta and compact-summary entries ahead of the prompt.
+    #[test]
+    fn the_first_prompt_skips_meta_compact_summary_and_tool_result_entries() {
+        let user = |content: Value, flag: Option<&str>| {
+            let mut entry = json!({"type": "user", "message": {"content": content}});
+            if let Some(flag) = flag {
+                entry[flag] = json!(true);
+            }
+            entry
+        };
+        let folded = fold_session_summary(
+            None,
+            &SessionKey::new("p", "s"),
+            &entries(&[
+                user(json!("ignored meta"), Some("isMeta")),
+                user(json!("ignored compact"), Some("isCompactSummary")),
+                user(
+                    json!([{"type": "tool_result", "tool_use_id": "x", "content": "res"}]),
+                    None,
+                ),
+                user(json!("real first"), None),
+                user(json!("not me"), None),
+            ]),
+        );
+        assert_eq!(folded.data["first_prompt"], "real first");
+        assert_eq!(folded.data["first_prompt_locked"], true);
+    }
+
     #[test]
     fn sidechain_and_empty_summaries_give_no_info() {
         let key = SessionKey::new("p", "s");

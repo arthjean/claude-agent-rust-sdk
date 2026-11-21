@@ -124,6 +124,58 @@ impl Project {
         write_lines(&path, lines);
         path
     }
+
+    /// Writes a transcript the way Python's `json.dumps` writes each line
+    /// by default (the upstream fixtures): `", "` and `": "` separators and
+    /// every character outside ASCII escaped.
+    pub fn write_spaced(&self, session_id: &str, lines: &[Value]) -> PathBuf {
+        let path = self.transcript(session_id);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let text: String = lines
+            .iter()
+            .map(|line| format!("{}\n", python_dumps(line)))
+            .collect();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+}
+
+/// `json.dumps(value)` with Python's default arguments.
+pub fn python_dumps(value: &Value) -> String {
+    match value {
+        Value::Object(fields) => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|(key, field)| {
+                    format!(
+                        "{}: {}",
+                        python_dumps(&Value::from(key.as_str())),
+                        python_dumps(field)
+                    )
+                })
+                .collect();
+            format!("{{{}}}", parts.join(", "))
+        }
+        Value::Array(items) => {
+            let parts: Vec<String> = items.iter().map(python_dumps).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        Value::String(_) => {
+            let mut escaped = String::new();
+            for character in value.to_string().chars() {
+                if character.is_ascii() {
+                    escaped.push(character);
+                } else {
+                    let mut units = [0_u16; 2];
+                    for unit in character.encode_utf16(&mut units) {
+                        escaped.push_str(&format!("\\u{unit:04x}"));
+                    }
+                }
+            }
+            escaped
+        }
+        other => other.to_string(),
+    }
 }
 
 pub fn write_lines(path: &Path, lines: &[Value]) {
